@@ -9,6 +9,7 @@ import { PROJECT_TABS } from "@/lib/nav";
 import { StatusBadge, StatusStepper } from "@/components/status-badge";
 import { ProjectTabs } from "@/components/projects/project-tabs";
 import { ProjectOptions } from "@/components/projects/project-options";
+import { ProjectTabTransition } from "@/components/projects/project-tab-transition";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -88,7 +89,7 @@ export default async function ProjectLayout({
 
       <ProjectTabs projectId={project.id} tabs={tabs} />
 
-      {children}
+      <ProjectTabTransition>{children}</ProjectTabTransition>
     </div>
   );
 }

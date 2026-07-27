@@ -114,17 +114,21 @@ button:active:not(:disabled) {
 /* Explicit action styles keep important buttons visible even if a utility
    class is not generated during a hot reload. */
 .button-primary-pop {
-  color: #fff;
-  background: linear-gradient(135deg, #5d8cff 0%, #315fe7 52%, #6d3ee8 100%);
-  border: 1px solid rgb(255 255 255 / 0.12);
-  box-shadow: 0 7px 18px rgb(49 95 231 / 0.4), 0 1px 2px rgb(20 35 80 / 0.2);
+  color: #fff !important;
+  background: linear-gradient(135deg, #5d8cff 0%, #315fe7 52%, #6d3ee8 100%) !important;
+  border: 1px solid rgb(255 255 255 / 0.12) !important;
+  box-shadow: 0 8px 20px rgb(49 95 231 / 0.46), 0 1px 2px rgb(20 35 80 / 0.2) !important;
 }
 .button-primary-pop:hover {
   color: #fff;
   transform: translateY(-2px);
   filter: brightness(1.1) saturate(1.12);
-  box-shadow: 0 13px 30px rgb(79 70 229 / 0.48), 0 0 0 4px rgb(93 140 255 / 0.14);
+  box-shadow: 0 15px 34px rgb(79 70 229 / 0.56), 0 0 0 5px rgb(93 140 255 / 0.18) !important;
 }
+.button-base-pop { transition: transform 180ms cubic-bezier(0.2,0.8,0.2,1), box-shadow 180ms cubic-bezier(0.2,0.8,0.2,1), filter 180ms ease, background 180ms ease; }
+.button-base-pop:active:not(:disabled) { transform: scale(0.975); }
+.ui-card-pop { box-shadow: 0 2px 5px rgb(15 23 42 / 0.04); transition: transform 220ms cubic-bezier(0.2,0.8,0.2,1), box-shadow 220ms ease, border-color 220ms ease; animation: surface-rise 260ms cubic-bezier(0.2,0.8,0.2,1) both; }
+.ui-card-pop:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--primary) 36%, var(--border)); box-shadow: 0 18px 38px rgb(49 95 231 / 0.18), 0 0 0 1px rgb(93 140 255 / 0.08); }
 .button-secondary-pop {
   color: var(--foreground);
   background: linear-gradient(135deg, var(--surface) 0%, var(--primary-muted) 160%);
@@ -160,6 +164,12 @@ textarea:focus {
 @keyframes page-in {
   from { opacity: 0; transform: translateY(9px); filter: saturate(0.88); }
   to { opacity: 1; transform: translateY(0); filter: saturate(1); }
+}
+
+@keyframes tab-content-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.982); filter: saturate(0.78) brightness(0.98); }
+  62% { opacity: 1; transform: translateY(-1px) scale(1.004); filter: saturate(1.14) brightness(1.02); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: saturate(1) brightness(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 export function Card({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
-      className={cn("rounded-[var(--radius)] border border-border-subtle bg-surface shadow-[0_1px_2px_rgb(15_23_42/0.025)] transition-all duration-200 motion-safe:animate-[surface-rise_260ms_cubic-bezier(0.2,0.8,0.2,1)_both] hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_16px_34px_rgb(49_95_231/0.16)]", className)}
+      className={cn("ui-card-pop rounded-[var(--radius)] border border-border-subtle bg-surface", className)}
       {...props}
     />
   );
@@ -56,7 +56,7 @@ const BUTTON_SIZES: Record<ButtonSize, string> = {
 };
 
 const buttonBase =
-  "inline-flex items-center justify-center gap-2 rounded-[var(--radius)] font-medium shadow-sm transition-all duration-150 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.985]";
+  "button-base-pop inline-flex items-center justify-center gap-2 rounded-[var(--radius)] font-medium disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
 export function Button({
   variant = "secondary",
