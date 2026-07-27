@@ -22,7 +22,7 @@ export interface StatusMeta {
 export const STATUS_META: Record<ProjectStatus, StatusMeta> = {
   new_request: {
     status: "new_request",
-    label: "New Request",
+    label: "Request Received",
     group: "pre_sale",
     module: "crm",
     description: "Customer, site, scope and attachments captured.",
@@ -40,7 +40,7 @@ export const STATUS_META: Record<ProjectStatus, StatusMeta> = {
   },
   quote_sent: {
     status: "quote_sent",
-    label: "Quote Sent",
+    label: "Uplift Sent",
     group: "pre_sale",
     module: "quoting",
     description: "Quote issued to the customer.",
@@ -58,7 +58,7 @@ export const STATUS_META: Record<ProjectStatus, StatusMeta> = {
   },
   approved: {
     status: "approved",
-    label: "Approved",
+    label: "PO Received",
     group: "pre_start",
     module: "finance",
     description: "Quote accepted. Purchase order and deposit outstanding.",
@@ -67,7 +67,7 @@ export const STATUS_META: Record<ProjectStatus, StatusMeta> = {
   },
   waiting_for_scheduling: {
     status: "waiting_for_scheduling",
-    label: "Waiting for Scheduling",
+    label: "Scheduling Pending",
     group: "pre_start",
     module: "scheduling",
     description: "PO received. Queued for the scheduling board.",
@@ -76,7 +76,7 @@ export const STATUS_META: Record<ProjectStatus, StatusMeta> = {
   },
   scheduled: {
     status: "scheduled",
-    label: "Scheduled",
+    label: "Job Scheduled",
     group: "pre_start",
     module: "scheduling",
     description: "Installers allocated and notified.",
@@ -85,7 +85,7 @@ export const STATUS_META: Record<ProjectStatus, StatusMeta> = {
   },
   in_progress: {
     status: "in_progress",
-    label: "In Progress",
+    label: "Installation in Progress",
     group: "delivery",
     module: "field",
     description: "Crew on site. Time, materials and photos being captured.",
@@ -103,7 +103,7 @@ export const STATUS_META: Record<ProjectStatus, StatusMeta> = {
   },
   qa: {
     status: "qa",
-    label: "QA",
+    label: "QA Complete",
     group: "close_out",
     module: "qa",
     description: "Inspection checklist in progress. Defects tracked to closure.",
@@ -112,7 +112,7 @@ export const STATUS_META: Record<ProjectStatus, StatusMeta> = {
   },
   final_costing: {
     status: "final_costing",
-    label: "Final Costing",
+    label: "Ready to Invoice",
     group: "close_out",
     module: "finance",
     description: "Labour, materials and variations collated into profitability.",
@@ -121,7 +121,7 @@ export const STATUS_META: Record<ProjectStatus, StatusMeta> = {
   },
   ready_for_invoice: {
     status: "ready_for_invoice",
-    label: "Ready for Invoice",
+    label: "Certificate Issued",
     group: "close_out",
     module: "finance",
     description: "Costing locked. Queued for export to Xero.",
@@ -130,7 +130,7 @@ export const STATUS_META: Record<ProjectStatus, StatusMeta> = {
   },
   closed: {
     status: "closed",
-    label: "Closed",
+    label: "Complete",
     group: "terminal",
     module: "finance",
     description: "Invoice paid and project financially closed.",
@@ -169,9 +169,8 @@ export const STATUS_META: Record<ProjectStatus, StatusMeta> = {
 /** The happy path, in order. Drives the pipeline board and the stepper. */
 export const PIPELINE_ORDER: ProjectStatus[] = [
   "new_request",
-  "quoting",
   "quote_sent",
-  "awaiting_approval",
+  "quoting",
   "approved",
   "waiting_for_scheduling",
   "scheduled",

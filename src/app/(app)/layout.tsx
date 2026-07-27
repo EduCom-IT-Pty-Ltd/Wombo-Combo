@@ -4,6 +4,8 @@ import { NAV_ITEMS } from "@/lib/nav";
 import { Sidebar } from "@/components/layout/sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { TopBar } from "@/components/layout/topbar";
+import { StatusSettingsProvider } from "@/components/status-settings-provider";
+import { readStatusSettings } from "@/lib/data/local-store";
 
 /**
  * The authenticated shell. Navigation is filtered by capability here rather than
@@ -11,7 +13,7 @@ import { TopBar } from "@/components/layout/topbar";
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  const items = NAV_ITEMS.filter((item) => can(session.role, item.capability));
+  const [items, statusSettings] = [NAV_ITEMS.filter((item) => can(session.role, item.capability)), await readStatusSettings()];
 
   const userName = [session.user.firstName, session.user.lastName].filter(Boolean).join(" ") || session.user.email;
   const initials =
@@ -19,7 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     session.user.email[0].toUpperCase();
 
   return (
-    <div className="flex min-h-dvh">
+    <StatusSettingsProvider settings={statusSettings}><div className="flex min-h-dvh">
       <Sidebar items={items} orgName={session.org.name} />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -38,6 +40,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
 
       <BottomNav items={items} />
-    </div>
+    </div></StatusSettingsProvider>
   );
 }

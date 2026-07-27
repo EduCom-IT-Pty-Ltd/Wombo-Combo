@@ -32,7 +32,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/finance", label: "Finance", icon: "receipt", capability: "finance.view" },
   { href: "/qa", label: "QA & Compliance", shortLabel: "QA", icon: "shield", capability: "qa.view" },
   { href: "/hr", label: "People", icon: "users", capability: "hr.view" },
-  { href: "/admin", label: "Admin", icon: "settings", capability: "admin.manage" },
+  { href: "/admin", label: "Settings", icon: "settings", capability: "admin.manage" },
 ];
 
 /** Project workspace tabs — the spec's "Project Workspace" module. */

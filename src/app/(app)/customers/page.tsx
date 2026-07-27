@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
 import { listCustomers } from "@/lib/data/repository";
-import { Button, Card, EmptyState, PageHeader } from "@/components/ui";
+import { ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
 
 export const metadata = { title: "Customers" };
 
@@ -17,7 +17,7 @@ export default async function CustomersPage() {
       <PageHeader
         title="Customers"
         description={`${customers.length} accounts`}
-        action={can(session.role, "customer.manage") ? <Button size="sm">Add customer</Button> : null}
+        action={can(session.role, "customer.manage") ? <ButtonLink href="/customers/new" variant="primary" size="sm">Add customer</ButtonLink> : null}
       />
 
       <Card>

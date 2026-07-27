@@ -16,7 +16,9 @@ npm run dev
 
 Open http://localhost:3000. No database or auth configuration is needed — with no
 `DATABASE_URL` the app serves a demo dataset (a commercial fitout contractor with fourteen
-jobs spread across every workflow stage).
+jobs spread across every workflow stage). New customers, projects, status changes and their
+workflow effects are persisted locally in `.wombo-data/test-data.json`; this file is ignored by
+Git and is only for testing. Delete it to reset the app to the original demo data.
 
 Use the **Viewing as** dropdown in the top bar to switch roles and see how the app changes.
 An installer gets a different navigation bar, no financials, and no status controls.
@@ -75,7 +77,7 @@ Certificate" is an artefact generated when QA passes, not a state.
 
 `src/lib/domain/automation.ts` encodes the spec's trigger/action table as data. Rules resolve
 to described *effects*; an executor decides whether to run them inline, enqueue them, or (in
-demo mode) log them. Failures are collected rather than thrown — a notification that cannot
+local test mode) record them in the project activity. Failures are collected rather than thrown — a notification that cannot
 send must not roll back the status change a human just made. The rules render at `/admin`.
 
 ## Connecting the real services

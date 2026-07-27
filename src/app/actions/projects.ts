@@ -8,6 +8,7 @@ import { can } from "@/lib/domain/permissions";
 import { checkTransition, type ProjectStatus } from "@/lib/domain/status";
 import { runAutomations, type AutomationEffect, type AutomationTrigger } from "@/lib/domain/automation";
 import { buildTransitionContext, getProject } from "@/lib/data/repository";
+import { applyLocalAutomationEffect, persistLocalTransition } from "@/lib/data/local-store";
 import { isDemoMode } from "@/lib/db";
 
 const transitionSchema = z.object({
@@ -112,9 +113,7 @@ async function persistTransition(args: {
   overrideReason?: string;
 }) {
   if (isDemoMode) {
-    // Demo data is module-scoped and read-only; log the intent instead so the
-    // flow is observable without pretending the write happened.
-    console.info("[demo] transition", args);
+    await persistLocalTransition(args);
     return;
   }
   throw new Error("Database writes are not wired up yet — set DATABASE_URL and implement persistTransition()");
@@ -123,7 +122,7 @@ async function persistTransition(args: {
 /** Effect executor. Logs in demo mode; becomes real work once the DB is live. */
 async function executeEffect(effect: AutomationEffect, trigger: AutomationTrigger) {
   if (isDemoMode) {
-    console.info("[demo] automation effect", { trigger: trigger.kind, effect });
+    await applyLocalAutomationEffect(effect, trigger);
     return;
   }
   throw new Error(`Automation effect "${effect.type}" is not implemented yet`);

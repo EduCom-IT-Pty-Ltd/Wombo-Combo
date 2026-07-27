@@ -7,6 +7,7 @@ import { transitionProject, type ActionResult } from "@/app/actions/projects";
 import { STATUS_META, type ProjectStatus, type TransitionContext, checkTransition } from "@/lib/domain/status";
 import { Button, Card } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
+import { useStatusSettings } from "@/components/status-settings-provider";
 
 /**
  * Status transition control.
@@ -34,6 +35,7 @@ export function StatusControl({
   const [result, setResult] = useState<ActionResult | null>(null);
   const [confirming, setConfirming] = useState<ProjectStatus | null>(null);
   const [reason, setReason] = useState("");
+  const { settingFor } = useStatusSettings();
 
   function move(to: ProjectStatus, overrideReason?: string) {
     setResult(null);
@@ -82,7 +84,7 @@ export function StatusControl({
                 className="flex w-full items-center gap-2 rounded-[var(--radius)] border border-border-subtle px-3 py-2.5 text-left transition-colors enabled:hover:border-border-strong enabled:hover:bg-surface-muted disabled:opacity-55"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium">{meta.label}</span>
+                  <span className="block text-sm font-medium">{settingFor(to)?.label ?? meta.label}</span>
                   <span className="block truncate text-xs text-muted-foreground">{meta.description}</span>
                 </span>
                 {blocked ? (

@@ -1,5 +1,5 @@
 import "server-only";
-import * as demo from "./demo-data";
+import { readLocalStore } from "./local-store";
 import type {
   Assignment,
   Customer,
@@ -34,7 +34,7 @@ import { EMPTY_CONTEXT, type TransitionContext } from "@/lib/domain/status";
 // The demo store ignores orgId because it holds a single tenant.
 
 export async function listPeople(_orgId: string): Promise<Person[]> {
-  return demo.people;
+  return (await readLocalStore()).people;
 }
 
 export async function getPerson(orgId: string, id: string): Promise<Person | null> {
@@ -42,7 +42,7 @@ export async function getPerson(orgId: string, id: string): Promise<Person | nul
 }
 
 export async function listCustomers(_orgId: string): Promise<Customer[]> {
-  return [...demo.customers].sort((a, b) => a.name.localeCompare(b.name));
+  return [...(await readLocalStore()).customers].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function getCustomer(orgId: string, id: string): Promise<Customer | null> {
@@ -57,7 +57,7 @@ export interface ProjectFilters {
 }
 
 export async function listProjects(_orgId: string, filters: ProjectFilters = {}): Promise<ProjectSummary[]> {
-  let rows: ProjectSummary[] = demo.projects;
+  let rows: ProjectSummary[] = (await readLocalStore()).projects;
 
   if (filters.status?.length) {
     rows = rows.filter((p) => filters.status!.includes(p.status));
@@ -81,15 +81,15 @@ export async function listProjects(_orgId: string, filters: ProjectFilters = {})
 }
 
 export async function getProject(_orgId: string, id: string): Promise<ProjectDetail | null> {
-  return demo.projects.find((p) => p.id === id) ?? null;
+  return (await readLocalStore()).projects.find((p) => p.id === id) ?? null;
 }
 
 export async function listQuotes(_orgId: string, projectId: string): Promise<QuoteSummary[]> {
-  return demo.quotes.filter((q) => q.projectId === projectId).sort((a, b) => b.version - a.version);
+  return (await readLocalStore()).quotes.filter((q) => q.projectId === projectId).sort((a, b) => b.version - a.version);
 }
 
 export async function listTasks(_orgId: string, opts: { projectId?: string; assigneeId?: string } = {}): Promise<Task[]> {
-  return demo.tasks.filter(
+  return (await readLocalStore()).tasks.filter(
     (t) =>
       (!opts.projectId || t.projectId === opts.projectId) &&
       (!opts.assigneeId || t.assigneeId === opts.assigneeId),
@@ -100,7 +100,7 @@ export async function listAssignments(
   _orgId: string,
   opts: { projectId?: string; userId?: string; from?: Date; to?: Date } = {},
 ): Promise<Assignment[]> {
-  return demo.assignments
+  return (await readLocalStore()).assignments
     .filter((a) => {
       if (opts.projectId && a.projectId !== opts.projectId) return false;
       if (opts.userId && a.userId !== opts.userId) return false;
@@ -112,14 +112,14 @@ export async function listAssignments(
 }
 
 export async function listLeave(_orgId: string, opts: { userId?: string } = {}): Promise<LeaveEntry[]> {
-  return demo.leave.filter((l) => !opts.userId || l.userId === opts.userId);
+  return (await readLocalStore()).leave.filter((l) => !opts.userId || l.userId === opts.userId);
 }
 
 export async function listTimeEntries(
   _orgId: string,
   opts: { projectId?: string; userId?: string } = {},
 ): Promise<TimeEntry[]> {
-  return demo.timeEntries.filter(
+  return (await readLocalStore()).timeEntries.filter(
     (t) => (!opts.projectId || t.projectId === opts.projectId) && (!opts.userId || t.userId === opts.userId),
   );
 }
@@ -130,27 +130,27 @@ export async function getOpenTimeEntry(orgId: string, userId: string): Promise<T
 }
 
 export async function listMaterials(_orgId: string, projectId: string): Promise<MaterialUse[]> {
-  return demo.materials.filter((m) => m.projectId === projectId);
+  return (await readLocalStore()).materials.filter((m) => m.projectId === projectId);
 }
 
 export async function listVariations(_orgId: string, projectId: string): Promise<Variation[]> {
-  return demo.variations.filter((v) => v.projectId === projectId);
+  return (await readLocalStore()).variations.filter((v) => v.projectId === projectId);
 }
 
 export async function listDocuments(_orgId: string, projectId: string): Promise<DocumentRecord[]> {
-  return demo.documents.filter((d) => d.projectId === projectId);
+  return (await readLocalStore()).documents.filter((d) => d.projectId === projectId);
 }
 
 export async function listInspections(_orgId: string, projectId: string): Promise<Inspection[]> {
-  return demo.inspections.filter((i) => i.projectId === projectId);
+  return (await readLocalStore()).inspections.filter((i) => i.projectId === projectId);
 }
 
 export async function listDefects(_orgId: string, opts: { projectId?: string } = {}): Promise<Defect[]> {
-  return demo.defects.filter((d) => !opts.projectId || d.projectId === opts.projectId);
+  return (await readLocalStore()).defects.filter((d) => !opts.projectId || d.projectId === opts.projectId);
 }
 
 export async function listEvents(_orgId: string, projectId: string): Promise<ProjectEvent[]> {
-  return demo.events
+  return (await readLocalStore()).events
     .filter((e) => e.projectId === projectId)
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 }
@@ -234,7 +234,7 @@ export async function getDashboardMetrics(orgId: string): Promise<DashboardMetri
     listTasks(orgId),
     listDefects(orgId),
   ]);
-  const openEntries = demo.timeEntries.filter((t) => t.endedAt === null);
+  const openEntries = (await readLocalStore()).timeEntries.filter((t) => t.endedAt === null);
   const now = new Date();
 
   const pending: ProjectStatus[] = ["quote_sent", "awaiting_approval"];

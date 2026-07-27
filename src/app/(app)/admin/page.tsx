@@ -3,15 +3,20 @@ import { AUTOMATION_RULES } from "@/lib/domain/automation";
 import { CAPABILITIES, ROLE_LABELS, capabilitiesFor } from "@/lib/domain/permissions";
 import { ROLES } from "@/lib/db/schema/enums";
 import { Badge, Card, CardHeader, Field, PageHeader } from "@/components/ui";
+import { StatusFlowSettings } from "@/components/admin/status-flow-settings";
+import { readStatusSettings } from "@/lib/data/local-store";
 
 export const metadata = { title: "Admin" };
 
 export default async function AdminPage() {
   const session = await getSession();
+  const statusSettings = await readStatusSettings();
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Admin" description="Organisation settings, roles and automation rules" />
+      <PageHeader title="Settings" description="Organisation settings, status flow, roles and automation rules" />
+
+      <StatusFlowSettings settings={statusSettings} />
 
       <Card>
         <CardHeader title="Organisation" />

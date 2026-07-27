@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
 import { isDemoMode } from "@/lib/db";
 import { runAutomations, type AutomationEffect } from "@/lib/domain/automation";
+import { applyLocalAutomationEffect, createLocalProject } from "@/lib/data/local-store";
 
 const schema = z.object({
   title: z.string().trim().min(3, "Give the project a title"),
@@ -18,6 +19,7 @@ const schema = z.object({
 export interface NewRequestState {
   status: "idle" | "success" | "error";
   message?: string;
+  projectId?: string;
   errors?: Partial<Record<keyof z.infer<typeof schema>, string>>;
 }
 
@@ -38,16 +40,21 @@ export async function createProjectRequest(
   }
 
   if (isDemoMode) {
-    // Show the automation the spec attaches to project creation without writing.
+    const project = await createLocalProject({
+      ...parsed.data,
+      projectNumberPrefix: session.org.projectNumberPrefix,
+      actorId: session.user.id,
+    });
     const effects: AutomationEffect[] = [];
-    await runAutomations({ kind: "project.created", projectId: "pending" }, async (effect) => {
+    await runAutomations({ kind: "project.created", projectId: project.id }, async (effect) => {
       effects.push(effect);
+      await applyLocalAutomationEffect(effect, { kind: "project.created", projectId: project.id });
     });
 
-    console.info("[demo] create project", { org: session.org.id, ...parsed.data, effects });
     return {
       status: "success",
-      message: `Demo mode — would create "${parsed.data.title}" and run ${effects.length} automation effects. Connect Neon to persist.`,
+      projectId: project.id,
+      message: `Created ${project.projectNumber}. ${effects.length} workflow actions recorded.`,
     };
   }
 

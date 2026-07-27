@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { createProjectRequest, type NewRequestState } from "@/app/actions/new-request";
 import { Button, Card, CardHeader } from "@/components/ui";
 
@@ -68,10 +69,12 @@ export function NewRequestForm({ customers }: { customers: Array<{ id: string; n
             <p className="text-xs text-[var(--tone-rose-fg)]">{state.message}</p>
           ) : null}
           {state.status === "success" ? (
-            <p className="text-xs text-[var(--tone-emerald-fg)]">{state.message}</p>
+            <p className="text-xs text-[var(--tone-emerald-fg)]">
+              {state.message} {state.projectId ? <Link className="font-medium underline" href={`/projects/${state.projectId}`}>Open project</Link> : null}
+            </p>
           ) : null}
           <p className="ml-auto text-xs text-muted-foreground">
-            Saving assigns the next project number and creates the document folder.
+            Saved locally on this computer. It can be replaced with the production database later.
           </p>
         </div>
       </Card>

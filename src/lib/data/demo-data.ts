@@ -380,7 +380,7 @@ const projectSeeds: ProjectSeed[] = [
     id: "p-1047",
     number: "NLI-2026-0047",
     title: "Meridian Chadstone — pop-up kiosk build",
-    status: "awaiting_approval",
+    status: "quote_sent",
     customerId: "c-meridian",
     siteId: "s-meridian-cbd",
     valueCents: 26_900_00,
