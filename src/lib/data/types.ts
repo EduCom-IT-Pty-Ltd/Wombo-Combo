@@ -47,6 +47,7 @@ export interface CatalogueMaterial {
   sku: string;
   description: string | null;
   costCentsPerM2: number;
+  standardPriceCentsPerM2: number;
 }
 
 export interface CustomerPriceList {

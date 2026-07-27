@@ -87,7 +87,8 @@ export async function readLocalStore(): Promise<LocalStore> {
     const statusSettings = savedSettings.map((setting) =>
       setting.status === "lost" || setting.status === "cancelled" ? { ...setting, inProgressFlow: false } : setting,
     );
-    return { ...freshStore(), ...store, statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates: store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES), workflowFieldValues: store.workflowFieldValues ?? [], catalogueMaterials: store.catalogueMaterials ?? [], customerPriceLists: store.customerPriceLists ?? [] };
+    const catalogueMaterials = (store.catalogueMaterials ?? []).map((material) => ({ ...material, standardPriceCentsPerM2: material.standardPriceCentsPerM2 ?? Math.round(material.costCentsPerM2 * 1.4) }));
+    return { ...freshStore(), ...store, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates: store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES), workflowFieldValues: store.workflowFieldValues ?? [], catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [] };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
@@ -235,6 +236,19 @@ export async function createLocalPriceList(input: { name: string; entries: Custo
   });
 }
 
+export async function updateLocalCatalogueMaterial(id: string, input: Omit<CatalogueMaterial, "id">) {
+  await updateLocalStore((store) => { const material = store.catalogueMaterials.find((item) => item.id === id); if (!material) throw new Error("Material not found"); Object.assign(material, input); });
+}
+export async function deleteLocalCatalogueMaterial(id: string) {
+  await updateLocalStore((store) => { store.catalogueMaterials = store.catalogueMaterials.filter((item) => item.id !== id); for (const list of store.customerPriceLists) list.entries = list.entries.filter((entry) => entry.materialId !== id); });
+}
+export async function updateLocalPriceList(id: string, input: { name: string; entries: CustomerPriceList["entries"] }) {
+  await updateLocalStore((store) => { const list = store.customerPriceLists.find((item) => item.id === id); if (!list) throw new Error("Price list not found"); Object.assign(list, input); });
+}
+export async function deleteLocalPriceList(id: string) {
+  await updateLocalStore((store) => { store.customerPriceLists = store.customerPriceLists.filter((item) => item.id !== id); for (const customer of store.customers) if (customer.priceListId === id) customer.priceListId = null; });
+}
+
 export async function createLocalMaterialQuote(args: { projectId: string; materialIds: Array<{ materialId: string; quantity: number }> }) {
   return updateLocalStore((store) => {
     const project = store.projects.find((item) => item.id === args.projectId);
@@ -244,7 +258,7 @@ export async function createLocalMaterialQuote(args: { projectId: string; materi
     const lines = args.materialIds.map(({ materialId, quantity }) => {
       const material = store.catalogueMaterials.find((item) => item.id === materialId);
       if (!material) throw new Error("Material not found");
-      const sell = priceList?.entries.find((entry) => entry.materialId === material.id)?.priceCentsPerM2 ?? Math.round(material.costCentsPerM2 * 1.4);
+      const sell = priceList?.entries.find((entry) => entry.materialId === material.id)?.priceCentsPerM2 ?? material.standardPriceCentsPerM2;
       return { id: `ql-${randomUUID()}`, kind: "material" as const, description: material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
     });
     const subtotalSellCents = lines.reduce((sum, line) => sum + line.quantity * (line.unitSellCentsOverride ?? 0), 0);
