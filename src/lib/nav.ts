@@ -20,6 +20,7 @@ export type IconName =
   | "users"
   | "receipt"
   | "materials"
+  | "production"
   | "shield"
   | "settings"
   | "more";
@@ -27,10 +28,11 @@ export type IconName =
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", shortLabel: "Home", icon: "home", capability: "project.view", mobileOrder: 1 },
   { href: "/projects", label: "Projects", icon: "folder", capability: "project.view", mobileOrder: 2 },
-  { href: "/schedule", label: "Schedule", icon: "calendar", capability: "schedule.view", mobileOrder: 3 },
+  { href: "/schedule", label: "Calendar", icon: "calendar", capability: "schedule.view", mobileOrder: 3 },
   { href: "/field", label: "Field", shortLabel: "My Day", icon: "hardhat", capability: "field.clock", mobileOrder: 0 },
   { href: "/customers", label: "Customers", icon: "users", capability: "customer.view" },
   { href: "/materials", label: "Materials", icon: "materials", capability: "quote.edit" },
+  { href: "/production-templates", label: "Production templates", icon: "production", capability: "quote.edit" },
   { href: "/finance", label: "Finance", icon: "receipt", capability: "finance.view" },
   { href: "/qa", label: "QA & Compliance", shortLabel: "QA", icon: "shield", capability: "qa.view" },
   { href: "/hr", label: "People", icon: "users", capability: "hr.view" },

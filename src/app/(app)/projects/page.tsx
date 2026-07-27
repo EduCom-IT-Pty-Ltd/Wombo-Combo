@@ -2,13 +2,14 @@ import Link from "next/link";
 import { ArrowUpRight, Clock3, Plus } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
-import { listPeople, listProjects } from "@/lib/data/repository";
+import { listArchivedProjects, listPeople, listProjectTemplates, listProjects } from "@/lib/data/repository";
 import { readStatusSettings } from "@/lib/data/local-store";
 import type { ProjectSummary } from "@/lib/data/types";
 import { orderedFlow } from "@/lib/domain/status-settings";
 import { ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
 import { ProjectRow } from "@/components/projects/project-row";
 import { StatusBadge } from "@/components/status-badge";
+import { ProjectTemplateDialog } from "@/components/projects/project-template-dialog";
 import { cn, formatRelative } from "@/lib/utils";
 
 export const metadata = { title: "Projects" };
@@ -18,10 +19,12 @@ const FILTERS = [
   { key: "lost", label: "Lost" },
   { key: "complete", label: "Complete" },
   { key: "cancelled", label: "Cancelled" },
+  { key: "archived", label: "Archived" },
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
 
 function matchesFilter(project: ProjectSummary, filter: FilterKey) {
+  if (filter === "archived") return false;
   if (filter === "active") return !["closed", "lost", "cancelled"].includes(project.status);
   if (filter === "complete") return project.status === "closed";
   return project.status === filter;
@@ -32,19 +35,21 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const filter = FILTERS.some((item) => item.key === params.group) ? params.group as FilterKey : "active";
   const session = await getSession();
   const showFinancials = can(session.role, "finance.view");
-  const [allProjects, people, statusSettings] = await Promise.all([
+  const [allProjects, people, statusSettings, projectTemplates, archivedProjects] = await Promise.all([
     listProjects(session.org.id),
     listPeople(session.org.id),
     readStatusSettings(),
+    listProjectTemplates(session.org.id),
+    listArchivedProjects(session.org.id),
   ]);
-  const projects = allProjects.filter((project) => matchesFilter(project, filter));
+  const projects = filter === "archived" ? archivedProjects : allProjects.filter((project) => matchesFilter(project, filter));
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Projects"
         description={`${projects.length} ${filter === "active" ? "active " : ""}${projects.length === 1 ? "project" : "projects"}`}
-        action={can(session.role, "project.create") ? <ButtonLink href="/projects/new" variant="primary" size="sm"><Plus className="size-4" /> New request</ButtonLink> : null}
+        action={can(session.role, "project.create") ? <div className="flex gap-2"><ProjectTemplateDialog templates={projectTemplates} statuses={orderedFlow(statusSettings)} /><ButtonLink href="/projects/new" variant="primary" size="sm"><Plus className="size-4" /> New project</ButtonLink></div> : null}
       />
 
       <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Project filters">

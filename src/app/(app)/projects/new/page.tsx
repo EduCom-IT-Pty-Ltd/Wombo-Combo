@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
-import { listCustomers } from "@/lib/data/repository";
+import { listCustomers, listProjectTemplates } from "@/lib/data/repository";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { NewRequestForm } from "@/components/projects/new-request-form";
 
@@ -19,7 +19,7 @@ export default async function NewProjectPage() {
     );
   }
 
-  const customers = await listCustomers(session.org.id);
+  const [customers, templates] = await Promise.all([listCustomers(session.org.id), listProjectTemplates(session.org.id)]);
 
   return (
     <div className="space-y-4">
@@ -31,11 +31,11 @@ export default async function NewProjectPage() {
       </Link>
 
       <PageHeader
-        title="New request"
-        description="Step 1 of the workflow. A project number is generated on save."
+        title="New project"
+        description="Choose Standard project or a template to begin at the right workflow stage."
       />
 
-      <NewRequestForm customers={customers.map((c) => ({ id: c.id, name: c.name }))} />
+      <NewRequestForm customers={customers.map((c) => ({ id: c.id, name: c.name, defaultProjectTemplateId: c.defaultProjectTemplateId ?? null }))} templates={templates} />
     </div>
   );
 }

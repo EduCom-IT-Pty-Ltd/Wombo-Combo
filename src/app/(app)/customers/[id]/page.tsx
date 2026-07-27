@@ -4,9 +4,11 @@ import { ArrowLeft } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
-import { getCustomer, listPeople, listProjects, listQuotes } from "@/lib/data/repository";
-import { Card, CardHeader, EmptyState, Field, PageHeader, Stat } from "@/components/ui";
+import { getCustomer, isCustomerArchived, listCustomerPriceLists, listPeople, listProjectTemplates, listProjects, listQuotes } from "@/lib/data/repository";
+import { Card, CardHeader, EmptyState, Field, Stat } from "@/components/ui";
 import { ProjectRow } from "@/components/projects/project-row";
+import { CustomerProjectTemplateSelect } from "@/components/customers/customer-project-template-select";
+import { CustomerOptions } from "@/components/customers/customer-options";
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -14,9 +16,12 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const customer = await getCustomer(session.org.id, id);
   if (!customer) notFound();
 
-  const [projects, people] = await Promise.all([
+  const [projects, people, projectTemplates, priceLists, archived] = await Promise.all([
     listProjects(session.org.id, { customerId: id }),
     listPeople(session.org.id),
+    listProjectTemplates(session.org.id),
+    listCustomerPriceLists(session.org.id),
+    isCustomerArchived(session.org.id, customer.id),
   ]);
   const quotes = (await Promise.all(projects.map((project) => listQuotes(session.org.id, project.id)))).flat();
   const showFinancials = can(session.role, "finance.view");
@@ -36,7 +41,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <ArrowLeft className="size-3.5" /> Customers
       </Link>
 
-      <PageHeader title={customer.name} description={customer.accountType ?? undefined} />
+      <div><div className="flex items-center gap-1"><h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{customer.name}</h1>{can(session.role, "customer.manage") ? <CustomerOptions customer={customer} priceLists={priceLists.map((list) => ({ id: list.id, name: list.name }))} projectTemplates={projectTemplates.map((template) => ({ id: template.id, name: template.name }))} archived={archived} /> : null}</div>{customer.accountType ? <p className="mt-1 text-sm text-muted-foreground">{customer.accountType}</p> : null}</div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Active projects" value={customer.activeProjects} />
@@ -77,6 +82,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             <Field label="ABN">{customer.abn ?? "—"}</Field>
             <Field label="Payment terms">{customer.paymentTermsDays} days</Field>
             <Field label="Sites">{customer.siteCount}</Field>
+            <Field label="Default project"><CustomerProjectTemplateSelect customerId={customer.id} initialTemplateId={customer.defaultProjectTemplateId} templates={projectTemplates.map((template) => ({ id: template.id, name: template.name }))} /></Field>
           </dl>
         </Card>
       </div>

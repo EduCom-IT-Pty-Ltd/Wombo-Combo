@@ -5,6 +5,9 @@ import { requireCapability } from "@/lib/auth/session";
 import { isDemoMode } from "@/lib/db";
 import { runAutomations, type AutomationEffect } from "@/lib/domain/automation";
 import { applyLocalAutomationEffect, createLocalProject } from "@/lib/data/local-store";
+import { listProjectTemplates } from "@/lib/data/repository";
+import { transitionProject } from "@/app/actions/projects";
+import { revalidatePath } from "next/cache";
 
 const schema = z.object({
   title: z.string().trim().min(3, "Give the project a title"),
@@ -14,6 +17,8 @@ const schema = z.object({
   requestedStartOn: z.string().optional(),
   scopeOfWorks: z.string().trim().optional(),
   initialNotes: z.string().trim().optional(),
+  projectTemplateId: z.string().optional(),
+  poNumber: z.string().trim().max(120).optional(),
 });
 
 export interface NewRequestState {
@@ -40,8 +45,11 @@ export async function createProjectRequest(
   }
 
   if (isDemoMode) {
+    const template = parsed.data.projectTemplateId ? (await listProjectTemplates(session.org.id)).find((item) => item.id === parsed.data.projectTemplateId) : null;
+    if (parsed.data.projectTemplateId && !template) return { status: "error", message: "That project template is no longer available." };
     const project = await createLocalProject({
       ...parsed.data,
+      poNumber: template ? parsed.data.poNumber : undefined,
       projectNumberPrefix: session.org.projectNumberPrefix,
       actorId: session.user.id,
     });
@@ -50,11 +58,16 @@ export async function createProjectRequest(
       effects.push(effect);
       await applyLocalAutomationEffect(effect, { kind: "project.created", projectId: project.id });
     });
+    if (template && template.startingStatus !== "new_request") {
+      const transition = await transitionProject({ projectId: project.id, to: template.startingStatus, confirmJump: true, overrideReason: "Project created from template" });
+      if (!transition.ok) return { status: "error", projectId: project.id, message: `${project.projectNumber} was created, but could not be moved to the template status: ${transition.message}` };
+    }
+    revalidatePath("/projects");
 
     return {
       status: "success",
       projectId: project.id,
-      message: `Created ${project.projectNumber}. ${effects.length} workflow actions recorded.`,
+      message: `Created ${project.projectNumber}${template ? ` using ${template.name}` : ""}. ${effects.length} workflow actions recorded.`,
     };
   }
 

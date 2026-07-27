@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import { createProjectRequest, type NewRequestState } from "@/app/actions/new-request";
 import { Button, Card, CardHeader } from "@/components/ui";
+import type { ProjectTemplate } from "@/lib/data/types";
 
 const initial: NewRequestState = { status: "idle" };
 
@@ -12,8 +13,9 @@ const initial: NewRequestState = { status: "idle" };
  * form-action + `useActionState` pattern so it works without JS and reports
  * field errors from the same Zod schema the server validates with.
  */
-export function NewRequestForm({ customers }: { customers: Array<{ id: string; name: string }> }) {
+export function NewRequestForm({ customers, templates }: { customers: Array<{ id: string; name: string; defaultProjectTemplateId: string | null }>; templates: ProjectTemplate[] }) {
   const [state, formAction, pending] = useActionState(createProjectRequest, initial);
+  const [templateId, setTemplateId] = useState("");
 
   return (
     <form action={formAction}>
@@ -25,7 +27,7 @@ export function NewRequestForm({ customers }: { customers: Array<{ id: string; n
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-muted-foreground">Customer</span>
-              <select name="customerId" required className={inputClass}>
+              <select name="customerId" required className={inputClass} onChange={(event) => setTemplateId(customers.find((customer) => customer.id === event.target.value)?.defaultProjectTemplateId ?? "")}>
                 <option value="">Select a customer…</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -43,6 +45,17 @@ export function NewRequestForm({ customers }: { customers: Array<{ id: string; n
             <Text name="contactName" label="Site contact" error={state.errors?.contactName} />
             <Text name="requestedStartOn" label="Requested start" type="date" error={state.errors?.requestedStartOn} />
           </div>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">Project type</span>
+            <select name="projectTemplateId" value={templateId} onChange={(event) => setTemplateId(event.target.value)} className={inputClass}>
+              <option value="">Standard project · starts at Request Received</option>
+              {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+            </select>
+            <span className="mt-1 block min-h-4 text-xs text-muted-foreground">A customer default is selected automatically; you can choose a different option for this project.</span>
+          </label>
+
+          {templateId ? <Text name="poNumber" label="PO number (if available)" placeholder="Pre-fills the PO Received stage" /> : null}
 
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-muted-foreground">Scope of works</span>
@@ -63,7 +76,7 @@ export function NewRequestForm({ customers }: { customers: Array<{ id: string; n
 
         <div className="flex flex-wrap items-center gap-3 border-t border-border-subtle px-4 py-3">
           <Button type="submit" variant="primary" disabled={pending}>
-            {pending ? "Creating…" : "Create request"}
+            {pending ? "Creating…" : "Create project"}
           </Button>
           {state.status === "error" ? (
             <p className="text-xs text-[var(--tone-rose-fg)]">{state.message}</p>
@@ -90,18 +103,20 @@ function Text({
   label,
   type = "text",
   required,
+  placeholder,
   error,
 }: {
   name: string;
   label: string;
   type?: string;
   required?: boolean;
+  placeholder?: string;
   error?: string;
 }) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-medium text-muted-foreground">{label}</span>
-      <input type={type} name={name} required={required} className={inputClass} />
+      <input type={type} name={name} required={required} placeholder={placeholder} className={inputClass} />
       <FieldError message={error} />
     </label>
   );

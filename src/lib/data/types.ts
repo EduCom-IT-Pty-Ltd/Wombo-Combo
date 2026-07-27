@@ -39,6 +39,7 @@ export interface Customer {
   activeProjects: number;
   lifetimeValueCents: number;
   priceListId?: string | null;
+  defaultProjectTemplateId?: string | null;
 }
 
 export interface CatalogueMaterial {
@@ -54,6 +55,22 @@ export interface CustomerPriceList {
   id: string;
   name: string;
   entries: Array<{ materialId: string; priceCentsPerM2: number }>;
+}
+
+/** A reusable production model. Material quantities can be adjusted per quote. */
+export interface ProductionTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  materials: Array<{ materialId: string; defaultQuantity: number }>;
+}
+
+/** A starting point for a project workflow. */
+export interface ProjectTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  startingStatus: ProjectStatus;
 }
 
 export interface Site {
@@ -145,6 +162,22 @@ export interface Assignment {
   startsAt: string;
   endsAt: string;
   role: string | null;
+}
+
+/** A simple scheduled piece of work for a project. */
+export interface SchedulePhase {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  userId: string;
+  date: string; // YYYY-MM-DD
+}
+
+export interface SchedulePhaseView extends SchedulePhase {
+  projectNumber: string;
+  projectTitle: string;
+  siteLabel: string | null;
 }
 
 export interface LeaveEntry {

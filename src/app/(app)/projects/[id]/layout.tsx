@@ -4,10 +4,11 @@ import { ArrowLeft, MapPin } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
-import { getProject, listWorkflowFields, listWorkflowTasks } from "@/lib/data/repository";
+import { getProject, isProjectArchived, listCustomers, listWorkflowFields, listWorkflowTasks } from "@/lib/data/repository";
 import { PROJECT_TABS } from "@/lib/nav";
 import { StatusBadge, StatusStepper } from "@/components/status-badge";
 import { ProjectTabs } from "@/components/projects/project-tabs";
+import { ProjectOptions } from "@/components/projects/project-options";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,9 +31,11 @@ export default async function ProjectLayout({
 
   const tabs = PROJECT_TABS.filter((t) => can(session.role, t.capability));
   const showFinancials = can(session.role, "finance.view");
-  const [workflowTasks, workflowFields] = await Promise.all([
+  const [workflowTasks, workflowFields, customers, archived] = await Promise.all([
     listWorkflowTasks(session.org.id, project.id, project.status),
     listWorkflowFields(session.org.id, project.id, project.status),
+    listCustomers(session.org.id),
+    isProjectArchived(session.org.id, project.id),
   ]);
 
   return (
@@ -56,7 +59,7 @@ export default async function ProjectLayout({
                 </span>
               ) : null}
             </div>
-            <h1 className="mt-1 text-lg font-semibold tracking-tight sm:text-xl">{project.title}</h1>
+            <div className="mt-1 flex items-center gap-1"><h1 className="text-lg font-semibold tracking-tight sm:text-xl">{project.title}</h1>{can(session.role, "project.edit") ? <ProjectOptions project={project} customers={customers.map((customer) => ({ id: customer.id, name: customer.name }))} archived={archived} /> : null}</div>
             <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
               <Link href={`/customers/${project.customerId}`} className="hover:text-foreground">
                 {project.customerName}

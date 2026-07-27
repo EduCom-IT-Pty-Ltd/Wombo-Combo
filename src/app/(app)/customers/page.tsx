@@ -2,23 +2,27 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
-import { listCustomers } from "@/lib/data/repository";
+import { listArchivedCustomers, listCustomers } from "@/lib/data/repository";
 import { ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
 
 export const metadata = { title: "Customers" };
 
-export default async function CustomersPage() {
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ archived?: string }> }) {
+  const params = await searchParams;
   const session = await getSession();
-  const customers = await listCustomers(session.org.id);
+  const archived = params.archived === "1";
+  const customers = archived ? await listArchivedCustomers(session.org.id) : await listCustomers(session.org.id);
   const showFinancials = can(session.role, "finance.view");
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Customers"
-        description={`${customers.length} accounts`}
+        description={`${customers.length} ${archived ? "archived " : ""}accounts`}
         action={can(session.role, "customer.manage") ? <ButtonLink href="/customers/new" variant="primary" size="sm">Add customer</ButtonLink> : null}
       />
+
+      <div className="flex gap-2"><Link href="/customers" className={`rounded-full px-4 py-2 text-sm font-bold ${!archived ? "bg-primary text-primary-foreground" : "bg-surface-muted text-muted-foreground"}`}>Active</Link><Link href="/customers?archived=1" className={`rounded-full px-4 py-2 text-sm font-bold ${archived ? "bg-primary text-primary-foreground" : "bg-surface-muted text-muted-foreground"}`}>Archived</Link></div>
 
       <Card>
         {customers.length ? (

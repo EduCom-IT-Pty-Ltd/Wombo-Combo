@@ -8,6 +8,9 @@ import type {
   Customer,
   CatalogueMaterial,
   CustomerPriceList,
+  ProductionTemplate,
+  ProjectTemplate,
+  SchedulePhase,
   Defect,
   DocumentRecord,
   Inspection,
@@ -49,6 +52,11 @@ export type LocalStore = {
   workflowFieldValues: WorkflowFieldValue[];
   catalogueMaterials: CatalogueMaterial[];
   customerPriceLists: CustomerPriceList[];
+  productionTemplates: ProductionTemplate[];
+  projectTemplates: ProjectTemplate[];
+  archivedProjects: ProjectDetail[];
+  archivedCustomers: Customer[];
+  schedulePhases: SchedulePhase[];
 };
 
 const storePath = join(process.cwd(), ".wombo-data", "test-data.json");
@@ -76,6 +84,11 @@ function freshStore(): LocalStore {
     workflowFieldValues: [],
     catalogueMaterials: [],
     customerPriceLists: [],
+    productionTemplates: [],
+    projectTemplates: [],
+    archivedProjects: [],
+    archivedCustomers: [],
+    schedulePhases: [],
   });
 }
 
@@ -88,7 +101,7 @@ export async function readLocalStore(): Promise<LocalStore> {
       setting.status === "lost" || setting.status === "cancelled" ? { ...setting, inProgressFlow: false } : setting,
     );
     const catalogueMaterials = (store.catalogueMaterials ?? []).map((material) => ({ ...material, standardPriceCentsPerM2: material.standardPriceCentsPerM2 ?? Math.round(material.costCentsPerM2 * 1.4) }));
-    return { ...freshStore(), ...store, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates: store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES), workflowFieldValues: store.workflowFieldValues ?? [], catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [] };
+    return { ...freshStore(), ...store, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates: store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES), workflowFieldValues: store.workflowFieldValues ?? [], catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], productionTemplates: store.productionTemplates ?? [], projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? [] };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
@@ -199,6 +212,7 @@ export async function createLocalCustomer(input: {
   contactPhone?: string;
   paymentTermsDays: number;
   priceListId?: string;
+  defaultProjectTemplateId?: string;
 }): Promise<Customer> {
   return updateLocalStore((store) => {
     const customer: Customer = {
@@ -214,6 +228,7 @@ export async function createLocalCustomer(input: {
       activeProjects: 0,
       lifetimeValueCents: 0,
       priceListId: input.priceListId || null,
+      defaultProjectTemplateId: input.defaultProjectTemplateId || null,
     };
     store.customers.push(customer);
     return customer;
@@ -240,13 +255,66 @@ export async function updateLocalCatalogueMaterial(id: string, input: Omit<Catal
   await updateLocalStore((store) => { const material = store.catalogueMaterials.find((item) => item.id === id); if (!material) throw new Error("Material not found"); Object.assign(material, input); });
 }
 export async function deleteLocalCatalogueMaterial(id: string) {
-  await updateLocalStore((store) => { store.catalogueMaterials = store.catalogueMaterials.filter((item) => item.id !== id); for (const list of store.customerPriceLists) list.entries = list.entries.filter((entry) => entry.materialId !== id); });
+  await updateLocalStore((store) => { store.catalogueMaterials = store.catalogueMaterials.filter((item) => item.id !== id); for (const list of store.customerPriceLists) list.entries = list.entries.filter((entry) => entry.materialId !== id); for (const template of store.productionTemplates) template.materials = template.materials.filter((entry) => entry.materialId !== id); });
 }
 export async function updateLocalPriceList(id: string, input: { name: string; entries: CustomerPriceList["entries"] }) {
   await updateLocalStore((store) => { const list = store.customerPriceLists.find((item) => item.id === id); if (!list) throw new Error("Price list not found"); Object.assign(list, input); });
 }
 export async function deleteLocalPriceList(id: string) {
   await updateLocalStore((store) => { store.customerPriceLists = store.customerPriceLists.filter((item) => item.id !== id); for (const customer of store.customers) if (customer.priceListId === id) customer.priceListId = null; });
+}
+
+export async function createLocalProductionTemplate(input: Omit<ProductionTemplate, "id">) {
+  return updateLocalStore((store) => {
+    const template = { id: `prod-${randomUUID()}`, ...input };
+    store.productionTemplates.push(template);
+    return template;
+  });
+}
+
+export async function updateLocalProductionTemplate(id: string, input: Omit<ProductionTemplate, "id">) {
+  await updateLocalStore((store) => {
+    const template = store.productionTemplates.find((item) => item.id === id);
+    if (!template) throw new Error("Production template not found");
+    Object.assign(template, input);
+  });
+}
+
+export async function deleteLocalProductionTemplate(id: string) {
+  await updateLocalStore((store) => {
+    store.productionTemplates = store.productionTemplates.filter((item) => item.id !== id);
+  });
+}
+
+export async function createLocalProjectTemplate(input: Omit<ProjectTemplate, "id">) {
+  return updateLocalStore((store) => {
+    const template = { id: `project-template-${randomUUID()}`, ...input };
+    store.projectTemplates.push(template);
+    return template;
+  });
+}
+
+export async function updateLocalProjectTemplate(id: string, input: Omit<ProjectTemplate, "id">) {
+  await updateLocalStore((store) => {
+    const template = store.projectTemplates.find((item) => item.id === id);
+    if (!template) throw new Error("Project template not found");
+    Object.assign(template, input);
+  });
+}
+
+export async function deleteLocalProjectTemplate(id: string) {
+  await updateLocalStore((store) => {
+    store.projectTemplates = store.projectTemplates.filter((item) => item.id !== id);
+    for (const customer of store.customers) if (customer.defaultProjectTemplateId === id) customer.defaultProjectTemplateId = null;
+  });
+}
+
+export async function setLocalCustomerDefaultProjectTemplate(customerId: string, templateId: string | null) {
+  await updateLocalStore((store) => {
+    const customer = store.customers.find((item) => item.id === customerId);
+    if (!customer) throw new Error("Customer not found");
+    customer.defaultProjectTemplateId = templateId;
+  });
 }
 
 export async function createLocalMaterialQuote(args: { projectId: string; materialIds: Array<{ materialId: string; quantity: number }> }) {
@@ -280,6 +348,7 @@ export async function createLocalProject(input: {
   initialNotes?: string;
   projectNumberPrefix: string;
   actorId: string;
+  poNumber?: string;
 }): Promise<ProjectDetail> {
   return updateLocalStore((store) => {
     const customer = store.customers.find((item) => item.id === input.customerId);
@@ -316,7 +385,7 @@ export async function createLocalProject(input: {
       projectManagerId: "u-sam",
       scheduledStartAt: null,
       scheduledEndAt: null,
-      poNumber: null,
+      poNumber: input.poNumber || null,
       updatedAt: now,
       openTasks: 0,
       openDefects: 0,
@@ -332,12 +401,209 @@ export async function createLocalProject(input: {
       customer,
     };
     store.projects.push(project);
+    if (input.poNumber) {
+      for (const field of store.statusFieldTemplates.filter((item) => item.status === "approved")) {
+        store.workflowFieldValues.push({ projectId: project.id, templateId: field.id, value: input.poNumber, updatedAt: now });
+      }
+    }
     addWorkflowTasks(store, project.id, project.status);
     customer.activeProjects += 1;
     addEvent(store, project.id, `Project created as ${project.projectNumber}`, input.actorId);
     addEvent(store, project.id, "Automation: project number assigned and document folder created");
     return project;
   });
+}
+
+export async function updateLocalProject(input: {
+  id: string;
+  projectNumber: string;
+  title: string;
+  customerId: string;
+  siteName?: string;
+  contactName?: string;
+  requestedStartOn?: string;
+  scopeOfWorks?: string;
+  initialNotes?: string;
+  poNumber?: string;
+}) {
+  await updateLocalStore((store) => {
+    const project = store.projects.find((item) => item.id === input.id) ?? store.archivedProjects.find((item) => item.id === input.id);
+    if (!project) throw new Error("Project not found");
+    const projectIsActive = store.projects.some((item) => item.id === project.id);
+    if ([...store.projects, ...store.archivedProjects].some((item) => item.id !== project.id && item.projectNumber.toLowerCase() === input.projectNumber.trim().toLowerCase())) throw new Error("Project ID already exists");
+    const customer = store.customers.find((item) => item.id === input.customerId) ?? store.archivedCustomers.find((item) => item.id === input.customerId);
+    if (!customer) throw new Error("Customer not found");
+    if (project.customerId !== customer.id && projectIsActive) {
+      const previous = store.customers.find((item) => item.id === project.customerId);
+      if (previous) previous.activeProjects = Math.max(0, previous.activeProjects - 1);
+      const next = store.customers.find((item) => item.id === customer.id);
+      if (next) next.activeProjects += 1;
+    }
+    project.projectNumber = input.projectNumber.trim();
+    project.title = input.title.trim();
+    project.customerId = customer.id;
+    project.customerName = customer.name;
+    project.customer = customer;
+    project.scopeOfWorks = input.scopeOfWorks?.trim() || null;
+    project.initialNotes = input.initialNotes?.trim() || null;
+    project.requestedStartOn = input.requestedStartOn || null;
+    project.poNumber = input.poNumber?.trim() || null;
+    project.poReceivedAt = input.poNumber?.trim() ? project.poReceivedAt ?? new Date().toISOString() : null;
+    project.updatedAt = new Date().toISOString();
+    const siteName = input.siteName?.trim() || "";
+    if (siteName && project.site) {
+      project.site.name = siteName;
+      project.site.accessNotes = input.contactName?.trim() ? `Site contact: ${input.contactName.trim()}` : null;
+      const site = store.sites.find((item) => item.id === project.site?.id);
+      if (site) Object.assign(site, project.site, { customerId: customer.id });
+      project.siteLabel = siteName;
+    } else if (siteName) {
+      const site: Site = { id: `s-${randomUUID()}`, customerId: customer.id, name: siteName, address: "", suburb: "", state: "", postcode: "", accessNotes: input.contactName?.trim() ? `Site contact: ${input.contactName.trim()}` : null };
+      store.sites.push(site);
+      project.site = site;
+      project.siteId = site.id;
+      project.siteLabel = site.name;
+      customer.siteCount += 1;
+    } else if (project.site) {
+      store.sites = store.sites.filter((item) => item.id !== project.site?.id);
+      const projectCustomer = store.customers.find((item) => item.id === project.customerId);
+      if (projectCustomer) projectCustomer.siteCount = Math.max(0, projectCustomer.siteCount - 1);
+      project.site = null;
+      project.siteId = null;
+      project.siteLabel = null;
+    }
+    for (const field of store.statusFieldTemplates.filter((item) => item.status === "approved")) {
+      const existing = store.workflowFieldValues.find((value) => value.projectId === project.id && value.templateId === field.id);
+      if (input.poNumber?.trim()) {
+        if (existing) { existing.value = input.poNumber.trim(); existing.updatedAt = project.updatedAt; }
+        else store.workflowFieldValues.push({ projectId: project.id, templateId: field.id, value: input.poNumber.trim(), updatedAt: project.updatedAt });
+      } else if (existing) {
+        store.workflowFieldValues = store.workflowFieldValues.filter((value) => value !== existing);
+      }
+    }
+  });
+}
+
+export async function archiveLocalProject(id: string) {
+  await updateLocalStore((store) => {
+    const index = store.projects.findIndex((item) => item.id === id);
+    if (index < 0) throw new Error("Project not found");
+    const [project] = store.projects.splice(index, 1);
+    project.updatedAt = new Date().toISOString();
+    store.archivedProjects.push(project);
+    const customer = store.customers.find((item) => item.id === project.customerId);
+    if (customer) customer.activeProjects = Math.max(0, customer.activeProjects - 1);
+  });
+}
+
+export async function restoreLocalProject(id: string) {
+  await updateLocalStore((store) => {
+    const index = store.archivedProjects.findIndex((item) => item.id === id);
+    if (index < 0) throw new Error("Archived project not found");
+    const [project] = store.archivedProjects.splice(index, 1);
+    project.updatedAt = new Date().toISOString();
+    store.projects.push(project);
+    const customer = store.customers.find((item) => item.id === project.customerId);
+    if (customer) customer.activeProjects += 1;
+  });
+}
+
+export async function deleteLocalProject(id: string) {
+  await updateLocalStore((store) => {
+    const project = store.projects.find((item) => item.id === id) ?? store.archivedProjects.find((item) => item.id === id);
+    if (!project) throw new Error("Project not found");
+    const wasActive = store.projects.some((item) => item.id === id);
+    store.projects = store.projects.filter((item) => item.id !== id);
+    store.archivedProjects = store.archivedProjects.filter((item) => item.id !== id);
+    store.tasks = store.tasks.filter((item) => item.projectId !== id);
+    store.assignments = store.assignments.filter((item) => item.projectId !== id);
+    store.materials = store.materials.filter((item) => item.projectId !== id);
+    store.variations = store.variations.filter((item) => item.projectId !== id);
+    store.documents = store.documents.filter((item) => item.projectId !== id);
+    store.inspections = store.inspections.filter((item) => item.projectId !== id);
+    store.defects = store.defects.filter((item) => item.projectId !== id);
+    store.events = store.events.filter((item) => item.projectId !== id);
+    store.quotes = store.quotes.filter((item) => item.projectId !== id);
+    store.workflowFieldValues = store.workflowFieldValues.filter((item) => item.projectId !== id);
+    store.schedulePhases = store.schedulePhases.filter((item) => item.projectId !== id);
+    if (wasActive) {
+      const customer = store.customers.find((item) => item.id === project.customerId);
+      if (customer) customer.activeProjects = Math.max(0, customer.activeProjects - 1);
+    }
+  });
+}
+
+export async function updateLocalCustomer(input: {
+  id: string;
+  name: string;
+  accountType?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  paymentTermsDays: number;
+  priceListId?: string;
+  defaultProjectTemplateId?: string;
+}) {
+  await updateLocalStore((store) => {
+    const customer = store.customers.find((item) => item.id === input.id) ?? store.archivedCustomers.find((item) => item.id === input.id);
+    if (!customer) throw new Error("Customer not found");
+    Object.assign(customer, { name: input.name.trim(), accountType: input.accountType?.trim() || null, primaryContactName: input.contactName?.trim() || null, primaryContactEmail: input.contactEmail?.trim() || null, primaryContactPhone: input.contactPhone?.trim() || null, paymentTermsDays: input.paymentTermsDays, priceListId: input.priceListId || null, defaultProjectTemplateId: input.defaultProjectTemplateId || null });
+    for (const project of [...store.projects, ...store.archivedProjects].filter((item) => item.customerId === customer.id)) {
+      project.customerName = customer.name;
+      project.customer = customer;
+      project.updatedAt = new Date().toISOString();
+    }
+  });
+}
+
+export async function archiveLocalCustomer(id: string) {
+  await updateLocalStore((store) => {
+    const index = store.customers.findIndex((item) => item.id === id);
+    if (index < 0) throw new Error("Customer not found");
+    const [customer] = store.customers.splice(index, 1);
+    store.archivedCustomers.push(customer);
+  });
+}
+
+export async function restoreLocalCustomer(id: string) {
+  await updateLocalStore((store) => {
+    const index = store.archivedCustomers.findIndex((item) => item.id === id);
+    if (index < 0) throw new Error("Archived customer not found");
+    const [customer] = store.archivedCustomers.splice(index, 1);
+    store.customers.push(customer);
+  });
+}
+
+export async function deleteLocalCustomer(id: string) {
+  await updateLocalStore((store) => {
+    if (!store.customers.some((item) => item.id === id) && !store.archivedCustomers.some((item) => item.id === id)) throw new Error("Customer not found");
+    store.customers = store.customers.filter((item) => item.id !== id);
+    store.archivedCustomers = store.archivedCustomers.filter((item) => item.id !== id);
+    store.sites = store.sites.filter((item) => item.customerId !== id);
+  });
+}
+
+export async function createLocalSchedulePhase(input: Omit<SchedulePhase, "id">) {
+  return updateLocalStore((store) => {
+    if (!store.projects.some((project) => project.id === input.projectId)) throw new Error("Project not found");
+    if (!store.people.some((person) => person.id === input.userId)) throw new Error("User not found");
+    const phase = { id: `phase-${randomUUID()}`, ...input };
+    store.schedulePhases.push(phase);
+    return phase;
+  });
+}
+
+export async function updateLocalSchedulePhase(id: string, input: Omit<SchedulePhase, "id" | "projectId">) {
+  await updateLocalStore((store) => {
+    const phase = store.schedulePhases.find((item) => item.id === id);
+    if (!phase) throw new Error("Phase not found");
+    if (!store.people.some((person) => person.id === input.userId)) throw new Error("User not found");
+    Object.assign(phase, input);
+  });
+}
+
+export async function deleteLocalSchedulePhase(id: string) {
+  await updateLocalStore((store) => { store.schedulePhases = store.schedulePhases.filter((item) => item.id !== id); });
 }
 
 export async function persistLocalTransition(args: {

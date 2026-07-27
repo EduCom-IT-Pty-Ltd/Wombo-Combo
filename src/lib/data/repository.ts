@@ -5,6 +5,9 @@ import type {
   Customer,
   CatalogueMaterial,
   CustomerPriceList,
+  ProductionTemplate,
+  ProjectTemplate,
+  SchedulePhaseView,
   Defect,
   DocumentRecord,
   Inspection,
@@ -48,6 +51,14 @@ export async function listCustomers(_orgId: string): Promise<Customer[]> {
   return [...(await readLocalStore()).customers].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export async function listArchivedCustomers(_orgId: string): Promise<Customer[]> {
+  return [...(await readLocalStore()).archivedCustomers].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function isCustomerArchived(_orgId: string, id: string): Promise<boolean> {
+  return (await readLocalStore()).archivedCustomers.some((customer) => customer.id === id);
+}
+
 export async function listCatalogueMaterials(_orgId: string): Promise<CatalogueMaterial[]> {
   return [...(await readLocalStore()).catalogueMaterials].sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -56,8 +67,17 @@ export async function listCustomerPriceLists(_orgId: string): Promise<CustomerPr
   return [...(await readLocalStore()).customerPriceLists].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function getCustomer(orgId: string, id: string): Promise<Customer | null> {
-  return (await listCustomers(orgId)).find((c) => c.id === id) ?? null;
+export async function listProductionTemplates(_orgId: string): Promise<ProductionTemplate[]> {
+  return [...(await readLocalStore()).productionTemplates].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listProjectTemplates(_orgId: string): Promise<ProjectTemplate[]> {
+  return [...(await readLocalStore()).projectTemplates].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function getCustomer(_orgId: string, id: string): Promise<Customer | null> {
+  const store = await readLocalStore();
+  return store.customers.find((customer) => customer.id === id) ?? store.archivedCustomers.find((customer) => customer.id === id) ?? null;
 }
 
 export interface ProjectFilters {
@@ -91,8 +111,17 @@ export async function listProjects(_orgId: string, filters: ProjectFilters = {})
   return [...rows].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+export async function listArchivedProjects(_orgId: string): Promise<ProjectSummary[]> {
+  return [...(await readLocalStore()).archivedProjects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function isProjectArchived(_orgId: string, id: string): Promise<boolean> {
+  return (await readLocalStore()).archivedProjects.some((project) => project.id === id);
+}
+
 export async function getProject(_orgId: string, id: string): Promise<ProjectDetail | null> {
-  return (await readLocalStore()).projects.find((p) => p.id === id) ?? null;
+  const store = await readLocalStore();
+  return store.projects.find((p) => p.id === id) ?? store.archivedProjects.find((p) => p.id === id) ?? null;
 }
 
 export async function listQuotes(_orgId: string, projectId: string): Promise<QuoteSummary[]> {
@@ -152,6 +181,18 @@ export async function listAssignments(
       return true;
     })
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
+export async function listSchedulePhases(_orgId: string, opts: { projectId?: string; userId?: string } = {}): Promise<SchedulePhaseView[]> {
+  const store = await readLocalStore();
+  return store.schedulePhases
+    .filter((phase) => (!opts.projectId || phase.projectId === opts.projectId) && (!opts.userId || phase.userId === opts.userId))
+    .map((phase) => {
+      const project = store.projects.find((item) => item.id === phase.projectId) ?? store.archivedProjects.find((item) => item.id === phase.projectId);
+      return project ? { ...phase, projectNumber: project.projectNumber, projectTitle: project.title, siteLabel: project.siteLabel } : null;
+    })
+    .filter((phase): phase is SchedulePhaseView => phase !== null)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.projectTitle.localeCompare(b.projectTitle));
 }
 
 export async function listLeave(_orgId: string, opts: { userId?: string } = {}): Promise<LeaveEntry[]> {
