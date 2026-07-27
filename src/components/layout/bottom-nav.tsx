@@ -57,7 +57,7 @@ export function BottomNav({ items }: { items: NavItem[] }) {
         </div>
       ) : null}
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border-subtle bg-surface pb-safe lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border-subtle bg-surface/95 pb-safe shadow-[0_-8px_24px_rgb(15_23_42/0.06)] backdrop-blur lg:hidden">
         {/* Column count tracks the visible items — a role with fewer primary
             destinations should still fill the bar rather than leave a gap. */}
         <ul

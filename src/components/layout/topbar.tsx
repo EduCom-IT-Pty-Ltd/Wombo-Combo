@@ -18,10 +18,10 @@ export function TopBar({
   isDemo: boolean;
 }) {
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border-subtle bg-surface px-4 pt-safe">
+    <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border-subtle bg-surface/90 px-4 pt-safe shadow-[0_4px_18px_rgb(15_23_42/0.025)] backdrop-blur">
       {/* Org identity is in the sidebar on desktop; repeat it on mobile. */}
       <div className="flex items-center gap-2 lg:hidden">
-        <span className="grid size-7 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+        <span className="grid size-7 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm">
           WC
         </span>
         <span className="truncate text-sm font-semibold">{orgName}</span>

@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 export function Card({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
-      className={cn("rounded-[var(--radius)] border border-border-subtle bg-surface", className)}
+      className={cn("rounded-[var(--radius)] border border-border-subtle bg-surface shadow-[0_1px_2px_rgb(15_23_42/0.025)] transition-all duration-200 motion-safe:animate-[surface-rise_260ms_cubic-bezier(0.2,0.8,0.2,1)_both] hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_16px_34px_rgb(49_95_231/0.16)]", className)}
       {...props}
     />
   );
@@ -28,7 +28,7 @@ export function CardHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-start justify-between gap-3 border-b border-border-subtle px-4 py-3", className)}>
+    <div className={cn("flex items-start justify-between gap-3 border-b border-border-subtle bg-gradient-to-r from-surface to-primary/[0.018] px-4 py-3", className)}>
       <div className="min-w-0">
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         {description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}
@@ -42,9 +42,9 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-primary-foreground hover:opacity-90",
-  secondary: "border border-border-strong bg-surface text-foreground hover:bg-surface-muted",
-  ghost: "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
+  primary: "button-primary-pop",
+  secondary: "button-secondary-pop",
+  ghost: "button-ghost-pop",
   danger: "tone-rose hover:opacity-90",
 };
 
@@ -56,7 +56,7 @@ const BUTTON_SIZES: Record<ButtonSize, string> = {
 };
 
 const buttonBase =
-  "inline-flex items-center justify-center gap-2 rounded-[var(--radius)] font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  "inline-flex items-center justify-center gap-2 rounded-[var(--radius)] font-medium shadow-sm transition-all duration-150 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.985]";
 
 export function Button({
   variant = "secondary",
@@ -90,7 +90,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ring-1 ring-inset ring-black/[0.035]",
         `tone-${tone}`,
         className,
       )}
@@ -179,7 +179,7 @@ export function Stat({
   tone?: "default" | "warn" | "good";
 }) {
   return (
-    <Card className="p-4">
+    <Card className="relative overflow-hidden p-4 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[linear-gradient(90deg,var(--primary),#a78bfa,transparent)]">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p
         className={cn(

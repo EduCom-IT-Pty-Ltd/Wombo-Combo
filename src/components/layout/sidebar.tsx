@@ -15,9 +15,9 @@ export function Sidebar({ items, orgName }: { items: NavItem[]; orgName: string 
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-border-subtle bg-surface lg:flex">
+    <aside className="hidden w-60 shrink-0 flex-col border-r border-border-subtle bg-surface/95 shadow-[8px_0_30px_rgb(15_23_42/0.025)] backdrop-blur lg:flex">
       <div className="flex h-14 items-center gap-2 border-b border-border-subtle px-4">
-        <span className="grid size-7 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+        <span className="grid size-7 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-[0_4px_12px_rgb(49_95_231/0.28)]">
           WC
         </span>
         <span className="truncate text-sm font-semibold">{orgName}</span>
@@ -33,10 +33,10 @@ export function Sidebar({ items, orgName }: { items: NavItem[]; orgName: string 
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-[var(--radius)] px-3 py-2 text-sm transition-colors",
+                    "flex items-center gap-2.5 rounded-[var(--radius)] px-3 py-2 text-sm transition-all duration-150",
                     active
-                      ? "bg-primary-muted font-medium text-primary"
-                      : "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
+                      ? "bg-primary-muted font-semibold text-primary shadow-sm"
+                      : "text-muted-foreground hover:translate-x-0.5 hover:bg-surface-muted hover:text-foreground",
                   )}
                 >
                   <NavIcon name={item.icon} className="size-4.5" />

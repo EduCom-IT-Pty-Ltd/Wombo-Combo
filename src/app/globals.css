@@ -9,18 +9,18 @@
  * status rather than decoration.
  */
 :root {
-  --background: #f6f7f9;
+  --background: #f4f6fb;
   --surface: #ffffff;
   --surface-muted: #f1f3f6;
   --border: #e2e5ea;
   --border-strong: #cbd1da;
   --foreground: #12151a;
   --muted-foreground: #5c6472;
-  --primary: #1f4ed8;
+  --primary: #315fe7;
   --primary-foreground: #ffffff;
   --primary-muted: #eaf0ff;
 
-  --radius: 0.625rem;
+  --radius: 0.75rem;
 
   /* Status tones. Each is a bg / fg / border triple. */
   --tone-slate-bg: #eef0f3;
@@ -82,10 +82,93 @@
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--primary) 7%, transparent), transparent 28rem),
+    radial-gradient(circle at 100% 0%, #a78bfa12, transparent 30rem),
+    var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+/* Shared polish only. The project tiles and workflow status controls retain
+   their own explicit visual contract and are deliberately not targeted here. */
+button,
+a,
+input,
+select,
+textarea {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-duration: 160ms;
+  transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+/* Explicit action styles keep important buttons visible even if a utility
+   class is not generated during a hot reload. */
+.button-primary-pop {
+  color: #fff;
+  background: linear-gradient(135deg, #5d8cff 0%, #315fe7 52%, #6d3ee8 100%);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  box-shadow: 0 7px 18px rgb(49 95 231 / 0.4), 0 1px 2px rgb(20 35 80 / 0.2);
+}
+.button-primary-pop:hover {
+  color: #fff;
+  transform: translateY(-2px);
+  filter: brightness(1.1) saturate(1.12);
+  box-shadow: 0 13px 30px rgb(79 70 229 / 0.48), 0 0 0 4px rgb(93 140 255 / 0.14);
+}
+.button-secondary-pop {
+  color: var(--foreground);
+  background: linear-gradient(135deg, var(--surface) 0%, var(--primary-muted) 160%);
+  border: 1px solid var(--border-strong);
+}
+.button-secondary-pop:hover {
+  color: var(--primary);
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border-strong));
+  box-shadow: 0 8px 20px rgb(49 95 231 / 0.16);
+}
+.button-ghost-pop {
+  color: var(--muted-foreground);
+}
+.button-ghost-pop:hover {
+  color: var(--primary);
+  background: var(--primary-muted);
+  box-shadow: 0 5px 14px rgb(49 95 231 / 0.1);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: color-mix(in srgb, var(--primary) 72%, var(--border-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+@keyframes surface-rise {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(9px); filter: saturate(0.88); }
+  to { opacity: 1; transform: translateY(0); filter: saturate(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Field crews use this on phones: never let a stray wide table scroll the page. */

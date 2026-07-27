@@ -6,6 +6,7 @@ import { BottomNav } from "@/components/layout/bottom-nav";
 import { TopBar } from "@/components/layout/topbar";
 import { StatusSettingsProvider } from "@/components/status-settings-provider";
 import { readStatusSettings } from "@/lib/data/local-store";
+import { PageTransition } from "@/components/layout/page-transition";
 
 /**
  * The authenticated shell. Navigation is filtered by capability here rather than
@@ -35,7 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         {/* pb-20 clears the mobile bottom nav; lg drops it. */}
         <main className="flex-1 px-4 pt-4 pb-24 sm:px-6 lg:px-8 lg:pb-8">
-          <div className="mx-auto w-full max-w-6xl">{children}</div>
+          <PageTransition><div className="mx-auto w-full max-w-6xl">{children}</div></PageTransition>
         </main>
       </div>
 
