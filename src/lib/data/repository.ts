@@ -3,6 +3,8 @@ import { readLocalStore, readStatusFieldTemplates, readStatusTaskTemplates } fro
 import type {
   Assignment,
   Customer,
+  CatalogueMaterial,
+  CustomerPriceList,
   Defect,
   DocumentRecord,
   Inspection,
@@ -46,6 +48,14 @@ export async function listCustomers(_orgId: string): Promise<Customer[]> {
   return [...(await readLocalStore()).customers].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export async function listCatalogueMaterials(_orgId: string): Promise<CatalogueMaterial[]> {
+  return [...(await readLocalStore()).catalogueMaterials].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listCustomerPriceLists(_orgId: string): Promise<CustomerPriceList[]> {
+  return [...(await readLocalStore()).customerPriceLists].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function getCustomer(orgId: string, id: string): Promise<Customer | null> {
   return (await listCustomers(orgId)).find((c) => c.id === id) ?? null;
 }
@@ -87,6 +97,10 @@ export async function getProject(_orgId: string, id: string): Promise<ProjectDet
 
 export async function listQuotes(_orgId: string, projectId: string): Promise<QuoteSummary[]> {
   return (await readLocalStore()).quotes.filter((q) => q.projectId === projectId).sort((a, b) => b.version - a.version);
+}
+
+export async function getQuote(_orgId: string, id: string): Promise<QuoteSummary | null> {
+  return (await readLocalStore()).quotes.find((quote) => quote.id === id) ?? null;
 }
 
 export async function listTasks(_orgId: string, opts: { projectId?: string; assigneeId?: string } = {}): Promise<Task[]> {

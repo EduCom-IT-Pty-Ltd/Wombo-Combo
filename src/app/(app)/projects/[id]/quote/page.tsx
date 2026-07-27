@@ -3,9 +3,10 @@ import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { formatMoney, formatPercent } from "@/lib/domain/money";
 import { calculateQuote, needsMarginApproval } from "@/lib/domain/quote";
-import { getProject, listQuotes } from "@/lib/data/repository";
-import { Badge, Card, CardHeader, EmptyState } from "@/components/ui";
+import { getProject, listCatalogueMaterials, listQuotes } from "@/lib/data/repository";
+import { Badge, ButtonLink, Card, CardHeader, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
+import { MaterialQuoteBuilder } from "@/components/projects/material-quote-builder";
 
 const QUOTE_TONES = {
   draft: "slate",
@@ -23,18 +24,13 @@ export default async function ProjectQuotePage({ params }: { params: Promise<{ i
   const project = await getProject(session.org.id, id);
   if (!project) notFound();
 
-  const quotes = await listQuotes(session.org.id, id);
+  const [quotes, materials] = await Promise.all([listQuotes(session.org.id, id), listCatalogueMaterials(session.org.id)]);
   const showCosts = can(session.role, "finance.view");
   const latest = quotes[0];
 
   if (!latest) {
     return (
-      <Card>
-        <EmptyState
-          title="No quote yet"
-          description="Build the estimate from labour, materials and supplier costs to move this job to Quote Sent."
-        />
-      </Card>
+      <div className="space-y-4"><Card><EmptyState title="No quote yet" description="Build the estimate from materials and customer-specific pricing." /></Card>{can(session.role, "quote.edit") ? <MaterialQuoteBuilder projectId={project.id} materials={materials} /> : null}</div>
     );
   }
 
@@ -55,7 +51,7 @@ export default async function ProjectQuotePage({ params }: { params: Promise<{ i
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+          <Card className="lg:col-span-2">
           <CardHeader
             title={`${latest.reference} · v${latest.version}`}
             description={latest.sentAt ? `Issued ${formatDate(latest.sentAt, true)}` : "Not yet issued"}
@@ -198,7 +194,9 @@ export default async function ProjectQuotePage({ params }: { params: Promise<{ i
             </Card>
           ) : null}
         </div>
-      </div>
+        </div>
+      <div className="flex justify-end"><ButtonLink href={`/api/quotes/${latest.id}/pdf`} target="_blank" size="sm">Download PDF quote</ButtonLink></div>
+      {can(session.role, "quote.edit") ? <MaterialQuoteBuilder projectId={project.id} materials={materials} /> : null}
     </div>
   );
 }

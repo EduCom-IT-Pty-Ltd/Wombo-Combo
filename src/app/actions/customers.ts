@@ -12,6 +12,7 @@ const schema = z.object({
   contactEmail: z.string().trim().email("Enter a valid email address").or(z.literal("")),
   contactPhone: z.string().trim().optional(),
   paymentTermsDays: z.coerce.number().int().min(0).max(180),
+  priceListId: z.string().optional(),
 });
 
 export interface CreateCustomerState {

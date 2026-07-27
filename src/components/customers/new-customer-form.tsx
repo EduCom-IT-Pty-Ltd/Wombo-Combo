@@ -8,7 +8,7 @@ import { Button, Card, CardHeader } from "@/components/ui";
 const initial: CreateCustomerState = { status: "idle" };
 const inputClass = "w-full rounded-[var(--radius)] border border-border-strong bg-surface px-3 py-2.5 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary";
 
-export function NewCustomerForm() {
+export function NewCustomerForm({ priceLists }: { priceLists: Array<{ id: string; name: string }> }) {
   const [state, action, pending] = useActionState(createCustomer, initial);
   return (
     <form action={action}>
@@ -21,6 +21,7 @@ export function NewCustomerForm() {
           <Text name="contactEmail" label="Contact email" type="email" error={state.errors?.contactEmail} />
           <Text name="contactPhone" label="Contact phone" type="tel" />
           <Text name="paymentTermsDays" label="Payment terms (days)" type="number" defaultValue="30" error={state.errors?.paymentTermsDays} />
+          <label className="block"><span className="mb-1 block text-xs font-medium text-muted-foreground">Customer price list</span><select name="priceListId" className={inputClass}><option value="">Standard default pricing</option>{priceLists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select><span className="mt-1 block min-h-4 text-xs text-muted-foreground">Overrides default material prices when quoting.</span></label>
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t border-border-subtle px-4 py-3">
           <Button type="submit" variant="primary" disabled={pending}>{pending ? "Saving…" : "Add customer"}</Button>

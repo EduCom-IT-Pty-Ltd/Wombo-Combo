@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
-import { getCustomer, listPeople, listProjects } from "@/lib/data/repository";
+import { getCustomer, listPeople, listProjects, listQuotes } from "@/lib/data/repository";
 import { Card, CardHeader, EmptyState, Field, PageHeader, Stat } from "@/components/ui";
 import { ProjectRow } from "@/components/projects/project-row";
 
@@ -18,6 +18,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     listProjects(session.org.id, { customerId: id }),
     listPeople(session.org.id),
   ]);
+  const quotes = (await Promise.all(projects.map((project) => listQuotes(session.org.id, project.id)))).flat();
   const showFinancials = can(session.role, "finance.view");
 
   const won = projects.filter((p) => !["new_request", "quoting", "quote_sent", "awaiting_approval", "lost"].includes(p.status));
@@ -79,6 +80,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </dl>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader title="Quotes" description={`${quotes.length} quote${quotes.length === 1 ? "" : "s"}`} />
+        {quotes.length ? <ul className="divide-y divide-border-subtle">{quotes.map((quote) => <li key={quote.id} className="flex items-center justify-between gap-3 px-4 py-3"><div><p className="text-sm font-bold">{quote.reference} · v{quote.version}</p><p className="text-xs text-muted-foreground">{projects.find((project) => project.id === quote.projectId)?.title ?? "Project"} · {quote.status.replaceAll("_", " ")}</p></div><Link href={`/projects/${quote.projectId}/quote`} className="text-xs font-bold text-primary">View quote</Link></li>)}</ul> : <EmptyState title="No quotes yet" />}
+      </Card>
     </div>
   );
 }

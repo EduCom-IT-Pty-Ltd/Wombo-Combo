@@ -65,7 +65,7 @@ function ActiveProjectBoard({ projects, statusSettings }: { projects: ProjectSum
     ...unknownStatuses.map((status) => ({ status, label: status.replaceAll("_", " "), color: "#64748b", projects: projects.filter((project) => project.status === status) })),
   ].filter((section) => section.projects.length > 0);
 
-  return <div className="space-y-7">{sections.map((section) => <section key={section.status}><div className="mb-3 flex items-center gap-2"><StatusBadge status={section.status} /><span className="text-xs font-bold text-muted-foreground">{section.projects.length}</span><span className="h-px flex-1 bg-border-subtle" /></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{section.projects.map((project) => <ActiveProjectTile key={project.id} project={project} color={section.color} />)}</div></section>)}</div>;
+  return <div className="space-y-7">{sections.map((section) => <section key={section.status}><div className="mb-3 flex items-center gap-2"><StatusBadge status={section.status} /><span className="text-xs font-bold text-muted-foreground">{section.projects.length}</span><span className="h-px flex-1 bg-border-subtle" /></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">{section.projects.map((project) => <ActiveProjectTile key={project.id} project={project} color={section.color} />)}</div></section>)}</div>;
 }
 
 function ActiveProjectTile({ project, color }: { project: ProjectSummary; color: string }) {

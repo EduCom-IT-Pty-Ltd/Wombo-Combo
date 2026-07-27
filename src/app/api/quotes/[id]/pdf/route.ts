@@ -1,0 +1,10 @@
+import { getQuote } from "@/lib/data/repository";
+import { calculateQuote } from "@/lib/domain/quote";
+
+function esc(value: string) { return value.replace(/[\\()]/g, "\\$&"); }
+function pdfText(lines: string[]) {
+  const content = ["BT", "/F1 18 Tf", "50 780 Td", `(${esc(lines[0] ?? "Quote")}) Tj`, "/F1 10 Tf", ...lines.slice(1).flatMap((line) => ["0 -20 Td", `(${esc(line)}) Tj`]), "ET"].join("\n");
+  const objects = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>", `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];
+  let output = "%PDF-1.4\n"; const offsets = [0]; objects.forEach((object, index) => { offsets.push(Buffer.byteLength(output)); output += `${index + 1} 0 obj\n${object}\nendobj\n`; }); const start = Buffer.byteLength(output); output += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`; return output;
+}
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) { const { id } = await params; const quote = await getQuote("local", id); if (!quote) return new Response("Quote not found", { status: 404 }); const totals = calculateQuote(quote.lines, quote.taxRatePct); const lines = [quote.reference, ...totals.lines.map((line) => `${line.description} - ${line.quantity} ${line.unit} - $${(line.lineSellCents / 100).toFixed(2)}`), `Subtotal: $${(totals.subtotalSellCents / 100).toFixed(2)}`, `GST: $${(totals.taxCents / 100).toFixed(2)}`, `Total: $${(totals.totalCents / 100).toFixed(2)}`]; return new Response(pdfText(lines), { headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${quote.reference}.pdf"` } }); }

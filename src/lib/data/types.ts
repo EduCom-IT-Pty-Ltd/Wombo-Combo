@@ -38,6 +38,21 @@ export interface Customer {
   siteCount: number;
   activeProjects: number;
   lifetimeValueCents: number;
+  priceListId?: string | null;
+}
+
+export interface CatalogueMaterial {
+  id: string;
+  name: string;
+  sku: string;
+  description: string | null;
+  costCentsPerM2: number;
+}
+
+export interface CustomerPriceList {
+  id: string;
+  name: string;
+  entries: Array<{ materialId: string; priceCentsPerM2: number }>;
 }
 
 export interface Site {

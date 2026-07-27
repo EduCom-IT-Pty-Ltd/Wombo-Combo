@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import * as seed from "./demo-data";
 import type {
   Customer,
+  CatalogueMaterial,
+  CustomerPriceList,
   Defect,
   DocumentRecord,
   Inspection,
@@ -45,6 +47,8 @@ export type LocalStore = {
   statusTaskTemplates: StatusTaskTemplate[];
   statusFieldTemplates: StatusFieldTemplate[];
   workflowFieldValues: WorkflowFieldValue[];
+  catalogueMaterials: CatalogueMaterial[];
+  customerPriceLists: CustomerPriceList[];
 };
 
 const storePath = join(process.cwd(), ".wombo-data", "test-data.json");
@@ -70,6 +74,8 @@ function freshStore(): LocalStore {
     statusTaskTemplates: DEFAULT_STATUS_TASK_TEMPLATES,
     statusFieldTemplates: DEFAULT_STATUS_FIELD_TEMPLATES,
     workflowFieldValues: [],
+    catalogueMaterials: [],
+    customerPriceLists: [],
   });
 }
 
@@ -81,7 +87,7 @@ export async function readLocalStore(): Promise<LocalStore> {
     const statusSettings = savedSettings.map((setting) =>
       setting.status === "lost" || setting.status === "cancelled" ? { ...setting, inProgressFlow: false } : setting,
     );
-    return { ...freshStore(), ...store, statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates: store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES), workflowFieldValues: store.workflowFieldValues ?? [] };
+    return { ...freshStore(), ...store, statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates: store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES), workflowFieldValues: store.workflowFieldValues ?? [], catalogueMaterials: store.catalogueMaterials ?? [], customerPriceLists: store.customerPriceLists ?? [] };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
@@ -191,6 +197,7 @@ export async function createLocalCustomer(input: {
   contactEmail?: string;
   contactPhone?: string;
   paymentTermsDays: number;
+  priceListId?: string;
 }): Promise<Customer> {
   return updateLocalStore((store) => {
     const customer: Customer = {
@@ -205,9 +212,47 @@ export async function createLocalCustomer(input: {
       siteCount: 0,
       activeProjects: 0,
       lifetimeValueCents: 0,
+      priceListId: input.priceListId || null,
     };
     store.customers.push(customer);
     return customer;
+  });
+}
+
+export async function createLocalCatalogueMaterial(input: Omit<CatalogueMaterial, "id">) {
+  return updateLocalStore((store) => {
+    const material = { id: `mat-${randomUUID()}`, ...input };
+    store.catalogueMaterials.push(material);
+    return material;
+  });
+}
+
+export async function createLocalPriceList(input: { name: string; entries: CustomerPriceList["entries"] }) {
+  return updateLocalStore((store) => {
+    const list = { id: `pl-${randomUUID()}`, ...input };
+    store.customerPriceLists.push(list);
+    return list;
+  });
+}
+
+export async function createLocalMaterialQuote(args: { projectId: string; materialIds: Array<{ materialId: string; quantity: number }> }) {
+  return updateLocalStore((store) => {
+    const project = store.projects.find((item) => item.id === args.projectId);
+    if (!project) throw new Error("Project not found");
+    const priceList = project.customer.priceListId ? store.customerPriceLists.find((list) => list.id === project.customer.priceListId) : null;
+    const version = Math.max(0, ...store.quotes.filter((quote) => quote.projectId === project.id).map((quote) => quote.version)) + 1;
+    const lines = args.materialIds.map(({ materialId, quantity }) => {
+      const material = store.catalogueMaterials.find((item) => item.id === materialId);
+      if (!material) throw new Error("Material not found");
+      const sell = priceList?.entries.find((entry) => entry.materialId === material.id)?.priceCentsPerM2 ?? Math.round(material.costCentsPerM2 * 1.4);
+      return { id: `ql-${randomUUID()}`, kind: "material" as const, description: material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
+    });
+    const subtotalSellCents = lines.reduce((sum, line) => sum + line.quantity * (line.unitSellCentsOverride ?? 0), 0);
+    const subtotalCostCents = lines.reduce((sum, line) => sum + line.quantity * line.unitCostCents, 0);
+    const quote = { id: `quote-${randomUUID()}`, projectId: project.id, reference: `${project.projectNumber}-Q${version}`, version, status: "draft" as const, totalCents: Math.round(subtotalSellCents * 1.1), subtotalSellCents, subtotalCostCents, marginPct: subtotalSellCents ? ((subtotalSellCents - subtotalCostCents) / subtotalSellCents) * 100 : 0, taxRatePct: 10, validUntil: null, sentAt: null, preparedById: "u-sam", lines };
+    store.quotes.push(quote);
+    addEvent(store, project.id, `Quote ${quote.reference} created from the materials catalogue`);
+    return quote;
   });
 }
 
