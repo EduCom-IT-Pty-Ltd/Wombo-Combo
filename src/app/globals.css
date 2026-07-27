@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+/**
+ * Design tokens.
+ *
+ * Two constraints shaped these: the office runs this on a laptop all day, and
+ * the field crew runs it one-handed on a phone in daylight. So: high-contrast
+ * text, generous tap targets, and a restrained palette where colour means
+ * status rather than decoration.
+ */
+:root {
+  --background: #f6f7f9;
+  --surface: #ffffff;
+  --surface-muted: #f1f3f6;
+  --border: #e2e5ea;
+  --border-strong: #cbd1da;
+  --foreground: #12151a;
+  --muted-foreground: #5c6472;
+  --primary: #1f4ed8;
+  --primary-foreground: #ffffff;
+  --primary-muted: #eaf0ff;
+
+  --radius: 0.625rem;
+
+  /* Status tones. Each is a bg / fg / border triple. */
+  --tone-slate-bg: #eef0f3;
+  --tone-slate-fg: #3f4757;
+  --tone-amber-bg: #fef3e2;
+  --tone-amber-fg: #92500e;
+  --tone-blue-bg: #e7f0fe;
+  --tone-blue-fg: #14459c;
+  --tone-violet-bg: #f0ebfe;
+  --tone-violet-fg: #5b32b8;
+  --tone-emerald-bg: #e4f6ec;
+  --tone-emerald-fg: #10653c;
+  --tone-rose-bg: #fdeaec;
+  --tone-rose-fg: #9c1c2c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0c0e12;
+    --surface: #14171d;
+    --surface-muted: #1b1f27;
+    --border: #262b34;
+    --border-strong: #363d49;
+    --foreground: #eef0f4;
+    --muted-foreground: #98a1b2;
+    --primary: #5b8bff;
+    --primary-foreground: #0c0e12;
+    --primary-muted: #17233d;
+
+    --tone-slate-bg: #1e232c;
+    --tone-slate-fg: #b3bcca;
+    --tone-amber-bg: #33240d;
+    --tone-amber-fg: #f5c277;
+    --tone-blue-bg: #14213d;
+    --tone-blue-fg: #94b6ff;
+    --tone-violet-bg: #221836;
+    --tone-violet-fg: #c3a9fb;
+    --tone-emerald-bg: #0e2a1d;
+    --tone-emerald-fg: #7ddaa4;
+    --tone-rose-bg: #331419;
+    --tone-rose-fg: #f79aa6;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border-subtle: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-muted: var(--primary-muted);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-token: var(--radius);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Field crews use this on phones: never let a stray wide table scroll the page. */
+html,
+body {
+  overflow-x: hidden;
+}
+
+/* iOS zooms the viewport when a focused input is under 16px. */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+@layer utilities {
+  .tone-slate {
+    background: var(--tone-slate-bg);
+    color: var(--tone-slate-fg);
+  }
+  .tone-amber {
+    background: var(--tone-amber-bg);
+    color: var(--tone-amber-fg);
+  }
+  .tone-blue {
+    background: var(--tone-blue-bg);
+    color: var(--tone-blue-fg);
+  }
+  .tone-violet {
+    background: var(--tone-violet-bg);
+    color: var(--tone-violet-fg);
+  }
+  .tone-emerald {
+    background: var(--tone-emerald-bg);
+    color: var(--tone-emerald-fg);
+  }
+  .tone-rose {
+    background: var(--tone-rose-bg);
+    color: var(--tone-rose-fg);
+  }
+
+  /* Respects the notch and the home indicator on the mobile bottom nav. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
