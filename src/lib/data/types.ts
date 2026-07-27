@@ -24,6 +24,7 @@ export interface Person {
   email: string;
   isSchedulable: boolean;
   costRateCentsPerHour: number;
+  color?: string | null;
 }
 
 export interface Customer {

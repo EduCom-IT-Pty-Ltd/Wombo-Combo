@@ -11,6 +11,8 @@ import type {
   ProductionTemplate,
   ProjectTemplate,
   SchedulePhase,
+  LeaveEntry,
+  Person,
   Defect,
   DocumentRecord,
   Inspection,
@@ -604,6 +606,55 @@ export async function updateLocalSchedulePhase(id: string, input: Omit<ScheduleP
 
 export async function deleteLocalSchedulePhase(id: string) {
   await updateLocalStore((store) => { store.schedulePhases = store.schedulePhases.filter((item) => item.id !== id); });
+}
+
+function initialsFor(name: string) { return name.split(" ").filter(Boolean).map((part) => part[0]).slice(0, 2).join("").toUpperCase() || "?"; }
+
+export async function createLocalPerson(input: Omit<Person, "id" | "initials">) {
+  return updateLocalStore((store) => {
+    const person = { id: `u-${randomUUID()}`, initials: initialsFor(input.name), ...input };
+    store.people.push(person);
+    return person;
+  });
+}
+
+export async function updateLocalPerson(id: string, input: Omit<Person, "id" | "initials">) {
+  await updateLocalStore((store) => {
+    const person = store.people.find((item) => item.id === id);
+    if (!person) throw new Error("Person not found");
+    Object.assign(person, input, { initials: initialsFor(input.name) });
+  });
+}
+
+export async function deleteLocalPerson(id: string) {
+  await updateLocalStore((store) => {
+    store.people = store.people.filter((item) => item.id !== id);
+    store.leave = store.leave.filter((item) => item.userId !== id);
+    store.assignments = store.assignments.filter((item) => item.userId !== id);
+    store.timeEntries = store.timeEntries.filter((item) => item.userId !== id);
+    store.schedulePhases = store.schedulePhases.filter((item) => item.userId !== id);
+  });
+}
+
+export async function createLocalLeave(input: Omit<LeaveEntry, "id">) {
+  return updateLocalStore((store) => {
+    if (!store.people.some((person) => person.id === input.userId)) throw new Error("Person not found");
+    const leave = { id: `leave-${randomUUID()}`, ...input };
+    store.leave.push(leave);
+    return leave;
+  });
+}
+
+export async function updateLocalLeave(id: string, input: Omit<LeaveEntry, "id">) {
+  await updateLocalStore((store) => {
+    const leave = store.leave.find((item) => item.id === id);
+    if (!leave) throw new Error("Leave record not found");
+    Object.assign(leave, input);
+  });
+}
+
+export async function deleteLocalLeave(id: string) {
+  await updateLocalStore((store) => { store.leave = store.leave.filter((item) => item.id !== id); });
 }
 
 export async function persistLocalTransition(args: {
