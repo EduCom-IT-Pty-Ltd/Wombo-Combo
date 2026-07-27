@@ -16,7 +16,7 @@ import type {
 } from "./types";
 import type { AutomationEffect, AutomationTrigger } from "@/lib/domain/automation";
 import type { ProjectStatus } from "@/lib/domain/status";
-import { DEFAULT_STATUS_SETTINGS, type StatusSetting } from "@/lib/domain/status-settings";
+import { DEFAULT_STATUS_SETTINGS, DEFAULT_STATUS_TASK_TEMPLATES, type StatusSetting, type StatusTaskTemplate } from "@/lib/domain/status-settings";
 
 /**
  * A deliberately small, file-backed store for local demo use. It keeps the
@@ -42,6 +42,7 @@ export type LocalStore = {
   defects: Defect[];
   events: ProjectEvent[];
   statusSettings: StatusSetting[];
+  statusTaskTemplates: StatusTaskTemplate[];
 };
 
 const storePath = join(process.cwd(), ".wombo-data", "test-data.json");
@@ -64,13 +65,19 @@ function freshStore(): LocalStore {
     defects: seed.defects,
     events: seed.events,
     statusSettings: DEFAULT_STATUS_SETTINGS,
+    statusTaskTemplates: DEFAULT_STATUS_TASK_TEMPLATES,
   });
 }
 
 export async function readLocalStore(): Promise<LocalStore> {
   try {
     const store = JSON.parse(await readFile(storePath, "utf8")) as Partial<LocalStore>;
-    return { ...freshStore(), ...store, statusSettings: store.statusSettings ?? structuredClone(DEFAULT_STATUS_SETTINGS) };
+    const savedSettings = store.statusSettings ?? structuredClone(DEFAULT_STATUS_SETTINGS);
+    // v2 of the configurable workflow displays Lost and Cancelled as selectable final stages.
+    const statusSettings = savedSettings.map((setting) =>
+      setting.status === "lost" || setting.status === "cancelled" ? { ...setting, inProgressFlow: true } : setting,
+    );
+    return { ...freshStore(), ...store, statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
@@ -85,6 +92,47 @@ export async function saveStatusSettings(settings: StatusSetting[]) {
   await updateLocalStore((store) => {
     store.statusSettings = settings;
   });
+}
+
+export async function readStatusTaskTemplates(): Promise<StatusTaskTemplate[]> {
+  return (await readLocalStore()).statusTaskTemplates;
+}
+
+export async function saveStatusTaskTemplates(templates: StatusTaskTemplate[]) {
+  await updateLocalStore((store) => { store.statusTaskTemplates = templates; });
+}
+
+export async function setLocalWorkflowTaskComplete(args: { projectId: string; templateId: string; complete: boolean }) {
+  await updateLocalStore((store) => {
+    const template = store.statusTaskTemplates.find((item) => item.id === args.templateId);
+    if (!template) throw new Error("Workflow task template not found");
+    let task = store.tasks.find((item) => item.projectId === args.projectId && item.workflowTemplateId === args.templateId);
+    if (!task) {
+      addWorkflowTasks(store, args.projectId, template.status);
+      task = store.tasks.find((item) => item.projectId === args.projectId && item.workflowTemplateId === args.templateId);
+    }
+    if (!task) throw new Error("Workflow task could not be created");
+    task.status = args.complete ? "done" : "todo";
+  });
+}
+
+export async function completeWorkflowTasksThrough(projectId: string, target: ProjectStatus) {
+  await updateLocalStore((store) => {
+    const flow = store.statusSettings.filter((item) => item.inProgressFlow).sort((a, b) => a.position - b.position);
+    const targetIndex = flow.findIndex((item) => item.status === target);
+    if (targetIndex < 0) return;
+    for (const setting of flow.slice(0, targetIndex)) {
+      addWorkflowTasks(store, projectId, setting.status);
+      for (const task of store.tasks.filter((item) => item.projectId === projectId && item.workflowStatus === setting.status)) task.status = "done";
+    }
+  });
+}
+
+function addWorkflowTasks(store: LocalStore, projectId: string, status: ProjectStatus) {
+  for (const template of store.statusTaskTemplates.filter((item) => item.status === status)) {
+    if (store.tasks.some((task) => task.projectId === projectId && task.workflowTemplateId === template.id)) continue;
+    store.tasks.push({ id: `task-${randomUUID()}`, projectId, title: template.title, kind: "admin", status: "todo", assigneeId: null, dueOn: null, createdByAutomation: null, workflowStatus: status, workflowTemplateId: template.id });
+  }
 }
 
 export async function updateLocalStore<T>(update: (store: LocalStore) => T): Promise<T> {
@@ -197,6 +245,7 @@ export async function createLocalProject(input: {
       customer,
     };
     store.projects.push(project);
+    addWorkflowTasks(store, project.id, project.status);
     customer.activeProjects += 1;
     addEvent(store, project.id, `Project created as ${project.projectNumber}`, input.actorId);
     addEvent(store, project.id, "Automation: project number assigned and document folder created");
@@ -218,6 +267,7 @@ export async function persistLocalTransition(args: {
     project.heldFromStatus = args.to === "on_hold" ? args.from : null;
     project.updatedAt = new Date().toISOString();
     if (args.to === "installation_complete") project.installationCompletedAt = project.updatedAt;
+    addWorkflowTasks(store, project.id, args.to);
     addEvent(
       store,
       project.id,
@@ -270,6 +320,7 @@ export async function applyLocalAutomationEffect(effect: AutomationEffect, trigg
       const from = project.status;
       project.status = effect.to;
       project.updatedAt = now.toISOString();
+      addWorkflowTasks(store, project.id, effect.to);
       addEvent(store, project.id, `Automation: status moved from ${from.replaceAll("_", " ")} to ${effect.to.replaceAll("_", " ")}`);
       return;
     }

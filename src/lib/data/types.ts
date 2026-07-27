@@ -112,6 +112,9 @@ export interface Task {
   assigneeId: string | null;
   dueOn: string | null;
   createdByAutomation: string | null;
+  /** Present for a task created from a configurable project-status checklist. */
+  workflowStatus?: ProjectStatus | null;
+  workflowTemplateId?: string | null;
 }
 
 export interface Assignment {

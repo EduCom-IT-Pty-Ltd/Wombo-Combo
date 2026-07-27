@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
-import { saveStatusSettings } from "@/lib/data/local-store";
-import { DEFAULT_STATUS_SETTINGS, type StatusSetting } from "@/lib/domain/status-settings";
+import { saveStatusSettings, saveStatusTaskTemplates } from "@/lib/data/local-store";
+import { DEFAULT_STATUS_SETTINGS, type StatusSetting, type StatusTaskTemplate } from "@/lib/domain/status-settings";
 
 const rowSchema = z.object({
   status: z.string(),
@@ -33,6 +33,15 @@ export async function saveStatusSettingsAction(_previous: SaveStatusSettingsStat
   const positions = settings.filter((setting) => setting.inProgressFlow).map((setting) => setting.position);
   if (new Set(positions).size !== positions.length) return { status: "error", message: "Each progress-flow status needs a unique position." };
   await saveStatusSettings(settings);
+  const templates: StatusTaskTemplate[] = settings.filter((setting) => setting.inProgressFlow).flatMap((setting) =>
+    String(formData.get(`tasks_${setting.status}`) ?? "").split("\n").map((title) => title.trim()).filter(Boolean).map((title, index) => ({
+      id: `workflow-${setting.status}-${index + 1}`,
+      status: setting.status,
+      title,
+      position: index + 1,
+    })),
+  );
+  await saveStatusTaskTemplates(templates);
   revalidatePath("/", "layout");
   return { status: "success", message: "Status flow saved. The labels and colours are now live." };
 }

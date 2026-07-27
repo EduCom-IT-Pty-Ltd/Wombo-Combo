@@ -1,5 +1,5 @@
 import "server-only";
-import { readLocalStore } from "./local-store";
+import { readLocalStore, readStatusTaskTemplates } from "./local-store";
 import type {
   Assignment,
   Customer,
@@ -93,6 +93,25 @@ export async function listTasks(_orgId: string, opts: { projectId?: string; assi
     (t) =>
       (!opts.projectId || t.projectId === opts.projectId) &&
       (!opts.assigneeId || t.assigneeId === opts.assigneeId),
+  );
+}
+
+/** Checklist tasks for one workflow stage. Templates are shown immediately; a real task is written on completion or transition. */
+export async function listWorkflowTasks(_orgId: string, projectId: string, status: ProjectStatus): Promise<Task[]> {
+  const [store, templates] = await Promise.all([readLocalStore(), readStatusTaskTemplates()]);
+  return templates.filter((template) => template.status === status).sort((a, b) => a.position - b.position).map((template) =>
+    store.tasks.find((task) => task.projectId === projectId && task.workflowTemplateId === template.id) ?? {
+      id: `virtual-${projectId}-${template.id}`,
+      projectId,
+      title: template.title,
+      kind: "admin" as const,
+      status: "todo" as const,
+      assigneeId: null,
+      dueOn: null,
+      createdByAutomation: null,
+      workflowStatus: status,
+      workflowTemplateId: template.id,
+    },
   );
 }
 

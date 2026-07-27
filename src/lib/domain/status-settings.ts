@@ -8,6 +8,13 @@ export interface StatusSetting {
   inProgressFlow: boolean;
 }
 
+export interface StatusTaskTemplate {
+  id: string;
+  status: ProjectStatus;
+  title: string;
+  position: number;
+}
+
 /** The local default requested for the operational workflow. */
 export const DEFAULT_STATUS_SETTINGS: StatusSetting[] = [
   { status: "new_request", label: "Request Received", color: "#64748b", position: 1, inProgressFlow: true },
@@ -22,9 +29,24 @@ export const DEFAULT_STATUS_SETTINGS: StatusSetting[] = [
   { status: "final_costing", label: "Ready to Invoice", color: "#14b8a6", position: 10, inProgressFlow: true },
   { status: "ready_for_invoice", label: "Certificate Issued", color: "#059669", position: 11, inProgressFlow: true },
   { status: "closed", label: "Complete", color: "#334155", position: 12, inProgressFlow: true },
-  { status: "lost", label: "Lost", color: "#dc2626", position: 13, inProgressFlow: false },
-  { status: "cancelled", label: "Cancelled", color: "#991b1b", position: 14, inProgressFlow: false },
+  { status: "lost", label: "Lost", color: "#dc2626", position: 13, inProgressFlow: true },
+  { status: "cancelled", label: "Cancelled", color: "#991b1b", position: 14, inProgressFlow: true },
 ];
+
+export const DEFAULT_STATUS_TASK_TEMPLATES: StatusTaskTemplate[] = [
+  ["new_request", "Confirm scope and site details"],
+  ["quote_sent", "Send uplift to the customer"],
+  ["quoting", "Prepare quote and cost estimate"],
+  ["approved", "Record the purchase order"],
+  ["waiting_for_scheduling", "Confirm available installation dates"],
+  ["scheduled", "Allocate and confirm installers"],
+  ["in_progress", "Complete installation works"],
+  ["installation_complete", "Capture completion photos and handover"],
+  ["qa", "Complete the QA inspection"],
+  ["final_costing", "Confirm final costs and margin"],
+  ["ready_for_invoice", "Issue completion certificate"],
+  ["closed", "Confirm invoice has been paid"],
+].map(([status, title], index) => ({ id: `workflow-${status}`, status: status as ProjectStatus, title, position: index + 1 }));
 
 export function orderedFlow(settings: StatusSetting[]) {
   return settings.filter((setting) => setting.inProgressFlow).sort((a, b) => a.position - b.position);

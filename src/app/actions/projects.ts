@@ -8,7 +8,7 @@ import { can } from "@/lib/domain/permissions";
 import { checkTransition, type ProjectStatus } from "@/lib/domain/status";
 import { runAutomations, type AutomationEffect, type AutomationTrigger } from "@/lib/domain/automation";
 import { buildTransitionContext, getProject } from "@/lib/data/repository";
-import { applyLocalAutomationEffect, persistLocalTransition } from "@/lib/data/local-store";
+import { applyLocalAutomationEffect, completeWorkflowTasksThrough, persistLocalTransition, setLocalWorkflowTaskComplete } from "@/lib/data/local-store";
 import { isDemoMode } from "@/lib/db";
 
 const transitionSchema = z.object({
@@ -16,6 +16,8 @@ const transitionSchema = z.object({
   to: z.enum(PROJECT_STATUSES),
   /** Required when overriding a soft guard, recorded on the audit event. */
   overrideReason: z.string().trim().min(3).optional(),
+  /** Explicit confirmation from the workflow dialog permits a deliberate stage jump. */
+  confirmJump: z.boolean().optional(),
 });
 
 export interface ActionResult {
@@ -35,7 +37,7 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
   if (!parsed.success) {
     return { ok: false, message: "Invalid request" };
   }
-  const { projectId, to, overrideReason } = parsed.data;
+  const { projectId, to, overrideReason, confirmJump } = parsed.data;
 
   const session = await requireCapability("project.transition");
   const project = await getProject(session.org.id, projectId);
@@ -44,10 +46,10 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
   const context = await buildTransitionContext(session.org.id, project);
   const check = checkTransition(project.status, to, context, project.heldFromStatus);
 
-  if (check.reason) {
+  if (check.reason && !confirmJump) {
     return { ok: false, message: check.reason };
   }
-  if (check.blockers.length > 0) {
+  if (check.blockers.length > 0 && !confirmJump) {
     return {
       ok: false,
       message: `Cannot move to this status yet`,
@@ -61,6 +63,8 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
       warnings: check.warnings.map((w) => w.requirement),
     };
   }
+
+  if (confirmJump) await completeWorkflowTasksThrough(projectId, to);
   if (check.warnings.length > 0 && !can(session.role, "project.transition.override")) {
     return {
       ok: false,
@@ -90,6 +94,15 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
   revalidatePath("/");
 
   return { ok: true, message: `Moved to ${to.replaceAll("_", " ")}` };
+}
+
+export async function setWorkflowTaskComplete(input: { projectId: string; templateId: string; complete: boolean }): Promise<ActionResult> {
+  await requireCapability("project.edit");
+  if (!input.projectId || !input.templateId) return { ok: false, message: "Invalid workflow task" };
+  if (!isDemoMode) throw new Error("Workflow task updates are not implemented against the production database yet");
+  await setLocalWorkflowTaskComplete(input);
+  revalidatePath(`/projects/${input.projectId}`, "layout");
+  return { ok: true, message: input.complete ? "Task completed" : "Task reopened" };
 }
 
 /** Maps an entered status onto the automation trigger the spec attaches to it. */
