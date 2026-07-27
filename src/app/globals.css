@@ -129,6 +129,19 @@ button:active:not(:disabled) {
 .button-base-pop:active:not(:disabled) { transform: scale(0.975); }
 .ui-card-pop { box-shadow: 0 2px 5px rgb(15 23 42 / 0.04); transition: transform 220ms cubic-bezier(0.2,0.8,0.2,1), box-shadow 220ms ease, border-color 220ms ease; animation: surface-rise 260ms cubic-bezier(0.2,0.8,0.2,1) both; }
 .ui-card-pop:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--primary) 36%, var(--border)); box-shadow: 0 18px 38px rgb(49 95 231 / 0.18), 0 0 0 1px rgb(93 140 255 / 0.08); }
+
+/* Explicitly opted-in tile effects. They do not alter tile dimensions or the
+   workflow hierarchy; they only add depth while pointing/hovering. */
+.active-project-tile-pop:hover {
+  transform: translateY(-4px) scale(1.012);
+  border-color: color-mix(in srgb, var(--primary) 48%, var(--border-strong));
+  box-shadow: 0 22px 40px rgb(49 95 231 / 0.24), 0 0 0 4px rgb(93 140 255 / 0.1);
+}
+.workflow-tile-glow:enabled:hover {
+  transform: translateY(-3px) scale(1.025);
+  border-color: var(--tile-accent) !important;
+  box-shadow: 0 14px 26px color-mix(in srgb, var(--tile-accent) 34%, transparent), 0 0 0 3px color-mix(in srgb, var(--tile-accent) 12%, transparent);
+}
 .button-secondary-pop {
   color: var(--foreground);
   background: linear-gradient(135deg, var(--surface) 0%, var(--primary-muted) 160%);

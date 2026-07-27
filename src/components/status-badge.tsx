@@ -7,7 +7,7 @@ import type { Task } from "@/lib/data/types";
 import type { WorkflowField } from "@/lib/data/types";
 import { saveWorkflowFieldValues, setWorkflowTaskComplete, transitionProject } from "@/app/actions/projects";
 import { Button } from "@/components/ui";
-import { useState, useTransition } from "react";
+import { type CSSProperties, useState, useTransition } from "react";
 import { Check, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -117,11 +117,11 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
                 onClick={() => canEdit && setting.status !== status && setConfirming(setting.status)}
                 disabled={!canEdit || pending}
                 className={cn(
-                  "relative flex w-24 shrink-0 flex-col overflow-hidden rounded-lg border text-left transition-all enabled:hover:-translate-y-0.5 enabled:hover:shadow-md",
+                  "workflow-tile-glow relative flex w-24 shrink-0 flex-col overflow-hidden rounded-lg border text-left transition-all",
                   current ? "border-foreground shadow-md" : "border-border-subtle",
                   active ? "bg-surface" : "bg-surface-muted opacity-80",
                 )}
-                style={{ borderTopWidth: "6px", borderTopColor: active ? setting.color : "var(--border)" }}
+                style={{ borderTopWidth: "6px", borderTopColor: active ? setting.color : "var(--border)", "--tile-accent": active ? setting.color : "var(--border)" } as CSSProperties}
               >
                 <span className="flex min-h-[4.75rem] flex-1 flex-col justify-between p-2">
                   <span className={cn("line-clamp-2 text-xs leading-tight", active ? "font-bold text-foreground" : "font-medium text-muted-foreground")}>{setting.label}</span>
