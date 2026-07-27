@@ -1,178 +1,77 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { ArrowUpRight, Clock3, Plus } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
-import { PIPELINE_ORDER, STATUS_META, type ProjectStatus } from "@/lib/domain/status";
 import { listPeople, listProjects } from "@/lib/data/repository";
-import { formatMoney } from "@/lib/domain/money";
+import { readStatusSettings } from "@/lib/data/local-store";
+import type { ProjectSummary } from "@/lib/data/types";
+import { orderedFlow } from "@/lib/domain/status-settings";
 import { ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
 import { ProjectRow } from "@/components/projects/project-row";
 import { StatusBadge } from "@/components/status-badge";
-import { cn } from "@/lib/utils";
+import { cn, formatRelative } from "@/lib/utils";
 
 export const metadata = { title: "Projects" };
 
-const GROUPS: Array<{ key: string; label: string; statuses: ProjectStatus[] }> = [
-  { key: "all", label: "All", statuses: [] },
-  { key: "sales", label: "Sales", statuses: ["new_request", "quoting", "quote_sent", "awaiting_approval"] },
-  { key: "pre_start", label: "Pre-start", statuses: ["approved", "waiting_for_scheduling", "scheduled"] },
-  { key: "delivery", label: "On site", statuses: ["in_progress", "installation_complete"] },
-  { key: "close_out", label: "Close-out", statuses: ["qa", "final_costing", "ready_for_invoice"] },
-  { key: "closed", label: "Closed", statuses: ["closed", "lost", "cancelled", "on_hold"] },
-];
+const FILTERS = [
+  { key: "active", label: "Active" },
+  { key: "lost", label: "Lost" },
+  { key: "complete", label: "Complete" },
+  { key: "cancelled", label: "Cancelled" },
+] as const;
+type FilterKey = (typeof FILTERS)[number]["key"];
 
-export default async function ProjectsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ group?: string; status?: string; view?: string }>;
-}) {
+function matchesFilter(project: ProjectSummary, filter: FilterKey) {
+  if (filter === "active") return !["closed", "lost", "cancelled"].includes(project.status);
+  if (filter === "complete") return project.status === "closed";
+  return project.status === filter;
+}
+
+export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ group?: string }> }) {
   const params = await searchParams;
+  const filter = FILTERS.some((item) => item.key === params.group) ? params.group as FilterKey : "active";
   const session = await getSession();
   const showFinancials = can(session.role, "finance.view");
-
-  const group = GROUPS.find((g) => g.key === params.group) ?? GROUPS[0];
-  const statusFilter = params.status ? [params.status as ProjectStatus] : group.statuses;
-
-  const [projects, people] = await Promise.all([
-    listProjects(session.org.id, statusFilter.length ? { status: statusFilter } : {}),
+  const [allProjects, people, statusSettings] = await Promise.all([
+    listProjects(session.org.id),
     listPeople(session.org.id),
+    readStatusSettings(),
   ]);
-
-  const isBoard = params.view === "board";
+  const projects = allProjects.filter((project) => matchesFilter(project, filter));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <PageHeader
         title="Projects"
-        description={`${projects.length} ${projects.length === 1 ? "project" : "projects"}`}
-        action={
-          can(session.role, "project.create") ? (
-            <ButtonLink href="/projects/new" variant="primary" size="sm">
-              <Plus className="size-4" /> New request
-            </ButtonLink>
-          ) : null
-        }
+        description={`${projects.length} ${filter === "active" ? "active " : ""}${projects.length === 1 ? "project" : "projects"}`}
+        action={can(session.role, "project.create") ? <ButtonLink href="/projects/new" variant="primary" size="sm"><Plus className="size-4" /> New request</ButtonLink> : null}
       />
 
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {GROUPS.map((g) => (
-          <Link
-            key={g.key}
-            href={g.key === "all" ? "/projects" : `/projects?group=${g.key}`}
-            className={cn(
-              "shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-              g.key === group.key && !params.status
-                ? "bg-primary text-primary-foreground"
-                : "bg-surface-muted text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {g.label}
-          </Link>
-        ))}
-        <span className="ml-auto hidden shrink-0 gap-1 rounded-full bg-surface-muted p-0.5 sm:flex">
-          {(["list", "board"] as const).map((v) => (
-            <Link
-              key={v}
-              href={`/projects?${new URLSearchParams({ ...(params.group ? { group: params.group } : {}), view: v })}`}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs font-medium capitalize",
-                (v === "board") === isBoard ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground",
-              )}
-            >
-              {v}
-            </Link>
-          ))}
-        </span>
-      </div>
+      <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Project filters">
+        {FILTERS.map((item) => <Link key={item.key} href={item.key === "active" ? "/projects" : `/projects?group=${item.key}`} className={cn("shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-colors", filter === item.key ? "bg-primary text-primary-foreground shadow-sm" : "bg-surface-muted text-muted-foreground hover:bg-surface hover:text-foreground")}>{item.label}</Link>)}
+      </nav>
 
-      {params.status ? (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          Filtered to <StatusBadge status={params.status as ProjectStatus} />
-          <Link href="/projects" className="font-medium text-primary">
-            Clear
-          </Link>
-        </div>
-      ) : null}
-
-      {projects.length === 0 ? (
-        <Card>
-          <EmptyState
-            title="No projects here"
-            description="Nothing matches this filter yet."
-            action={
-              <ButtonLink href="/projects" size="sm">
-                View all projects
-              </ButtonLink>
-            }
-          />
-        </Card>
-      ) : isBoard ? (
-        <PipelineBoard projects={projects} showFinancials={showFinancials} />
-      ) : (
-        <Card>
-          <div className="divide-y divide-border-subtle">
-            {projects.map((p) => (
-              <ProjectRow key={p.id} project={p} people={people} showFinancials={showFinancials} />
-            ))}
-          </div>
-        </Card>
-      )}
+      {projects.length === 0 ? <Card><EmptyState title={`No ${filter} projects`} description="There is nothing in this view yet." /></Card> : filter === "active" ? <ActiveProjectBoard projects={projects} statusSettings={statusSettings} /> : <ProjectList projects={projects} people={people} showFinancials={showFinancials} />}
     </div>
   );
 }
 
-/** Kanban across the happy path. Desktop only — on mobile the list is better. */
-function PipelineBoard({
-  projects,
-  showFinancials,
-}: {
-  projects: Awaited<ReturnType<typeof listProjects>>;
-  showFinancials: boolean;
-}) {
-  const columns = PIPELINE_ORDER.filter((s) => s !== "closed").map((status) => ({
-    status,
-    items: projects.filter((p) => p.status === status),
-  }));
+function ActiveProjectBoard({ projects, statusSettings }: { projects: ProjectSummary[]; statusSettings: Awaited<ReturnType<typeof readStatusSettings>> }) {
+  const flow = orderedFlow(statusSettings);
+  const known = new Set(flow.map((setting) => setting.status));
+  const unknownStatuses = [...new Set(projects.filter((project) => !known.has(project.status)).map((project) => project.status))];
+  const sections = [
+    ...flow.map((setting) => ({ status: setting.status, label: setting.label, color: setting.color, projects: projects.filter((project) => project.status === setting.status) })),
+    ...unknownStatuses.map((status) => ({ status, label: status.replaceAll("_", " "), color: "#64748b", projects: projects.filter((project) => project.status === status) })),
+  ].filter((section) => section.projects.length > 0);
 
-  return (
-    <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-      <div className="flex gap-3 pb-2">
-        {columns.map(({ status, items }) => (
-          <div key={status} className="w-64 shrink-0">
-            <div className="mb-2 flex items-center justify-between">
-              <StatusBadge status={status} />
-              <span className="text-xs text-muted-foreground tabular-nums">{items.length}</span>
-            </div>
-            <div className="space-y-2">
-              {items.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/projects/${p.id}`}
-                  className="block rounded-[var(--radius)] border border-border-subtle bg-surface p-3 transition-colors hover:border-border-strong"
-                >
-                  <p className="font-mono text-[11px] text-muted-foreground">{p.projectNumber}</p>
-                  <p className="mt-0.5 line-clamp-2 text-sm font-medium">{p.title}</p>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">{p.customerName}</p>
-                  {showFinancials && p.contractValueCents > 0 ? (
-                    <p className="mt-1.5 text-xs font-semibold tabular-nums">
-                      {formatMoney(p.contractValueCents, "AUD", { compact: true })}
-                    </p>
-                  ) : null}
-                </Link>
-              ))}
-              {items.length === 0 ? (
-                <p className="rounded-[var(--radius)] border border-dashed border-border-subtle px-3 py-4 text-center text-xs text-muted-foreground">
-                  Empty
-                </p>
-              ) : null}
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Showing {STATUS_META.new_request.label} through {STATUS_META.ready_for_invoice.label}. Closed, lost and
-        cancelled jobs are in the Closed filter.
-      </p>
-    </div>
-  );
+  return <div className="space-y-7">{sections.map((section) => <section key={section.status}><div className="mb-3 flex items-center gap-2"><StatusBadge status={section.status} /><span className="text-xs font-bold text-muted-foreground">{section.projects.length}</span><span className="h-px flex-1 bg-border-subtle" /></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{section.projects.map((project) => <ActiveProjectTile key={project.id} project={project} color={section.color} />)}</div></section>)}</div>;
+}
+
+function ActiveProjectTile({ project, color }: { project: ProjectSummary; color: string }) {
+  return <Link href={`/projects/${project.id}`} className="group relative flex aspect-square flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-border-strong hover:shadow-md"><span className="absolute inset-x-0 top-0 h-1.5" style={{ backgroundColor: color }} /><div className="flex items-start justify-between gap-2"><span className="font-mono text-[11px] text-muted-foreground">{project.projectNumber}</span><ArrowUpRight className="size-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div><div className="mt-4"><p className="line-clamp-3 text-base font-bold leading-snug">{project.title}</p><p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{project.customerName}</p></div><div className="mt-auto border-t border-border-subtle pt-3"><span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground"><Clock3 className="size-3" />{formatRelative(project.updatedAt)}</span></div></Link>;
+}
+
+function ProjectList({ projects, people, showFinancials }: { projects: ProjectSummary[]; people: Awaited<ReturnType<typeof listPeople>>; showFinancials: boolean }) {
+  return <Card><div className="divide-y divide-border-subtle">{projects.map((project) => <ProjectRow key={project.id} project={project} people={people} showFinancials={showFinancials} />)}</div></Card>;
 }

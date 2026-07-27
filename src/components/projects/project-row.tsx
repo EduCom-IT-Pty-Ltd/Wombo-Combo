@@ -4,7 +4,7 @@ import { AvatarStack, Badge } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { formatMoney } from "@/lib/domain/money";
 import type { Person, ProjectSummary } from "@/lib/data/types";
-import { formatDateRange, formatRelative } from "@/lib/utils";
+import { formatRelative } from "@/lib/utils";
 
 /**
  * One project in a list. Card-shaped on mobile, table-ish from `sm` — same
@@ -61,11 +61,7 @@ export function ProjectRow({
                 {formatMoney(project.contractValueCents, "AUD", { compact: true })}
               </p>
             ) : null}
-            <p className="text-xs text-muted-foreground">
-              {project.scheduledStartAt
-                ? formatDateRange(project.scheduledStartAt, project.scheduledEndAt)
-                : `Updated ${formatRelative(project.updatedAt)}`}
-            </p>
+            <p className="text-xs text-muted-foreground">Updated {formatRelative(project.updatedAt)}</p>
           </div>
         </div>
       </div>

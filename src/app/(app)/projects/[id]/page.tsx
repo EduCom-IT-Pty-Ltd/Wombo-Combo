@@ -2,16 +2,13 @@ import { notFound } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
-import { allowedTransitions } from "@/lib/domain/status";
 import {
-  buildTransitionContext,
   getProject,
   listEvents,
   listPeople,
   listTasks,
 } from "@/lib/data/repository";
 import { Card, CardHeader, EmptyState, Field } from "@/components/ui";
-import { StatusControl } from "@/components/projects/status-control";
 import { formatDate, formatRelative, isOverdue } from "@/lib/utils";
 
 export default async function ProjectOverviewPage({ params }: { params: Promise<{ id: string }> }) {
@@ -20,8 +17,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
   const project = await getProject(session.org.id, id);
   if (!project) notFound();
 
-  const [context, tasks, events, people] = await Promise.all([
-    buildTransitionContext(session.org.id, project),
+  const [tasks, events, people] = await Promise.all([
     listTasks(session.org.id, { projectId: id }),
     listEvents(session.org.id, id),
     listPeople(session.org.id),
@@ -130,17 +126,6 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
       </div>
 
       <div className="space-y-4">
-        {can(session.role, "project.transition") ? (
-          <StatusControl
-            projectId={project.id}
-            status={project.status}
-            heldFromStatus={project.heldFromStatus}
-            allowed={allowedTransitions(project.status, project.heldFromStatus)}
-            context={context}
-            canOverride={can(session.role, "project.transition.override")}
-          />
-        ) : null}
-
         <Card>
           <CardHeader title="Recent activity" />
           {events.length ? (

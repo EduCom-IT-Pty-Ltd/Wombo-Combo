@@ -22,18 +22,29 @@ export function StatusBadge({ status, className }: { status: ProjectStatus; clas
 }
 
 /**
- * Compact pipeline stepper for the project header. Shows position without
- * listing all thirteen stages — on mobile there is no room, and on desktop the
- * full list is noise once you know where you are.
+ * PROJECT WORKFLOW VISUAL CONTRACT
+ *
+ * This is the primary project interaction surface: coloured status tiles,
+ * a clear Current indicator, and green radio-tick checklist controls. Do not
+ * change its visual hierarchy or control styling unless the user explicitly
+ * asks to change this workflow UI. Settings may change labels, colours, tasks
+ * and order only.
  */
 export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { status: ProjectStatus; projectId?: string; tasks?: Task[]; fields?: WorkflowField[]; canEdit?: boolean }) {
-  const { flow, settingFor, settings } = useStatusSettings();
+  const { flow: configuredFlow, settingFor, settings } = useStatusSettings();
+  // A project can retain a legacy/deleted stage. Keep the complete workflow
+  // UI available for it instead of falling back to an unstyled status label.
+  const currentSetting = settingFor(status);
+  const flow = configuredFlow.some((setting) => setting.status === status)
+    ? configuredFlow
+    : [...configuredFlow, { status, label: currentSetting?.label ?? status.replaceAll("_", " "), color: currentSetting?.color ?? "#64748b", position: configuredFlow.length + 1, inProgressFlow: true }];
   const index = flow.findIndex((setting) => setting.status === status);
   const offPipeline = index === -1;
   const [pending, startTransition] = useTransition();
   const [confirming, setConfirming] = useState<ProjectStatus | null>(null);
   const [editingTimestamp, setEditingTimestamp] = useState<string | null>(null);
   const [timestampValue, setTimestampValue] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>(() => Object.fromEntries((fields ?? []).map((field) => [field.id, field.value])));
   const router = useRouter();
   const incomplete = (tasks ?? []).filter((task) => task.status !== "done" && task.status !== "cancelled");
@@ -42,10 +53,15 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
   const offRampStatuses = settings.filter((setting) => setting.status === "lost" || setting.status === "cancelled");
 
   function completeTask(task: Task, complete: boolean, completedAt?: string) {
-    if (!projectId || !task.workflowTemplateId) return;
+    if (!projectId || !task.workflowTemplateId) {
+      setActionError("This checklist item is not connected to a saved workflow task.");
+      return;
+    }
+    setActionError(null);
     startTransition(async () => {
       const result = await setWorkflowTaskComplete({ projectId, templateId: task.workflowTemplateId!, complete, completedAt });
       if (result.ok) router.refresh();
+      else setActionError(result.message);
     });
   }
 
@@ -64,12 +80,13 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
 
   function move(to: ProjectStatus, jumping: boolean) {
     if (!projectId) return;
+    setActionError(null);
     startTransition(async () => {
       const result = await transitionProject({ projectId, to, confirmJump: jumping, overrideReason: jumping ? "Workflow stage confirmed" : undefined });
       if (result.ok) {
         setConfirming(null);
         router.refresh();
-      }
+      } else setActionError(result.message);
     });
   }
 
@@ -104,8 +121,8 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
                   current ? "border-foreground shadow-md" : "border-border-subtle",
                   active ? "bg-surface" : "bg-surface-muted opacity-80",
                 )}
+                style={{ borderTopWidth: "6px", borderTopColor: active ? setting.color : "var(--border)" }}
               >
-                <span className="h-3 w-full" style={active ? { backgroundColor: setting.color } : undefined} />
                 <span className="flex min-h-[4.75rem] flex-1 flex-col justify-between p-2">
                   <span className={cn("line-clamp-2 text-xs leading-tight", active ? "font-bold text-foreground" : "font-medium text-muted-foreground")}>{setting.label}</span>
                   {current ? <span className="mt-2 inline-flex w-fit rounded-full px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase" style={{ backgroundColor: setting.color }}>Current</span> : completed ? <span className="mt-2 text-[10px] font-bold uppercase" style={{ color: setting.color }}>Complete</span> : <span className="mt-2 text-[10px] font-semibold text-muted-foreground uppercase">Upcoming</span>}
@@ -123,7 +140,7 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
               <p className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Stage checklist</p>
               <p className="mt-1 text-base font-bold">Complete these tasks to progress</p>
             </div>
-            {next ? <Button size="md" variant="primary" disabled={!canEdit || pending} onClick={() => incomplete.length > 0 ? setConfirming(next.status) : move(next.status, false)}>Move to {next.label}</Button> : null}
+            {next ? <Button size="md" variant="primary" disabled={!canEdit || pending} onClick={() => incomplete.length > 0 ? setConfirming(next.status) : move(next.status, true)}>Move to {next.label}</Button> : null}
           </div>
 
           {fields?.length ? <div className="mt-4 rounded-lg border border-border-strong bg-surface p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Project details</p><p className="mt-0.5 text-sm font-semibold">Information required at this stage</p></div><Button size="sm" variant="secondary" disabled={!canEdit || pending} onClick={saveFields}>Save details</Button></div><div className="mt-3 grid gap-3 sm:grid-cols-2">{fields.map((field) => <label key={field.id} className="block"><span className="mb-1 block text-xs font-bold text-muted-foreground">{field.label}</span><input value={fieldValues[field.id] ?? ""} onChange={(event) => setFieldValues((current) => ({ ...current, [field.id]: event.target.value }))} disabled={!canEdit || pending} className="h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-foreground" placeholder={`Enter ${field.label.toLowerCase()}`} />{field.updatedAt ? <span className="mt-1 block text-[10px] text-muted-foreground">Updated {formatCompletionTime(field.updatedAt)}</span> : null}</label>)}</div></div> : null}
@@ -138,7 +155,8 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
                       onClick={() => completeTask(task, !done)}
                       disabled={!canEdit || pending}
                       aria-label={`${done ? "Reopen" : "Complete"} ${task.title}`}
-                      className={cn("grid size-10 shrink-0 place-items-center rounded-full border-2 transition-colors", done ? "border-emerald-500 bg-emerald-500 text-white shadow-sm" : "border-slate-400 bg-surface text-transparent enabled:hover:border-emerald-500 enabled:hover:bg-emerald-500/10")}
+                      className="grid size-10 shrink-0 place-items-center rounded-full border-2 transition-colors enabled:hover:scale-105"
+                      style={done ? { borderColor: "#22c55e", backgroundColor: "#22c55e", color: "#ffffff", boxShadow: "0 1px 3px rgb(34 197 94 / 0.35)" } : { borderColor: "#94a3b8", backgroundColor: "transparent", color: "transparent" }}
                     >
                       {done ? <Check className="size-5" strokeWidth={3} /> : null}
                     </button>
@@ -152,6 +170,7 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
             </ul>
           ) : <p className="mt-4 text-sm text-muted-foreground">No checklist tasks configured for this stage.</p>}
           {incomplete.length > 0 && next ? <p className="mt-3 text-sm font-medium text-muted-foreground">Mark every task complete to unlock the next stage.</p> : null}
+          {actionError ? <p className="mt-3 text-sm font-semibold text-[var(--tone-rose-fg)]">{actionError}</p> : null}
         </div>
       ) : null}
 
