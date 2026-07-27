@@ -5,6 +5,11 @@ financially closed. Built from `Project_Management_Platform_Workflow_Specificati
 
 ## Getting started
 
+Double-click **`Start Web App.command`**. It installs dependencies if needed, starts the
+server, opens your browser, and shuts everything down when you close the window.
+
+Or from a terminal:
+
 ```bash
 npm run dev
 ```
