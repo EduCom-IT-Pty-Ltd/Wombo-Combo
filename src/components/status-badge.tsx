@@ -158,7 +158,7 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
                       className="grid size-10 shrink-0 place-items-center rounded-full border-2 transition-colors enabled:hover:scale-105"
                       style={done ? { borderColor: "#22c55e", backgroundColor: "#22c55e", color: "#ffffff", boxShadow: "0 1px 3px rgb(34 197 94 / 0.35)" } : { borderColor: "#94a3b8", backgroundColor: "transparent", color: "transparent" }}
                     >
-                      {done ? <Check className="size-5" strokeWidth={3} /> : null}
+                      {done ? <Check className="task-check-pop size-5" strokeWidth={3} /> : null}
                     </button>
                     <span className={cn("min-w-0 flex-1 text-base font-semibold", done && "text-muted-foreground line-through")}>{task.title}</span>
                     <span className={done ? "text-right text-[11px] font-bold text-emerald-600" : "text-xs font-bold text-muted-foreground"}>
