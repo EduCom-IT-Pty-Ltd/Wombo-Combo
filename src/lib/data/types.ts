@@ -115,6 +115,7 @@ export interface Task {
   /** Present for a task created from a configurable project-status checklist. */
   workflowStatus?: ProjectStatus | null;
   workflowTemplateId?: string | null;
+  completedAt?: string | null;
 }
 
 export interface Assignment {
@@ -217,4 +218,11 @@ export interface ProjectEvent {
   summary: string;
   actorId: string | null;
   occurredAt: string;
+}
+
+export interface WorkflowField {
+  id: string;
+  label: string;
+  value: string;
+  updatedAt: string | null;
 }

@@ -1,5 +1,5 @@
 import "server-only";
-import { readLocalStore, readStatusTaskTemplates } from "./local-store";
+import { readLocalStore, readStatusFieldTemplates, readStatusTaskTemplates } from "./local-store";
 import type {
   Assignment,
   Customer,
@@ -16,6 +16,7 @@ import type {
   Task,
   TimeEntry,
   Variation,
+  WorkflowField,
 } from "./types";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
 import { calculateCosting, entryHours, type CostingResult } from "@/lib/domain/costing";
@@ -111,8 +112,17 @@ export async function listWorkflowTasks(_orgId: string, projectId: string, statu
       createdByAutomation: null,
       workflowStatus: status,
       workflowTemplateId: template.id,
+      completedAt: null,
     },
   );
+}
+
+export async function listWorkflowFields(_orgId: string, projectId: string, status: ProjectStatus): Promise<WorkflowField[]> {
+  const [store, templates] = await Promise.all([readLocalStore(), readStatusFieldTemplates()]);
+  return templates.filter((template) => template.status === status).sort((a, b) => a.position - b.position).map((template) => {
+    const value = store.workflowFieldValues.find((entry) => entry.projectId === projectId && entry.templateId === template.id);
+    return { id: template.id, label: template.label, value: value?.value ?? "", updatedAt: value?.updatedAt ?? null };
+  });
 }
 
 export async function listAssignments(

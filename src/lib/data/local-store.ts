@@ -16,7 +16,7 @@ import type {
 } from "./types";
 import type { AutomationEffect, AutomationTrigger } from "@/lib/domain/automation";
 import type { ProjectStatus } from "@/lib/domain/status";
-import { DEFAULT_STATUS_SETTINGS, DEFAULT_STATUS_TASK_TEMPLATES, type StatusSetting, type StatusTaskTemplate } from "@/lib/domain/status-settings";
+import { DEFAULT_STATUS_FIELD_TEMPLATES, DEFAULT_STATUS_SETTINGS, DEFAULT_STATUS_TASK_TEMPLATES, type StatusFieldTemplate, type StatusSetting, type StatusTaskTemplate, type WorkflowFieldValue } from "@/lib/domain/status-settings";
 
 /**
  * A deliberately small, file-backed store for local demo use. It keeps the
@@ -43,6 +43,8 @@ export type LocalStore = {
   events: ProjectEvent[];
   statusSettings: StatusSetting[];
   statusTaskTemplates: StatusTaskTemplate[];
+  statusFieldTemplates: StatusFieldTemplate[];
+  workflowFieldValues: WorkflowFieldValue[];
 };
 
 const storePath = join(process.cwd(), ".wombo-data", "test-data.json");
@@ -66,6 +68,8 @@ function freshStore(): LocalStore {
     events: seed.events,
     statusSettings: DEFAULT_STATUS_SETTINGS,
     statusTaskTemplates: DEFAULT_STATUS_TASK_TEMPLATES,
+    statusFieldTemplates: DEFAULT_STATUS_FIELD_TEMPLATES,
+    workflowFieldValues: [],
   });
 }
 
@@ -73,11 +77,11 @@ export async function readLocalStore(): Promise<LocalStore> {
   try {
     const store = JSON.parse(await readFile(storePath, "utf8")) as Partial<LocalStore>;
     const savedSettings = store.statusSettings ?? structuredClone(DEFAULT_STATUS_SETTINGS);
-    // v2 of the configurable workflow displays Lost and Cancelled as selectable final stages.
+    // Lost and Cancelled are fixed off-ramps, separate from the normal progress flow.
     const statusSettings = savedSettings.map((setting) =>
-      setting.status === "lost" || setting.status === "cancelled" ? { ...setting, inProgressFlow: true } : setting,
+      setting.status === "lost" || setting.status === "cancelled" ? { ...setting, inProgressFlow: false } : setting,
     );
-    return { ...freshStore(), ...store, statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES) };
+    return { ...freshStore(), ...store, statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates: store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES), workflowFieldValues: store.workflowFieldValues ?? [] };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
@@ -102,7 +106,27 @@ export async function saveStatusTaskTemplates(templates: StatusTaskTemplate[]) {
   await updateLocalStore((store) => { store.statusTaskTemplates = templates; });
 }
 
-export async function setLocalWorkflowTaskComplete(args: { projectId: string; templateId: string; complete: boolean }) {
+export async function readStatusFieldTemplates(): Promise<StatusFieldTemplate[]> {
+  return (await readLocalStore()).statusFieldTemplates;
+}
+
+export async function saveStatusFieldTemplates(templates: StatusFieldTemplate[]) {
+  await updateLocalStore((store) => { store.statusFieldTemplates = templates; });
+}
+
+export async function saveLocalWorkflowFieldValues(projectId: string, values: Array<{ templateId: string; value: string }>) {
+  await updateLocalStore((store) => {
+    for (const entry of values) {
+      if (!store.statusFieldTemplates.some((template) => template.id === entry.templateId)) continue;
+      const current = store.workflowFieldValues.find((value) => value.projectId === projectId && value.templateId === entry.templateId);
+      const updatedAt = new Date().toISOString();
+      if (current) { current.value = entry.value; current.updatedAt = updatedAt; }
+      else store.workflowFieldValues.push({ projectId, templateId: entry.templateId, value: entry.value, updatedAt });
+    }
+  });
+}
+
+export async function setLocalWorkflowTaskComplete(args: { projectId: string; templateId: string; complete: boolean; completedAt?: string }) {
   await updateLocalStore((store) => {
     const template = store.statusTaskTemplates.find((item) => item.id === args.templateId);
     if (!template) throw new Error("Workflow task template not found");
@@ -113,6 +137,7 @@ export async function setLocalWorkflowTaskComplete(args: { projectId: string; te
     }
     if (!task) throw new Error("Workflow task could not be created");
     task.status = args.complete ? "done" : "todo";
+    task.completedAt = args.complete ? (args.completedAt ? new Date(args.completedAt).toISOString() : new Date().toISOString()) : null;
   });
 }
 
@@ -123,7 +148,10 @@ export async function completeWorkflowTasksThrough(projectId: string, target: Pr
     if (targetIndex < 0) return;
     for (const setting of flow.slice(0, targetIndex)) {
       addWorkflowTasks(store, projectId, setting.status);
-      for (const task of store.tasks.filter((item) => item.projectId === projectId && item.workflowStatus === setting.status)) task.status = "done";
+      for (const task of store.tasks.filter((item) => item.projectId === projectId && item.workflowStatus === setting.status)) {
+        task.status = "done";
+        task.completedAt = new Date().toISOString();
+      }
     }
   });
 }
@@ -131,7 +159,7 @@ export async function completeWorkflowTasksThrough(projectId: string, target: Pr
 function addWorkflowTasks(store: LocalStore, projectId: string, status: ProjectStatus) {
   for (const template of store.statusTaskTemplates.filter((item) => item.status === status)) {
     if (store.tasks.some((task) => task.projectId === projectId && task.workflowTemplateId === template.id)) continue;
-    store.tasks.push({ id: `task-${randomUUID()}`, projectId, title: template.title, kind: "admin", status: "todo", assigneeId: null, dueOn: null, createdByAutomation: null, workflowStatus: status, workflowTemplateId: template.id });
+    store.tasks.push({ id: `task-${randomUUID()}`, projectId, title: template.title, kind: "admin", status: "todo", assigneeId: null, dueOn: null, createdByAutomation: null, workflowStatus: status, workflowTemplateId: template.id, completedAt: null });
   }
 }
 

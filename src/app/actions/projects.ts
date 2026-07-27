@@ -8,7 +8,7 @@ import { can } from "@/lib/domain/permissions";
 import { checkTransition, type ProjectStatus } from "@/lib/domain/status";
 import { runAutomations, type AutomationEffect, type AutomationTrigger } from "@/lib/domain/automation";
 import { buildTransitionContext, getProject } from "@/lib/data/repository";
-import { applyLocalAutomationEffect, completeWorkflowTasksThrough, persistLocalTransition, setLocalWorkflowTaskComplete } from "@/lib/data/local-store";
+import { applyLocalAutomationEffect, completeWorkflowTasksThrough, persistLocalTransition, saveLocalWorkflowFieldValues, setLocalWorkflowTaskComplete } from "@/lib/data/local-store";
 import { isDemoMode } from "@/lib/db";
 
 const transitionSchema = z.object({
@@ -96,13 +96,22 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
   return { ok: true, message: `Moved to ${to.replaceAll("_", " ")}` };
 }
 
-export async function setWorkflowTaskComplete(input: { projectId: string; templateId: string; complete: boolean }): Promise<ActionResult> {
+export async function setWorkflowTaskComplete(input: { projectId: string; templateId: string; complete: boolean; completedAt?: string }): Promise<ActionResult> {
   await requireCapability("project.edit");
-  if (!input.projectId || !input.templateId) return { ok: false, message: "Invalid workflow task" };
+  if (!input.projectId || !input.templateId || (input.completedAt && Number.isNaN(new Date(input.completedAt).getTime()))) return { ok: false, message: "Invalid workflow task" };
   if (!isDemoMode) throw new Error("Workflow task updates are not implemented against the production database yet");
   await setLocalWorkflowTaskComplete(input);
   revalidatePath(`/projects/${input.projectId}`, "layout");
   return { ok: true, message: input.complete ? "Task completed" : "Task reopened" };
+}
+
+export async function saveWorkflowFieldValues(input: { projectId: string; values: Array<{ templateId: string; value: string }> }): Promise<ActionResult> {
+  await requireCapability("project.edit");
+  if (!input.projectId || !Array.isArray(input.values) || input.values.some((value) => !value.templateId || value.value.length > 500)) return { ok: false, message: "Invalid project details" };
+  if (!isDemoMode) throw new Error("Workflow field updates are not implemented against the production database yet");
+  await saveLocalWorkflowFieldValues(input.projectId, input.values);
+  revalidatePath(`/projects/${input.projectId}`, "layout");
+  return { ok: true, message: "Project details saved" };
 }
 
 /** Maps an entered status onto the automation trigger the spec attaches to it. */

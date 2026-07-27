@@ -15,6 +15,20 @@ export interface StatusTaskTemplate {
   position: number;
 }
 
+export interface StatusFieldTemplate {
+  id: string;
+  status: ProjectStatus;
+  label: string;
+  position: number;
+}
+
+export interface WorkflowFieldValue {
+  projectId: string;
+  templateId: string;
+  value: string;
+  updatedAt: string;
+}
+
 /** The local default requested for the operational workflow. */
 export const DEFAULT_STATUS_SETTINGS: StatusSetting[] = [
   { status: "new_request", label: "Request Received", color: "#64748b", position: 1, inProgressFlow: true },
@@ -29,8 +43,8 @@ export const DEFAULT_STATUS_SETTINGS: StatusSetting[] = [
   { status: "final_costing", label: "Ready to Invoice", color: "#14b8a6", position: 10, inProgressFlow: true },
   { status: "ready_for_invoice", label: "Certificate Issued", color: "#059669", position: 11, inProgressFlow: true },
   { status: "closed", label: "Complete", color: "#334155", position: 12, inProgressFlow: true },
-  { status: "lost", label: "Lost", color: "#dc2626", position: 13, inProgressFlow: true },
-  { status: "cancelled", label: "Cancelled", color: "#991b1b", position: 14, inProgressFlow: true },
+  { status: "lost", label: "Lost", color: "#dc2626", position: 13, inProgressFlow: false },
+  { status: "cancelled", label: "Cancelled", color: "#991b1b", position: 14, inProgressFlow: false },
 ];
 
 export const DEFAULT_STATUS_TASK_TEMPLATES: StatusTaskTemplate[] = [
@@ -47,6 +61,10 @@ export const DEFAULT_STATUS_TASK_TEMPLATES: StatusTaskTemplate[] = [
   ["ready_for_invoice", "Issue completion certificate"],
   ["closed", "Confirm invoice has been paid"],
 ].map(([status, title], index) => ({ id: `workflow-${status}`, status: status as ProjectStatus, title, position: index + 1 }));
+
+export const DEFAULT_STATUS_FIELD_TEMPLATES: StatusFieldTemplate[] = [
+  { id: "field-approved-1", status: "approved", label: "PO Number", position: 1 },
+];
 
 export function orderedFlow(settings: StatusSetting[]) {
   return settings.filter((setting) => setting.inProgressFlow).sort((a, b) => a.position - b.position);

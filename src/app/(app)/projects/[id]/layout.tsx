@@ -4,7 +4,7 @@ import { ArrowLeft, MapPin } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
-import { getProject, listWorkflowTasks } from "@/lib/data/repository";
+import { getProject, listWorkflowFields, listWorkflowTasks } from "@/lib/data/repository";
 import { PROJECT_TABS } from "@/lib/nav";
 import { StatusBadge, StatusStepper } from "@/components/status-badge";
 import { ProjectTabs } from "@/components/projects/project-tabs";
@@ -30,7 +30,10 @@ export default async function ProjectLayout({
 
   const tabs = PROJECT_TABS.filter((t) => can(session.role, t.capability));
   const showFinancials = can(session.role, "finance.view");
-  const workflowTasks = await listWorkflowTasks(session.org.id, project.id, project.status);
+  const [workflowTasks, workflowFields] = await Promise.all([
+    listWorkflowTasks(session.org.id, project.id, project.status),
+    listWorkflowFields(session.org.id, project.id, project.status),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -77,7 +80,7 @@ export default async function ProjectLayout({
           ) : null}
         </div>
 
-        <StatusStepper status={project.status} projectId={project.id} tasks={workflowTasks} canEdit={can(session.role, "project.edit")} />
+        <StatusStepper status={project.status} projectId={project.id} tasks={workflowTasks} fields={workflowFields} canEdit={can(session.role, "project.edit")} />
       </div>
 
       <ProjectTabs projectId={project.id} tabs={tabs} />

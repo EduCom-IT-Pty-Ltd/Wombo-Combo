@@ -4,19 +4,19 @@ import { CAPABILITIES, ROLE_LABELS, capabilitiesFor } from "@/lib/domain/permiss
 import { ROLES } from "@/lib/db/schema/enums";
 import { Badge, Card, CardHeader, Field, PageHeader } from "@/components/ui";
 import { StatusFlowSettings } from "@/components/admin/status-flow-settings";
-import { readStatusSettings, readStatusTaskTemplates } from "@/lib/data/local-store";
+import { readStatusFieldTemplates, readStatusSettings, readStatusTaskTemplates } from "@/lib/data/local-store";
 
 export const metadata = { title: "Admin" };
 
 export default async function AdminPage() {
   const session = await getSession();
-  const [statusSettings, statusTaskTemplates] = await Promise.all([readStatusSettings(), readStatusTaskTemplates()]);
+  const [statusSettings, statusTaskTemplates, statusFieldTemplates] = await Promise.all([readStatusSettings(), readStatusTaskTemplates(), readStatusFieldTemplates()]);
 
   return (
     <div className="space-y-4">
       <PageHeader title="Settings" description="Organisation settings, status flow, roles and automation rules" />
 
-      <StatusFlowSettings settings={statusSettings} templates={statusTaskTemplates} />
+      <StatusFlowSettings settings={statusSettings} templates={statusTaskTemplates} fields={statusFieldTemplates} />
 
       <Card>
         <CardHeader title="Organisation" />
