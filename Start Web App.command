@@ -4,6 +4,10 @@
 #
 # Starts the dev server, waits until it actually responds, opens your browser,
 # and shuts everything down when you close this window or press Ctrl+C.
+#
+# The server listens on every network interface, so it also prints a second URL
+# you can open on a phone that is on the same Wi-Fi — that is the only way to
+# test the field screens properly.
 
 # Enable job control so the server runs in its own process group — that is what
 # lets us kill the whole tree (npm -> next -> workers) on the way out.
@@ -22,6 +26,24 @@ bold()  { printf "\033[1m%s\033[0m\n" "$1"; }
 dim()   { printf "\033[2m%s\033[0m\n" "$1"; }
 green() { printf "\033[32m%s\033[0m\n" "$1"; }
 red()   { printf "\033[31m%s\033[0m\n" "$1"; }
+
+# This Mac's address on the local network, for opening the app on a phone.
+# Prefers whichever interface actually carries the default route, so it picks
+# Ethernet over Wi-Fi when both are up. Prints nothing if we are offline.
+lan_ip() {
+  local iface ip
+  iface="$(route -n get default 2>/dev/null | awk '/interface:/ {print $2}')"
+  if [ -n "$iface" ]; then
+    ip="$(ipconfig getifaddr "$iface" 2>/dev/null)"
+    [ -n "$ip" ] && { printf "%s" "$ip"; return; }
+  fi
+  # The default route can be a VPN tunnel that has no IPv4 to hand out; fall
+  # back to the usual hardware interfaces.
+  for iface in en0 en1 en2 en3 en4; do
+    ip="$(ipconfig getifaddr "$iface" 2>/dev/null)"
+    [ -n "$ip" ] && { printf "%s" "$ip"; return; }
+  done
+}
 
 cleanup() {
   # Guard against running twice (EXIT fires after INT/TERM/HUP).
@@ -109,9 +131,14 @@ fi
 
 # --- Start ------------------------------------------------------------------
 URL="http://localhost:$PORT"
+LAN_IP="$(lan_ip)"
+PHONE_URL=""
+[ -n "$LAN_IP" ] && PHONE_URL="http://$LAN_IP:$PORT"
 bold "Starting the server…"
 
-npm run dev -- --port "$PORT" &
+# -H 0.0.0.0 binds every interface, not just loopback, so a phone on the same
+# Wi-Fi can reach it. macOS may ask you to allow incoming connections once.
+npm run dev -- --port "$PORT" --hostname 0.0.0.0 &
 SERVER_PID=$!
 
 # Wait for it to actually serve a request before opening the browser — Next
@@ -141,7 +168,25 @@ if [ -z "$READY" ]; then
 else
   open "$URL"
   printf "\n"
-  green "$APP_NAME is running at $URL"
+  green "$APP_NAME is running."
+  printf "\n"
+  bold "On this Mac:  $URL"
+
+  if [ -n "$PHONE_URL" ]; then
+    bold "On your phone: $PHONE_URL"
+    dim "Your phone must be on the same Wi-Fi as this Mac."
+
+    # Scanning beats typing an IP address on a phone keyboard. Optional — the
+    # URL above works on its own if qrencode is not installed.
+    if command -v qrencode >/dev/null 2>&1; then
+      printf "\n"
+      qrencode -t ANSIUTF8 -m 1 "$PHONE_URL"
+    else
+      dim "Tip: \`brew install qrencode\` and this will also print a scannable QR code."
+    fi
+  else
+    dim "No network connection found, so there is no phone URL this time."
+  fi
 fi
 
 printf "\n"
