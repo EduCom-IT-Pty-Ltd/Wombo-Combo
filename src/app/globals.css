@@ -7,6 +7,10 @@
  * the field crew runs it one-handed on a phone in daylight. So: high-contrast
  * text, generous tap targets, and a restrained palette where colour means
  * status rather than decoration.
+ *
+ * Light is the default and the system preference is deliberately ignored —
+ * the theme is a per-user choice, stored in localStorage and applied to
+ * `<html data-theme>` before first paint by the script in `layout.tsx`.
  */
 :root {
   --background: #f4f6fb;
@@ -21,6 +25,8 @@
   --primary-muted: #eaf0ff;
 
   --radius: 0.75rem;
+
+  color-scheme: light;
 
   /* Status tones. Each is a bg / fg / border triple. */
   --tone-slate-bg: #eef0f3;
@@ -37,32 +43,32 @@
   --tone-rose-fg: #9c1c2c;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0c0e12;
-    --surface: #14171d;
-    --surface-muted: #1b1f27;
-    --border: #262b34;
-    --border-strong: #363d49;
-    --foreground: #eef0f4;
-    --muted-foreground: #98a1b2;
-    --primary: #5b8bff;
-    --primary-foreground: #0c0e12;
-    --primary-muted: #17233d;
+:root[data-theme="dark"] {
+  --background: #0c0e12;
+  --surface: #14171d;
+  --surface-muted: #1b1f27;
+  --border: #262b34;
+  --border-strong: #363d49;
+  --foreground: #eef0f4;
+  --muted-foreground: #98a1b2;
+  --primary: #5b8bff;
+  --primary-foreground: #0c0e12;
+  --primary-muted: #17233d;
 
-    --tone-slate-bg: #1e232c;
-    --tone-slate-fg: #b3bcca;
-    --tone-amber-bg: #33240d;
-    --tone-amber-fg: #f5c277;
-    --tone-blue-bg: #14213d;
-    --tone-blue-fg: #94b6ff;
-    --tone-violet-bg: #221836;
-    --tone-violet-fg: #c3a9fb;
-    --tone-emerald-bg: #0e2a1d;
-    --tone-emerald-fg: #7ddaa4;
-    --tone-rose-bg: #331419;
-    --tone-rose-fg: #f79aa6;
-  }
+  --tone-slate-bg: #1e232c;
+  --tone-slate-fg: #b3bcca;
+  --tone-amber-bg: #33240d;
+  --tone-amber-fg: #f5c277;
+  --tone-blue-bg: #14213d;
+  --tone-blue-fg: #94b6ff;
+  --tone-violet-bg: #221836;
+  --tone-violet-fg: #c3a9fb;
+  --tone-emerald-bg: #0e2a1d;
+  --tone-emerald-fg: #7ddaa4;
+  --tone-rose-bg: #331419;
+  --tone-rose-fg: #f79aa6;
+
+  color-scheme: dark;
 }
 
 @theme inline {

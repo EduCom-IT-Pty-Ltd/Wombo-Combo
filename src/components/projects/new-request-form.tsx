@@ -13,9 +13,14 @@ const initial: NewRequestState = { status: "idle" };
  * form-action + `useActionState` pattern so it works without JS and reports
  * field errors from the same Zod schema the server validates with.
  */
-export function NewRequestForm({ customers, templates }: { customers: Array<{ id: string; name: string; defaultProjectTemplateId: string | null }>; templates: ProjectTemplate[] }) {
+export function NewRequestForm({ customers, templates, defaultCustomerId }: { customers: Array<{ id: string; name: string; defaultProjectTemplateId: string | null }>; templates: ProjectTemplate[]; defaultCustomerId?: string }) {
   const [state, formAction, pending] = useActionState(createProjectRequest, initial);
-  const [templateId, setTemplateId] = useState("");
+  const [customerId, setCustomerId] = useState(defaultCustomerId ?? "");
+  // Arriving from a customer page pre-applies that customer's default template,
+  // the same as picking them from the dropdown would.
+  const [templateId, setTemplateId] = useState(
+    () => customers.find((customer) => customer.id === defaultCustomerId)?.defaultProjectTemplateId ?? "",
+  );
 
   return (
     <form action={formAction}>
@@ -27,7 +32,16 @@ export function NewRequestForm({ customers, templates }: { customers: Array<{ id
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-muted-foreground">Customer</span>
-              <select name="customerId" required className={inputClass} onChange={(event) => setTemplateId(customers.find((customer) => customer.id === event.target.value)?.defaultProjectTemplateId ?? "")}>
+              <select
+                name="customerId"
+                required
+                className={inputClass}
+                value={customerId}
+                onChange={(event) => {
+                  setCustomerId(event.target.value);
+                  setTemplateId(customers.find((customer) => customer.id === event.target.value)?.defaultProjectTemplateId ?? "");
+                }}
+              >
                 <option value="">Select a customer…</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>

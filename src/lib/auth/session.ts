@@ -65,6 +65,18 @@ export const DEMO_USER: SessionUser = {
 
 export const DEMO_ROLE_COOKIE = "wc_demo_role";
 
+/**
+ * In demo mode the session user is an office account, so the field screens
+ * borrow an installer identity to have real assignments and timesheets to work
+ * against. With WorkOS this collapses to `session.user.id`. Both the field page
+ * and the field actions go through here so they always agree on who is on site.
+ */
+export const DEMO_FIELD_USER_ID = "u-ash";
+
+export function fieldUserId(session: Session): string {
+  return session.isDemo ? DEMO_FIELD_USER_ID : session.user.id;
+}
+
 async function loadSession(): Promise<Session> {
   const jar = await cookies();
   const role = (jar.get(DEMO_ROLE_COOKIE)?.value as Role | undefined) ?? "project_manager";

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ThemeScript } from "@/components/layout/theme";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,10 +22,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#14171d" },
-  ],
+  // Light is the default theme; `ThemeToggle` rewrites this tag when the user
+  // switches, so it cannot key off the system preference.
+  themeColor: "#ffffff",
   // Field crews wear gloves and zoom. Never disable it.
   maximumScale: 5,
   viewportFit: "cover",
@@ -38,8 +38,14 @@ export default function RootLayout({
   return (
     <html
       lang="en-AU"
+      data-theme="light"
+      // `ThemeScript` rewrites data-theme before React hydrates.
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <ThemeScript />
+      </head>
       <body className="flex min-h-full flex-col">{children}</body>
     </html>
   );

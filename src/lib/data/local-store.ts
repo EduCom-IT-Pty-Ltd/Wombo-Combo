@@ -206,6 +206,103 @@ function addEvent(store: LocalStore, projectId: string, summary: string, actorId
   });
 }
 
+/**
+ * Field capture. These are the writes the crew makes from a phone, so each one
+ * is small, self-contained and appends a project event — the office sees what
+ * happened on site without anyone having to phone it in.
+ */
+
+export async function startLocalTimeEntry(input: { projectId: string; userId: string; notes?: string }) {
+  return updateLocalStore((store) => {
+    const open = store.timeEntries.find((entry) => entry.userId === input.userId && entry.endedAt === null);
+    // One clock at a time. Whatever the crew tapped last is the job they are on.
+    if (open) return open;
+    const person = store.people.find((item) => item.id === input.userId);
+    const entry = {
+      id: `te-${randomUUID()}`,
+      projectId: input.projectId,
+      userId: input.userId,
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+      breakMinutes: 0,
+      costRateCentsPerHour: person?.costRateCentsPerHour ?? 0,
+      notes: input.notes?.trim() || null,
+    };
+    store.timeEntries.push(entry);
+    addEvent(store, input.projectId, `${person?.name ?? "Crew"} clocked on site`, input.userId);
+    return entry;
+  });
+}
+
+export async function endLocalTimeEntry(input: { entryId: string; userId: string; breakMinutes: number }) {
+  return updateLocalStore((store) => {
+    const entry = store.timeEntries.find((item) => item.id === input.entryId && item.userId === input.userId);
+    if (!entry || entry.endedAt) return null;
+    entry.endedAt = new Date().toISOString();
+    entry.breakMinutes = input.breakMinutes;
+    const person = store.people.find((item) => item.id === input.userId);
+    addEvent(store, entry.projectId, `${person?.name ?? "Crew"} clocked off site`, input.userId);
+    return entry;
+  });
+}
+
+export async function addLocalMaterialUse(input: {
+  projectId: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  userId: string;
+}) {
+  return updateLocalStore((store) => {
+    // Unit cost comes from the catalogue when the crew picks a known line, so
+    // nobody on site is ever asked to type a price.
+    const catalogue = store.catalogueMaterials.find(
+      (item) => item.name.toLowerCase() === input.description.trim().toLowerCase(),
+    );
+    const use = {
+      id: `m-${randomUUID()}`,
+      projectId: input.projectId,
+      description: input.description.trim(),
+      quantity: input.quantity,
+      unit: input.unit,
+      unitCostCents: catalogue?.costCentsPerM2 ?? 0,
+      recordedById: input.userId,
+      recordedAt: new Date().toISOString(),
+    };
+    store.materials.push(use);
+    addEvent(store, input.projectId, `Materials used: ${input.quantity} ${input.unit} ${use.description}`, input.userId);
+    return use;
+  });
+}
+
+export async function addLocalVariation(input: { projectId: string; title: string; userId: string }) {
+  return updateLocalStore((store) => {
+    const project = store.projects.find((item) => item.id === input.projectId);
+    const suffix = project?.projectNumber.split("-").pop() ?? "0000";
+    const sequence = store.variations.filter((item) => item.projectId === input.projectId).length + 1;
+    const variation = {
+      id: `v-${randomUUID()}`,
+      projectId: input.projectId,
+      reference: `VO-${suffix}-${String(sequence).padStart(2, "0")}`,
+      title: input.title.trim(),
+      // Raised from site as a flag only: the office prices it before it is sent.
+      status: "draft",
+      estimatedCostCents: 0,
+      quotedSellCents: 0,
+    };
+    store.variations.push(variation);
+    addEvent(store, input.projectId, `Variation raised on site: ${variation.reference} — ${variation.title}`, input.userId);
+    return variation;
+  });
+}
+
+export async function addLocalSiteNote(input: { projectId: string; note: string; userId: string }) {
+  return updateLocalStore((store) => {
+    const person = store.people.find((item) => item.id === input.userId);
+    addEvent(store, input.projectId, `Site note from ${person?.name ?? "crew"}: ${input.note.trim()}`, input.userId);
+  });
+}
+
 export async function createLocalCustomer(input: {
   name: string;
   accountType?: string;

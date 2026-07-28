@@ -18,6 +18,12 @@ const transitionSchema = z.object({
   overrideReason: z.string().trim().min(3).optional(),
   /** Explicit confirmation from the workflow dialog permits a deliberate stage jump. */
   confirmJump: z.boolean().optional(),
+  /**
+   * Tick-box on that dialog. Off by default: skipping ahead does not imply the
+   * work behind you was done, so the earlier checklists stay open unless the
+   * person moving the project says otherwise.
+   */
+  completeSkipped: z.boolean().optional(),
 });
 
 export interface ActionResult {
@@ -37,7 +43,7 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
   if (!parsed.success) {
     return { ok: false, message: "Invalid request" };
   }
-  const { projectId, to, overrideReason, confirmJump } = parsed.data;
+  const { projectId, to, overrideReason, confirmJump, completeSkipped } = parsed.data;
 
   const session = await requireCapability("project.transition");
   const project = await getProject(session.org.id, projectId);
@@ -64,7 +70,7 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
     };
   }
 
-  if (confirmJump) await completeWorkflowTasksThrough(projectId, to);
+  if (confirmJump && completeSkipped) await completeWorkflowTasksThrough(projectId, to);
   if (check.warnings.length > 0 && !can(session.role, "project.transition.override")) {
     return {
       ok: false,

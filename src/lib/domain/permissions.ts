@@ -132,6 +132,15 @@ export function canAny(role: Role, capabilities: Capability[]): boolean {
   return capabilities.some((c) => can(role, c));
 }
 
+/**
+ * Someone who clocks onto jobs rather than runs them. They get the stripped-back
+ * field experience: `/field` as their home, and none of the office navigation.
+ * Deliberately derived from capabilities so a new site-based role inherits it.
+ */
+export function isFieldOnly(role: Role): boolean {
+  return can(role, "field.clock") && !can(role, "project.edit");
+}
+
 export const ROLE_LABELS: Record<Role, string> = {
   owner: "Owner",
   admin: "Administrator",

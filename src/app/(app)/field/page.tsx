@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Camera, FileText, MapPin, Package, ShieldAlert, TriangleAlert } from "lucide-react";
-import { getSession } from "@/lib/auth/session";
+import { CalendarDays, MapPin, ShieldAlert } from "lucide-react";
+import { fieldUserId, getSession } from "@/lib/auth/session";
+import { entryHours } from "@/lib/domain/costing";
 import {
   getOpenTimeEntry,
   listAssignments,
@@ -8,80 +9,106 @@ import {
   listPeople,
   listProjects,
   listTasks,
+  listTimeEntries,
 } from "@/lib/data/repository";
-import { Badge, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui";
+import { Card, CardHeader, EmptyState } from "@/components/ui";
 import { ClockButton } from "@/components/field/clock-button";
+import { LogActions } from "@/components/field/log-actions";
 import { formatDate, formatTime } from "@/lib/utils";
 
 export const metadata = { title: "My Day" };
 
 /**
- * The field app. Optimised for one-handed phone use on site: today's job first,
- * one big clock button, then the things a crew actually opens — SWMS, drawings,
- * and the buttons to record materials, photos and variations.
- *
- * In demo mode the session user is an office account, so we borrow an installer
- * identity to have something to show. With WorkOS this is just `session.user.id`.
+ * The crew's home screen. One job, one clock, four log buttons — everything a
+ * person standing on site with a phone in one hand needs, and nothing else.
+ * Office detail (margins, pipeline, quotes) deliberately never appears here.
  */
-const DEMO_FIELD_USER_ID = "u-ash";
-
 export default async function FieldPage() {
   const session = await getSession();
-  const fieldUserId = session.isDemo ? DEMO_FIELD_USER_ID : session.user.id;
+  const userId = fieldUserId(session);
 
-  const [assignments, people, openEntry, tasks] = await Promise.all([
-    listAssignments(session.org.id, { userId: fieldUserId }),
+  const [assignments, people, openEntry, tasks, myEntries] = await Promise.all([
+    listAssignments(session.org.id, { userId }),
     listPeople(session.org.id),
-    getOpenTimeEntry(session.org.id, fieldUserId),
-    listTasks(session.org.id, { assigneeId: fieldUserId }),
+    getOpenTimeEntry(session.org.id, userId),
+    listTasks(session.org.id, { assigneeId: userId }),
+    listTimeEntries(session.org.id, { userId }),
   ]);
 
-  const me = people.find((p) => p.id === fieldUserId);
+  const me = people.find((person) => person.id === userId);
   const now = new Date();
 
-  const today = assignments.filter(
-    (a) => new Date(a.startsAt) <= now && new Date(a.endsAt) >= now,
-  );
+  const current = assignments.find((a) => new Date(a.startsAt) <= now && new Date(a.endsAt) >= now);
   const upcoming = assignments.filter((a) => new Date(a.startsAt) > now).slice(0, 4);
 
-  const current = today[0];
-  const [project, documents] = current
+  // The job you are clocked onto wins over the booking, so a crew pulled onto a
+  // different site still sees the right buttons.
+  const activeProjectId = openEntry?.projectId ?? current?.projectId;
+  const [project, documents] = activeProjectId
     ? await Promise.all([
-        listProjects(session.org.id).then((ps) => ps.find((p) => p.id === current.projectId)),
-        listDocuments(session.org.id, current.projectId),
+        listProjects(session.org.id).then((all) => all.find((p) => p.id === activeProjectId)),
+        listDocuments(session.org.id, activeProjectId),
       ])
     : [undefined, []];
 
   const mustAcknowledge = documents.filter((d) => d.requiresAcknowledgement);
   const myTasks = tasks.filter((t) => t.status !== "done" && t.status !== "cancelled");
 
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const hoursToday = myEntries
+    .filter((entry) => entry.startedAt >= startOfDay)
+    .reduce((sum, e) => sum + entryHours(new Date(e.startedAt), e.endedAt ? new Date(e.endedAt) : null, e.breakMinutes), 0);
+
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="My Day"
-        description={`${me?.name ?? "You"} · ${formatDate(now, true)}`}
-      />
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {greeting()}, {me?.name?.split(" ")[0] ?? "there"}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {formatDate(now, true)}
+          {hoursToday > 0 ? ` · ${hoursToday.toFixed(1)}h logged today` : ""}
+        </p>
+      </div>
 
-      {current && project ? (
-        <Card>
-          <CardHeader
-            title={project.title}
-            description={project.customerName}
-            action={<Badge tone="violet">{current.role}</Badge>}
-          />
-          <div className="space-y-3 px-4 py-3">
-            <p className="flex items-start gap-2 text-sm text-muted-foreground">
-              <MapPin className="mt-0.5 size-4 shrink-0" />
-              <span>{project.siteLabel}</span>
+      {project ? (
+        <Card className="overflow-hidden">
+          <div className="border-b border-border-subtle bg-surface-muted px-4 py-3">
+            <p className="text-xs font-bold tracking-[0.12em] text-muted-foreground uppercase">
+              {openEntry ? "On site now" : "Today's job"}
             </p>
-            <p className="text-xs text-muted-foreground">
-              Booked {formatTime(current.startsAt)} – {formatTime(current.endsAt)}
-            </p>
+            <h2 className="mt-1 text-lg font-bold leading-snug">{project.title}</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">{project.customerName}</p>
+          </div>
+
+          <div className="space-y-4 px-4 py-4">
+            {project.siteLabel ? (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(project.siteLabel)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-11 items-center gap-2.5 rounded-[var(--radius)] border border-border-subtle px-3 py-2.5 text-sm active:bg-surface-muted"
+              >
+                <MapPin className="size-5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">{project.siteLabel}</span>
+                <span className="shrink-0 text-xs font-bold text-primary">Directions</span>
+              </a>
+            ) : null}
+
+            {current ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <CalendarDays className="size-4 shrink-0" />
+                Booked {formatTime(current.startsAt)} – {formatTime(current.endsAt)} · {current.role}
+              </p>
+            ) : null}
 
             {mustAcknowledge.length > 0 ? (
-              <div className="rounded-[var(--radius)] tone-amber px-3 py-2.5">
-                <p className="flex items-center gap-1.5 text-xs font-medium">
-                  <ShieldAlert className="size-3.5" />
+              <Link
+                href={`/projects/${project.id}/documents`}
+                className="block rounded-[var(--radius)] tone-amber px-3 py-3"
+              >
+                <p className="flex items-center gap-2 text-sm font-bold">
+                  <ShieldAlert className="size-4 shrink-0" />
                   {mustAcknowledge.length} document{mustAcknowledge.length === 1 ? "" : "s"} to sign on
                 </p>
                 <ul className="mt-1 space-y-0.5">
@@ -91,19 +118,17 @@ export default async function FieldPage() {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Link>
             ) : null}
 
             <ClockButton
-              projectId={current.projectId}
+              projectId={project.id}
               openEntry={openEntry ? { id: openEntry.id, startedAt: openEntry.startedAt } : null}
             />
 
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <QuickAction href={`/projects/${current.projectId}/field`} icon={<Package className="size-5" />} label="Materials" />
-              <QuickAction href={`/projects/${current.projectId}/field`} icon={<Camera className="size-5" />} label="Photos" />
-              <QuickAction href={`/projects/${current.projectId}/field`} icon={<TriangleAlert className="size-5" />} label="Variation" />
-              <QuickAction href={`/projects/${current.projectId}/documents`} icon={<FileText className="size-5" />} label="Docs" />
+            <div>
+              <p className="mb-2 text-xs font-bold tracking-[0.12em] text-muted-foreground uppercase">Log something</p>
+              <LogActions projectId={project.id} />
             </div>
           </div>
         </Card>
@@ -111,23 +136,25 @@ export default async function FieldPage() {
         <Card>
           <EmptyState
             title="Nothing on site today"
-            description="You have no active booking right now. Upcoming jobs are listed below."
+            description="You have no active booking right now. Anything coming up is listed below."
           />
         </Card>
       )}
 
       {myTasks.length > 0 ? (
         <Card>
-          <CardHeader title="My tasks" />
+          <CardHeader title="My jobs to do" description={`${myTasks.length} outstanding`} />
           <ul className="divide-y divide-border-subtle">
             {myTasks.map((task) => (
               <li key={task.id}>
                 <Link
                   href={`/projects/${task.projectId}/tasks`}
-                  className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface-muted"
+                  className="flex min-h-14 items-center justify-between gap-3 px-4 py-3 active:bg-surface-muted"
                 >
-                  <span className="min-w-0 truncate text-sm">{task.title}</span>
-                  <Badge tone={task.status === "blocked" ? "rose" : "slate"}>{task.status.replace("_", " ")}</Badge>
+                  <span className="min-w-0 text-sm font-medium">{task.title}</span>
+                  {task.status === "blocked" ? (
+                    <span className="shrink-0 rounded-full tone-rose px-2 py-0.5 text-xs font-bold">Blocked</span>
+                  ) : null}
                 </Link>
               </li>
             ))}
@@ -143,13 +170,13 @@ export default async function FieldPage() {
               <li key={a.id}>
                 <Link
                   href={`/projects/${a.projectId}`}
-                  className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface-muted"
+                  className="flex min-h-14 items-center justify-between gap-3 px-4 py-3 active:bg-surface-muted"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm">{a.projectTitle}</p>
+                    <p className="truncate text-sm font-medium">{a.projectTitle}</p>
                     <p className="truncate text-xs text-muted-foreground">{a.siteLabel}</p>
                   </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">{formatDate(a.startsAt)}</span>
+                  <span className="shrink-0 text-xs font-semibold text-muted-foreground">{formatDate(a.startsAt)}</span>
                 </Link>
               </li>
             ))}
@@ -162,14 +189,9 @@ export default async function FieldPage() {
   );
 }
 
-function QuickAction({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
-  return (
-    <Link
-      href={href}
-      className="flex h-20 flex-col items-center justify-center gap-1.5 rounded-[var(--radius)] border border-border-subtle text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
-    >
-      {icon}
-      {label}
-    </Link>
-  );
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Morning";
+  if (hour < 18) return "Afternoon";
+  return "Evening";
 }

@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
 import { getCustomer, isCustomerArchived, listCustomerPriceLists, listPeople, listProjectTemplates, listProjects, listQuotes } from "@/lib/data/repository";
-import { Card, CardHeader, EmptyState, Field, Stat } from "@/components/ui";
+import { ButtonLink, Card, CardHeader, EmptyState, Field, Stat } from "@/components/ui";
 import { ProjectRow } from "@/components/projects/project-row";
 import { CustomerProjectTemplateSelect } from "@/components/customers/customer-project-template-select";
 import { CustomerOptions } from "@/components/customers/customer-options";
@@ -25,6 +25,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   ]);
   const quotes = (await Promise.all(projects.map((project) => listQuotes(session.org.id, project.id)))).flat();
   const showFinancials = can(session.role, "finance.view");
+  const createProjectHref = `/projects/new?customerId=${customer.id}`;
+  const canCreateProject = can(session.role, "project.create") && !archived;
 
   const won = projects.filter((p) => !["new_request", "quoting", "quote_sent", "awaiting_approval", "lost"].includes(p.status));
   const quoted = projects.filter((p) => ["quote_sent", "awaiting_approval", "approved", "lost"].includes(p.status));
@@ -41,7 +43,27 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <ArrowLeft className="size-3.5" /> Customers
       </Link>
 
-      <div><div className="flex items-center gap-1"><h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{customer.name}</h1>{can(session.role, "customer.manage") ? <CustomerOptions customer={customer} priceLists={priceLists.map((list) => ({ id: list.id, name: list.name }))} projectTemplates={projectTemplates.map((template) => ({ id: template.id, name: template.name }))} archived={archived} /> : null}</div>{customer.accountType ? <p className="mt-1 text-sm text-muted-foreground">{customer.accountType}</p> : null}</div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{customer.name}</h1>
+            {can(session.role, "customer.manage") ? (
+              <CustomerOptions
+                customer={customer}
+                priceLists={priceLists.map((list) => ({ id: list.id, name: list.name }))}
+                projectTemplates={projectTemplates.map((template) => ({ id: template.id, name: template.name }))}
+                archived={archived}
+              />
+            ) : null}
+          </div>
+          {customer.accountType ? <p className="mt-1 text-sm text-muted-foreground">{customer.accountType}</p> : null}
+        </div>
+        {canCreateProject ? (
+          <ButtonLink href={createProjectHref} variant="primary" className="w-full sm:w-auto">
+            <Plus className="size-4" /> Create project
+          </ButtonLink>
+        ) : null}
+      </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Active projects" value={customer.activeProjects} />
@@ -55,7 +77,16 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader title="Projects" />
+          <CardHeader
+            title="Projects"
+            action={
+              canCreateProject ? (
+                <ButtonLink href={createProjectHref} size="sm">
+                  <Plus className="size-3.5" /> New
+                </ButtonLink>
+              ) : null
+            }
+          />
           {projects.length ? (
             <div className="divide-y divide-border-subtle">
               {projects.map((p) => (
@@ -63,7 +94,17 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
               ))}
             </div>
           ) : (
-            <EmptyState title="No projects yet" />
+            <EmptyState
+              title="No projects yet"
+              description={canCreateProject ? `Start the first job for ${customer.name}.` : undefined}
+              action={
+                canCreateProject ? (
+                  <ButtonLink href={createProjectHref} variant="primary">
+                    <Plus className="size-4" /> Create project
+                  </ButtonLink>
+                ) : null
+              }
+            />
           )}
         </Card>
 

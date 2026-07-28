@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { can } from "@/lib/domain/permissions";
+import { can, isFieldOnly } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
 import { PIPELINE_ORDER, STATUS_META } from "@/lib/domain/status";
 import {
@@ -17,6 +18,8 @@ import { formatDate, formatRelative, isOverdue } from "@/lib/utils";
 
 export default async function DashboardPage() {
   const session = await getSession();
+  // Crew never see the office dashboard — their home is the job they are on.
+  if (isFieldOnly(session.role)) redirect("/field");
   const orgId = session.org.id;
   const showFinancials = can(session.role, "finance.view");
 

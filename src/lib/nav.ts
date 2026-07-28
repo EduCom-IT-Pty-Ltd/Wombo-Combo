@@ -1,4 +1,5 @@
-import type { Capability } from "@/lib/domain/permissions";
+import type { Role } from "@/lib/db/schema/enums";
+import { type Capability, can, isFieldOnly } from "@/lib/domain/permissions";
 
 export interface NavItem {
   href: string;
@@ -57,3 +58,13 @@ export const PROJECT_TABS: ProjectTab[] = [
   { segment: "costing", label: "Costing", capability: "finance.view" },
   { segment: "activity", label: "Activity", capability: "project.view" },
 ];
+
+/**
+ * Navigation for a role, already capability-filtered. Field-only crew get a
+ * three-destination bar — My Day, Calendar, Projects — because the dashboard
+ * redirects them to `/field` anyway and everything else is office work.
+ */
+export function navItemsFor(role: Role): NavItem[] {
+  const items = NAV_ITEMS.filter((item) => can(role, item.capability));
+  return isFieldOnly(role) ? items.filter((item) => item.href !== "/") : items;
+}

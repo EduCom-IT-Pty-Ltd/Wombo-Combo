@@ -3,6 +3,7 @@ import type { Role } from "@/lib/db/schema/enums";
 import { ROLE_LABELS } from "@/lib/domain/permissions";
 import { Avatar } from "@/components/ui";
 import { RoleSwitcher } from "./role-switcher";
+import { ThemeToggle } from "./theme";
 
 export function TopBar({
   orgName,
@@ -19,9 +20,11 @@ export function TopBar({
 }) {
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border-subtle bg-surface/90 px-4 pt-safe shadow-[0_4px_18px_rgb(15_23_42/0.025)] backdrop-blur">
-      {/* Org identity is in the sidebar on desktop; repeat it on mobile. */}
-      <div className="flex items-center gap-2 lg:hidden">
-        <span className="grid size-7 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm">
+      {/* Org identity is in the sidebar on desktop; repeat it on mobile.
+          `min-w-0` lets a long org name truncate rather than shove the theme
+          toggle and avatar off the right edge of a phone. */}
+      <div className="flex min-w-0 items-center gap-2 lg:hidden">
+        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm">
           WC
         </span>
         <span className="truncate text-sm font-semibold">{orgName}</span>
@@ -38,8 +41,9 @@ export function TopBar({
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-3">
         {isDemo ? <RoleSwitcher role={role} /> : null}
+        <ThemeToggle />
         <div className="flex items-center gap-2">
           <Avatar initials={initials} />
           <div className="hidden leading-tight sm:block">

@@ -78,17 +78,24 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
     });
   }
 
-  function move(to: ProjectStatus, jumping: boolean) {
+  function move(to: ProjectStatus, completeSkipped = false) {
     if (!projectId) return;
     setActionError(null);
     startTransition(async () => {
-      const result = await transitionProject({ projectId, to, confirmJump: jumping, overrideReason: jumping ? "Workflow stage confirmed" : undefined });
+      const result = await transitionProject({ projectId, to, confirmJump: true, completeSkipped, overrideReason: "Workflow stage confirmed" });
       if (result.ok) {
         setConfirming(null);
         router.refresh();
       } else setActionError(result.message);
     });
   }
+
+  const confirmingIndex = confirming ? flow.findIndex((setting) => setting.status === confirming) : -1;
+  // Stages whose checklists a forward move would step over, current one included.
+  // Naming them is the whole point: the person moving the job should see exactly
+  // what is being left behind before deciding to tick it off.
+  const skippedStages =
+    confirming && !offPipeline && confirmingIndex > index ? flow.slice(index, confirmingIndex).map((setting) => setting.label) : [];
 
   return (
     <section className="rounded-xl border-2 border-border-strong bg-surface p-4 shadow-sm sm:p-5">
@@ -140,7 +147,7 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
               <p className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Stage checklist</p>
               <p className="mt-1 text-base font-bold">Complete these tasks to progress</p>
             </div>
-            {next ? <Button size="md" variant="primary" disabled={!canEdit || pending} onClick={() => incomplete.length > 0 ? setConfirming(next.status) : move(next.status, true)}>Move to {next.label}</Button> : null}
+            {next ? <Button size="md" variant="primary" disabled={!canEdit || pending} onClick={() => incomplete.length > 0 ? setConfirming(next.status) : move(next.status)}>Move to {next.label}</Button> : null}
           </div>
 
           {fields?.length ? <div className="mt-4 rounded-lg border border-border-strong bg-surface p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Project details</p><p className="mt-0.5 text-sm font-semibold">Information required at this stage</p></div><Button size="sm" variant="secondary" disabled={!canEdit || pending} onClick={saveFields}>Save details</Button></div><div className="mt-3 grid gap-3 sm:grid-cols-2">{fields.map((field) => <label key={field.id} className="block"><span className="mb-1 block text-xs font-bold text-muted-foreground">{field.label}</span><input value={fieldValues[field.id] ?? ""} onChange={(event) => setFieldValues((current) => ({ ...current, [field.id]: event.target.value }))} disabled={!canEdit || pending} className="h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-foreground" placeholder={`Enter ${field.label.toLowerCase()}`} />{field.updatedAt ? <span className="mt-1 block text-[10px] text-muted-foreground">Updated {formatCompletionTime(field.updatedAt)}</span> : null}</label>)}</div></div> : null}
@@ -174,23 +181,30 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
         </div>
       ) : null}
 
-      {confirming ? <StatusMoveDialog currentIndex={index} targetIndex={flow.findIndex((setting) => setting.status === confirming)} targetLabel={settingFor(confirming)?.label ?? confirming} incompleteTaskCount={incomplete.length} pending={pending} onConfirm={() => move(confirming, true)} onCancel={() => setConfirming(null)} /> : null}
+      {confirming ? <StatusMoveDialog currentIndex={index} targetIndex={confirmingIndex} targetLabel={settingFor(confirming)?.label ?? confirming} incompleteTaskCount={incomplete.length} skippedStages={skippedStages} pending={pending} onConfirm={(completeSkipped) => move(confirming, completeSkipped)} onCancel={() => setConfirming(null)} /> : null}
     </section>
   );
 }
 
-function StatusMoveDialog({ currentIndex, targetIndex, targetLabel, incompleteTaskCount, pending, onConfirm, onCancel }: { currentIndex: number; targetIndex: number; targetLabel: string; incompleteTaskCount: number; pending: boolean; onConfirm: () => void; onCancel: () => void }) {
+/**
+ * Moving forward never silently ticks off work that was not done. Any move that
+ * would step over an open checklist offers it as an explicit, unticked choice,
+ * and names the stages involved.
+ */
+function StatusMoveDialog({ currentIndex, targetIndex, targetLabel, incompleteTaskCount, skippedStages, pending, onConfirm, onCancel }: { currentIndex: number; targetIndex: number; targetLabel: string; incompleteTaskCount: number; skippedStages: string[]; pending: boolean; onConfirm: (completeSkipped: boolean) => void; onCancel: () => void }) {
+  const [completeSkipped, setCompleteSkipped] = useState(false);
   const direction = targetIndex === -1 ? "off-ramp" : targetIndex < currentIndex ? "backward" : targetIndex > currentIndex + 1 ? "skip" : "forward";
-  const message = incompleteTaskCount > 0 && direction === "forward"
-    ? `This stage still has ${incompleteTaskCount} incomplete ${incompleteTaskCount === 1 ? "task" : "tasks"}. Confirming will mark them complete and move the project forward.`
-    : direction === "backward"
+  const message = direction === "backward"
     ? "This moves the project backward. Its previous checklist history and completion timestamps will remain available to review and edit."
-    : direction === "skip"
-      ? "This skips forward and automatically completes the checklist tasks in every stage in between."
-      : direction === "off-ramp"
-        ? "This marks the project as an off-ramp outcome. You can still review its workflow history."
-        : "This moves the project forward to the next stage.";
-  return <><button type="button" aria-label="Close confirmation" onClick={onCancel} className="fixed inset-0 z-40 bg-black/45" /><div role="dialog" aria-modal="true" aria-labelledby="move-status-title" className="fixed top-1/2 left-1/2 z-50 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-primary bg-surface p-5 shadow-2xl"><p className="text-xs font-bold tracking-[0.12em] text-primary uppercase">Confirm status change</p><h3 id="move-status-title" className="mt-1 text-lg font-bold">Move to {targetLabel}?</h3><p className="mt-3 text-sm leading-relaxed text-muted-foreground">{message}</p><div className="mt-5 flex justify-end gap-2"><Button size="sm" variant="ghost" disabled={pending} onClick={onCancel}>Cancel</Button><Button size="sm" variant="primary" disabled={pending} onClick={onConfirm}>Confirm move</Button></div></div></>;
+    : direction === "off-ramp"
+      ? "This marks the project as an off-ramp outcome. You can still review its workflow history."
+      : direction === "skip"
+        ? `This skips ${skippedStages.length} ${skippedStages.length === 1 ? "stage" : "stages"} — ${skippedStages.join(", ")}. Their checklist tasks stay open so you can come back and tick them off.`
+        : incompleteTaskCount > 0
+          ? `This stage still has ${incompleteTaskCount} incomplete ${incompleteTaskCount === 1 ? "task" : "tasks"}. They stay open after the move unless you tick the box below.`
+          : "This moves the project forward to the next stage.";
+  const offerComplete = (direction === "skip" || direction === "forward") && (skippedStages.length > 0 || incompleteTaskCount > 0);
+  return <><button type="button" aria-label="Close confirmation" onClick={onCancel} className="fixed inset-0 z-40 bg-black/45" /><div role="dialog" aria-modal="true" aria-labelledby="move-status-title" className="fixed top-1/2 left-1/2 z-50 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-primary bg-surface p-5 shadow-2xl"><p className="text-xs font-bold tracking-[0.12em] text-primary uppercase">Confirm status change</p><h3 id="move-status-title" className="mt-1 text-lg font-bold">Move to {targetLabel}?</h3><p className="mt-3 text-sm leading-relaxed text-muted-foreground">{message}</p>{offerComplete ? <label className="mt-4 flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border-strong bg-surface-muted px-3 py-2.5"><input type="checkbox" checked={completeSkipped} onChange={(event) => setCompleteSkipped(event.target.checked)} className="size-5 shrink-0 accent-[var(--primary)]" /><span className="text-sm font-semibold">Mark every checklist task before {targetLabel} as complete</span></label> : null}<div className="mt-5 flex justify-end gap-2"><Button size="sm" variant="ghost" disabled={pending} onClick={onCancel}>Cancel</Button><Button size="sm" variant="primary" disabled={pending} onClick={() => onConfirm(completeSkipped)}>Confirm move</Button></div></div></>;
 }
 
 function formatCompletionTime(value: string | null | undefined) {

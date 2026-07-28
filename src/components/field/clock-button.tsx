@@ -6,6 +6,8 @@ import { Play, Square } from "lucide-react";
 import { clockOff, clockOn } from "@/app/actions/field";
 import { Button } from "@/components/ui";
 
+const BREAK_OPTIONS = [0, 30, 45, 60];
+
 /**
  * The single most-used control in the app. Full-width, thumb-height, and it
  * shows a live elapsed timer so an installer can confirm at a glance that the
@@ -21,6 +23,7 @@ export function ClockButton({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [elapsed, setElapsed] = useState("");
+  const [breakMinutes, setBreakMinutes] = useState(30);
 
   useEffect(() => {
     if (!openEntry) return;
@@ -48,12 +51,36 @@ export function ClockButton({
         <p className="text-center text-sm text-muted-foreground">
           On site · <span className="font-medium tabular-nums text-foreground">{elapsed}</span>
         </p>
+
+        {/* Asked before clocking off, not assumed afterwards — this comes
+            straight off the person's timesheet. */}
+        <div>
+          <p className="mb-1.5 text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Break taken</p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {BREAK_OPTIONS.map((minutes) => (
+              <button
+                key={minutes}
+                type="button"
+                onClick={() => setBreakMinutes(minutes)}
+                aria-pressed={breakMinutes === minutes}
+                className={`h-11 rounded-[var(--radius)] border text-sm font-bold ${
+                  breakMinutes === minutes
+                    ? "border-primary bg-primary-muted text-primary"
+                    : "border-border-strong text-muted-foreground"
+                }`}
+              >
+                {minutes === 0 ? "None" : `${minutes}m`}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <Button
           size="lg"
           variant="danger"
           className="w-full"
           disabled={pending}
-          onClick={() => run(() => clockOff({ entryId: openEntry.id, breakMinutes: 30 }))}
+          onClick={() => run(() => clockOff({ entryId: openEntry.id, breakMinutes }))}
         >
           <Square className="size-5" /> Clock off
         </Button>

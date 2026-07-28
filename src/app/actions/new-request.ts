@@ -59,7 +59,9 @@ export async function createProjectRequest(
       await applyLocalAutomationEffect(effect, { kind: "project.created", projectId: project.id });
     });
     if (template && template.startingStatus !== "new_request") {
-      const transition = await transitionProject({ projectId: project.id, to: template.startingStatus, confirmJump: true, overrideReason: "Project created from template" });
+      // Templates promise to clear the checklists for the stages they start
+      // past — a job that arrives with a PO never had a quoting stage to do.
+      const transition = await transitionProject({ projectId: project.id, to: template.startingStatus, confirmJump: true, completeSkipped: true, overrideReason: "Project created from template" });
       if (!transition.ok) return { status: "error", projectId: project.id, message: `${project.projectNumber} was created, but could not be moved to the template status: ${transition.message}` };
     }
     revalidatePath("/projects");

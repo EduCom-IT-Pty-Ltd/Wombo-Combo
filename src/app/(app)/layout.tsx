@@ -1,6 +1,5 @@
 import { getSession } from "@/lib/auth/session";
-import { can } from "@/lib/domain/permissions";
-import { NAV_ITEMS } from "@/lib/nav";
+import { navItemsFor } from "@/lib/nav";
 import { Sidebar } from "@/components/layout/sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { TopBar } from "@/components/layout/topbar";
@@ -14,7 +13,7 @@ import { PageTransition } from "@/components/layout/page-transition";
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  const [items, statusSettings] = [NAV_ITEMS.filter((item) => can(session.role, item.capability)), await readStatusSettings()];
+  const [items, statusSettings] = [navItemsFor(session.role), await readStatusSettings()];
 
   const userName = [session.user.firstName, session.user.lastName].filter(Boolean).join(" ") || session.user.email;
   const initials =
