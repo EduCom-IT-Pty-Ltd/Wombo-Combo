@@ -10,11 +10,13 @@ import type {
   ProjectDetail,
   ProjectEvent,
   QuoteSummary,
+  SchedulePhase,
   Site,
   Task,
   TimeEntry,
   Variation,
 } from "./types";
+import type { WorkflowFieldValue } from "@/lib/domain/status-settings";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
 
 /**
@@ -34,6 +36,15 @@ function at(dayOffset: number, hour = 7, minute = 0): string {
   const d = new Date(base.getTime() + dayOffset * DAY);
   d.setHours(hour, minute, 0, 0);
   return d.toISOString();
+}
+
+/**
+ * Calendar date only, for the schedule board. Built from local parts rather
+ * than `toISOString()`, which would roll back a day east of UTC.
+ */
+function isoDate(dayOffset: number): string {
+  const d = new Date(base.getTime() + dayOffset * DAY);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function initials(name: string) {
@@ -70,6 +81,17 @@ export const people: Person[] = [
   person("u-max", "Max Toure", "installer", { isSchedulable: true, costRateCentsPerHour: 7000 }),
   person("u-ola", "Ola Bergström", "qa_inspector"),
   person("u-fin", "Fin Carrasco", "finance"),
+  // Signatory on the real compliance certificate seeded with the Sundancer job,
+  // so the walk-through names the same person the paperwork does.
+  {
+    id: "u-mstempinski",
+    name: "Michael Stempinski",
+    initials: "MS",
+    role: "installer",
+    email: "ms@esinsulation.com",
+    isSchedulable: true,
+    costRateCentsPerHour: 6800,
+  },
 ];
 
 export const customers: Customer[] = [
@@ -138,6 +160,25 @@ export const customers: Customer[] = [
     activeProjects: 2,
     lifetimeValueCents: 133_900_00,
   },
+  /**
+   * Real account, seeded from the workflow Michael Stempinski sent through on
+   * 28 Jul 2026 so the Dyring Street job below can be walked end to end against
+   * the documents that actually moved. ABN and addresses are off the purchase
+   * order; quotes go out to Murray Quotes, invoices to murrayaccounts@.
+   */
+  {
+    id: "c-sundancer",
+    name: "Sundancer Homes",
+    accountType: "Volume builder",
+    abn: "27 118 504 000",
+    paymentTermsDays: 30,
+    primaryContactName: "Murray Quotes",
+    primaryContactEmail: "murrayaccounts@sundancerhomes.com.au",
+    primaryContactPhone: "+61 2 5024 5204",
+    siteCount: 1,
+    activeProjects: 1,
+    lifetimeValueCents: 9_503_55,
+  },
 ];
 
 export const sites: Site[] = [
@@ -200,6 +241,17 @@ export const sites: Site[] = [
     state: "NSW",
     postcode: "2065",
     accessNotes: "Live medical facility. Infection control protocol applies; no dust-generating work in Zone A.",
+  },
+  {
+    id: "s-dyring-05",
+    customerId: "c-sundancer",
+    name: "Lot 5, 3 Dyring Street",
+    address: "Lot 5, 3 Dyring Street",
+    suburb: "Tallangatta",
+    state: "VIC",
+    postcode: "3700",
+    accessNotes:
+      "Padlock code for access 7676. Site manager David Hansen 0428 551 722, david@sundancerhomes.com.au. Daily risk assessment before commencement; $200 backcharge if gates are left open.",
   },
 ];
 
@@ -462,6 +514,36 @@ const projectSeeds: ProjectSeed[] = [
     scope: "Amenities refurbishment across two levels. Lost on price to an incumbent.",
     updatedDays: -18,
   },
+  /**
+   * The Sundancer Homes reference job. Every date below is taken from a document
+   * in `public/demo-files/dyring-05/`, except the Stage 1 and Stage 2 site dates
+   * — only the Stage 3 SWMS (12 Jun 2026) and the compliance certificate
+   * (18 Jun 2026) were supplied, so the first two call-ups are placed at
+   * plausible build-sequence dates and marked as such on the phases.
+   */
+  {
+    id: "p-dyring05",
+    number: "NLI-2026-0052",
+    title: "Lot 5, 3 Dyring Street — insulation & wall wrap",
+    status: "ready_for_invoice",
+    customerId: "c-sundancer",
+    siteId: "s-dyring-05",
+    valueCents: 9_503_55,
+    marginPct: 30.8,
+    pm: "u-sam",
+    scope:
+      "Single-storey Sundancer home, insulation package to the CSR Bradford take-off GYP2510220 (rev 0, 21 Oct 2025):\n" +
+      "• Stage 1 — Enviroseal Wall Wrap Aero, 131.44 m² (5 rolls), supplied from our own warehouse.\n" +
+      "• Stage 2 — R2.7 external wall batts (57 pk), R2.0 internal wall batts (4 pk), R3.0 ceiling perimeter batts (8 pk); R6.0 ceiling batts (73 pk) loaded into the roof cavity ready for plaster.\n" +
+      "• Stage 3 — ceiling spread after plaster, to R6.0 average.\n" +
+      "All work to the CSR marked-up plan and NCC 2022 / AS 4859.1:2018.",
+    scheduledStart: -140,
+    scheduledEnd: -46,
+    po: "DYRING05/1.0188",
+    poReceivedDays: -225,
+    installedDays: -40,
+    updatedDays: -40,
+  },
 ];
 
 const customerById = new Map(customers.map((c) => [c.id, c]));
@@ -587,6 +669,39 @@ export const quotes: QuoteSummary[] = [
       { kind: "labour", description: "Fabrication and on-site assembly", quantity: 48, unit: "hr", unitCostCents: 6800, costCurrency: "AUD", fxRate: 1, marginPct: 34 },
     ],
   },
+  /**
+   * Built line-for-line off the CSR take-off. Quantities and product codes are
+   * exactly what CSR returned; the wall wrap line is overridden to $675.60 so it
+   * ties back to purchase order DYRING05/1.0188. Cost rates on the batt lines
+   * are indicative — EnviroShield's actual CSR buy prices were not supplied.
+   */
+  {
+    // `quote-` prefix deliberately: `readLocalStore` keeps only quotes with that
+    // prefix once the store has been written, so the reference job survives.
+    id: "quote-dyring05-1",
+    projectId: "p-dyring05",
+    reference: "NLI-2026-0052-Q1",
+    version: 1,
+    status: "accepted",
+    totalCents: 10_453_91,
+    subtotalSellCents: 9_503_55,
+    subtotalCostCents: 6_576_50,
+    marginPct: 30.8,
+    taxRatePct: 10,
+    validUntil: at(-250),
+    sentAt: at(-274, 11),
+    preparedById: "u-dee",
+    lines: [
+      { kind: "material", description: "Supply & install Enviroseal Wall Wrap Aero — 131.44 m² (5 rolls, code 488650)", quantity: 1, unit: "job", unitCostCents: 26_000, costCurrency: "AUD", fxRate: 1, marginPct: 0, unitSellCentsOverride: 675_60 },
+      { kind: "supplier", description: "Bradford Glasswool HP Wall Batt R2.7, 5 pk — external walls (code 152191)", quantity: 57, unit: "pack", unitCostCents: 2_450, costCurrency: "AUD", fxRate: 1, marginPct: 28 },
+      { kind: "supplier", description: "Bradford Glasswool Wall Batt R2.0, 22 pk — internal walls (code 15250)", quantity: 4, unit: "pack", unitCostCents: 7_700, costCurrency: "AUD", fxRate: 1, marginPct: 28 },
+      { kind: "supplier", description: "Bradford Glasswool HP Ceiling Batt R6.0, 6 pk (code 467949)", quantity: 73, unit: "pack", unitCostCents: 3_600, costCurrency: "AUD", fxRate: 1, marginPct: 28 },
+      { kind: "supplier", description: "Bradford Ceiling Perimeter Batt R3.0, 1200 × 430 (code 489105)", quantity: 8, unit: "pack", unitCostCents: 2_200, costCurrency: "AUD", fxRate: 1, marginPct: 28 },
+      { kind: "material", description: "Hightack tape 60mm × 25m and YouByute Flexi tape 80mm × 10m", quantity: 8, unit: "roll", unitCostCents: 2_200, costCurrency: "AUD", fxRate: 1, marginPct: 25 },
+      { kind: "labour", description: "Stage 2 — wall batt install and ceiling load-out", quantity: 16, unit: "hr", unitCostCents: 6_800, costCurrency: "AUD", fxRate: 1, marginPct: 30 },
+      { kind: "labour", description: "Stage 3 — ceiling spread after plaster", quantity: 8, unit: "hr", unitCostCents: 6_800, costCurrency: "AUD", fxRate: 1, marginPct: 30 },
+    ],
+  },
 ];
 
 export const tasks: Task[] = [
@@ -602,6 +717,31 @@ export const tasks: Task[] = [
   { id: "t-10", projectId: "p-1050", title: "Book site visit to scope staff room", kind: "general", status: "todo", assigneeId: "u-sam", dueOn: at(4), createdByAutomation: null },
   { id: "t-11", projectId: "p-1044", title: "Confirm EU booth delivery lands before install week", kind: "procurement", status: "todo", assigneeId: "u-dee", dueOn: at(2), createdByAutomation: null },
   { id: "t-12", projectId: "p-1048", title: "Follow up quote with Priya", kind: "admin", status: "todo", assigneeId: "u-dee", dueOn: at(3), createdByAutomation: null },
+  // Sundancer job. The three install tasks are the three call-ups: the workflow
+  // has one `in_progress` stage, so the stages live as tasks and phases.
+  { id: "t-dyring-1", projectId: "p-dyring05", title: "Send plans and NatHERS to CSR for take-off", kind: "procurement", status: "done", assigneeId: "u-dee", dueOn: at(-283), createdByAutomation: null },
+  { id: "t-dyring-2", projectId: "p-dyring05", title: "Stage 1 — install wall wrap (from warehouse stock)", kind: "install", status: "done", assigneeId: "u-mstempinski", dueOn: at(-140), createdByAutomation: null },
+  { id: "t-dyring-3", projectId: "p-dyring05", title: "Order wall & ceiling batts from CSR Bradford to take-off", kind: "procurement", status: "done", assigneeId: "u-dee", dueOn: at(-76), createdByAutomation: null },
+  { id: "t-dyring-4", projectId: "p-dyring05", title: "Stage 2 — install wall batts and load ceiling batts into roof cavity", kind: "install", status: "done", assigneeId: "u-mstempinski", dueOn: at(-69), createdByAutomation: null },
+  { id: "t-dyring-5", projectId: "p-dyring05", title: "Stage 3 — spread ceiling insulation after plaster", kind: "install", status: "done", assigneeId: "u-mstempinski", dueOn: at(-46), createdByAutomation: null },
+  { id: "t-dyring-6", projectId: "p-dyring05", title: "Issue compliance certificate to the builder", kind: "admin", status: "done", assigneeId: "u-mstempinski", dueOn: at(-40), createdByAutomation: null },
+  { id: "t-dyring-7", projectId: "p-dyring05", title: "Invoice Sundancer — PO DYRING05/1.0188 must appear on the invoice", kind: "admin", status: "todo", assigneeId: "u-fin", dueOn: at(2), createdByAutomation: null },
+];
+
+/**
+ * The three Sundancer call-ups. Sundancer sends a separate call-up per
+ * construction stage, so each one is a phase on the calendar against the one
+ * project — this is the closest the current model gets to a multi-visit job.
+ */
+export const schedulePhases: SchedulePhase[] = [
+  { id: "phase-dyring-1", projectId: "p-dyring05", title: "Stage 1 — wall wrap", description: "Call-up from site supervisor. Wrap taken to site from our own stock; no supplier order. Date inferred — no call-up email supplied.", userId: "u-mstempinski", date: isoDate(-140) },
+  { id: "phase-dyring-2", projectId: "p-dyring05", title: "Stage 2 — wall & ceiling batts", description: "After framing. Wall batts installed to the CSR markup; R6.0 ceiling bags pre-loaded into the roof cavity for the plasterer. Date inferred — no call-up email supplied.", userId: "u-mstempinski", date: isoDate(-69) },
+  { id: "phase-dyring-3", projectId: "p-dyring05", title: "Stage 3 — ceiling spread", description: "After plaster. Bags opened and spread to R6.0 average. SWMS completed on site the same day.", userId: "u-mstempinski", date: isoDate(-46) },
+];
+
+/** PO Number captured against the `approved` stage field template. */
+export const workflowFieldValues: WorkflowFieldValue[] = [
+  { projectId: "p-dyring05", templateId: "field-approved-1", value: "DYRING05/1.0188 (wall wrap)", updatedAt: at(-225, 10) },
 ];
 
 export const assignments: Assignment[] = [
@@ -611,6 +751,10 @@ export const assignments: Assignment[] = [
   { id: "a-4", projectId: "p-1044", projectNumber: "NLI-2026-0044", projectTitle: "Carbon & Co HQ — L3 collaboration hub", siteLabel: "Carbon & Co HQ — Level 3 · Brisbane QLD", userId: "u-max", status: "confirmed", startsAt: at(4), endsAt: at(11, 15), role: "Lead installer" },
   { id: "a-5", projectId: "p-1044", projectNumber: "NLI-2026-0044", projectTitle: "Carbon & Co HQ — L3 collaboration hub", siteLabel: "Carbon & Co HQ — Level 3 · Brisbane QLD", userId: "u-rae", status: "tentative", startsAt: at(5), endsAt: at(11, 15), role: "Installer" },
   { id: "a-6", projectId: "p-1038", projectNumber: "NLI-2026-0038", projectTitle: "Meridian CBD — retail shopfront refit", siteLabel: "Meridian CBD Flagship · Melbourne VIC", userId: "u-max", status: "completed", startsAt: at(-12, 19), endsAt: at(-2, 5), role: "Lead installer" },
+  // One assignment per Sundancer call-up.
+  { id: "a-dyring-1", projectId: "p-dyring05", projectNumber: "NLI-2026-0052", projectTitle: "Lot 5, 3 Dyring Street — insulation & wall wrap", siteLabel: "Lot 5, 3 Dyring Street · Tallangatta VIC", userId: "u-mstempinski", status: "completed", startsAt: at(-140), endsAt: at(-140, 12), role: "Installer — wall wrap" },
+  { id: "a-dyring-2", projectId: "p-dyring05", projectNumber: "NLI-2026-0052", projectTitle: "Lot 5, 3 Dyring Street — insulation & wall wrap", siteLabel: "Lot 5, 3 Dyring Street · Tallangatta VIC", userId: "u-mstempinski", status: "completed", startsAt: at(-69), endsAt: at(-69, 16), role: "Installer — wall & ceiling batts" },
+  { id: "a-dyring-3", projectId: "p-dyring05", projectNumber: "NLI-2026-0052", projectTitle: "Lot 5, 3 Dyring Street — insulation & wall wrap", siteLabel: "Lot 5, 3 Dyring Street · Tallangatta VIC", userId: "u-mstempinski", status: "completed", startsAt: at(-46), endsAt: at(-46, 16, 15), role: "Installer — ceiling spread" },
 ];
 
 export const leave: LeaveEntry[] = [
@@ -640,6 +784,9 @@ export const timeEntries: TimeEntry[] = [
   { id: "te-15", projectId: "p-1029", userId: "u-jo", startedAt: at(-68, 7), endedAt: at(-68, 16, 30), breakMinutes: 45, costRateCentsPerHour: 7200, notes: "Overran — ceiling grid clash" },
   { id: "te-16", projectId: "p-1029", userId: "u-max", startedAt: at(-64, 7), endedAt: at(-64, 17), breakMinutes: 45, costRateCentsPerHour: 7000, notes: null },
   { id: "te-17", projectId: "p-1029", userId: "u-rae", startedAt: at(-58, 7), endedAt: at(-58, 16), breakMinutes: 30, costRateCentsPerHour: 6500, notes: null },
+  { id: "te-dyring-1", projectId: "p-dyring05", userId: "u-mstempinski", startedAt: at(-140, 8), endedAt: at(-140, 12), breakMinutes: 0, costRateCentsPerHour: 6800, notes: "Stage 1 — wall wrap" },
+  { id: "te-dyring-2", projectId: "p-dyring05", userId: "u-mstempinski", startedAt: at(-69, 7, 30), endedAt: at(-69, 16), breakMinutes: 30, costRateCentsPerHour: 6800, notes: "Stage 2 — wall batts and ceiling load-out" },
+  { id: "te-dyring-3", projectId: "p-dyring05", userId: "u-mstempinski", startedAt: at(-46, 8), endedAt: at(-46, 16, 15), breakMinutes: 30, costRateCentsPerHour: 6800, notes: "Stage 3 — ceiling spread" },
 ];
 
 export const materials: MaterialUse[] = [
@@ -653,6 +800,12 @@ export const materials: MaterialUse[] = [
   { id: "m-8", projectId: "p-1029", description: "Classroom storage joinery", quantity: 8, unit: "ea", unitCostCents: 742_000, recordedById: "u-ash", recordedAt: at(-66, 15) },
   { id: "m-9", projectId: "p-1029", description: "Acoustic ceiling tile", quantity: 520, unit: "sqm", unitCostCents: 7_100, recordedById: "u-max", recordedAt: at(-62, 14) },
   { id: "m-10", projectId: "p-1029", description: "Vinyl flooring supply & lay", quantity: 480, unit: "sqm", unitCostCents: 8_900, recordedById: "u-rae", recordedAt: at(-58, 15) },
+  // Quantities as installed, against the CSR take-off.
+  { id: "m-dyring-1", projectId: "p-dyring05", description: "Enviroseal Wall Wrap Aero, 1500mm × 30m", quantity: 5, unit: "roll", unitCostCents: 5_200, recordedById: "u-mstempinski", recordedAt: at(-140, 12) },
+  { id: "m-dyring-2", projectId: "p-dyring05", description: "Bradford Glasswool HP Wall Batt R2.7, 5 pk", quantity: 57, unit: "pack", unitCostCents: 2_450, recordedById: "u-mstempinski", recordedAt: at(-69, 15) },
+  { id: "m-dyring-3", projectId: "p-dyring05", description: "Bradford Glasswool Wall Batt R2.0, 22 pk", quantity: 4, unit: "pack", unitCostCents: 7_700, recordedById: "u-mstempinski", recordedAt: at(-69, 15) },
+  { id: "m-dyring-4", projectId: "p-dyring05", description: "Bradford Glasswool HP Ceiling Batt R6.0, 6 pk", quantity: 73, unit: "pack", unitCostCents: 3_600, recordedById: "u-mstempinski", recordedAt: at(-69, 15, 30) },
+  { id: "m-dyring-5", projectId: "p-dyring05", description: "Bradford Ceiling Perimeter Batt R3.0", quantity: 8, unit: "pack", unitCostCents: 2_200, recordedById: "u-mstempinski", recordedAt: at(-46, 16) },
 ];
 
 export const variations: Variation[] = [
@@ -668,6 +821,17 @@ export const documents: DocumentRecord[] = [
   { id: "d-4", projectId: "p-1041", name: "HSD-PO-88412.pdf", kind: "purchase_order", sizeBytes: 96_220, version: 1, requiresAcknowledgement: false, uploadedAt: at(-21, 10), uploadedById: "u-fin" },
   { id: "d-5", projectId: "p-1038", name: "Completion certificate — Meridian CBD.pdf", kind: "completion_certificate", sizeBytes: 142_100, version: 1, requiresAcknowledgement: false, uploadedAt: at(-1, 12), uploadedById: "u-ola" },
   { id: "d-6", projectId: "p-1044", name: "Acoustic booth shop drawings (EU supplier).pdf", kind: "drawing", sizeBytes: 3_100_400, version: 1, requiresAcknowledgement: false, uploadedAt: at(-8, 13), uploadedById: "u-dee" },
+  /**
+   * The real Sundancer job file. Bytes live in `public/demo-files/dyring-05/`
+   * so every link opens the document that actually moved through the process.
+   * TODO(sharepoint): `url` becomes the Graph item URL once the project's
+   * document library is provisioned; the local path is a stand-in only.
+   */
+  { id: "d-dyring-markup", projectId: "p-dyring05", name: "CSR marked-up plan — GYP2510220.pdf", kind: "drawing", sizeBytes: 1_440_087, version: 1, requiresAcknowledgement: false, uploadedAt: at(-280, 14), uploadedById: "u-dee", url: "/demo-files/dyring-05/csr-markup-plan-gyp2510220.pdf", note: "Insulation locations and products, marked up by the CSR take-off team. Arrived with the spreadsheet, 21 Oct 2025." },
+  { id: "d-dyring-takeoff", projectId: "p-dyring05", name: "CSR take-off — GYP2510220 (rev 0).xlsx", kind: "other", sizeBytes: 174_949, version: 1, requiresAcknowledgement: false, uploadedAt: at(-280, 14), uploadedById: "u-dee", note: "Bradford product summary: 73 pk R6.0 ceiling, 57 pk R2.7 external, 4 pk R2.0 internal, 8 pk R3.0 perimeter, 5 rolls Aero wrap. Priced straight into quote Q1." },
+  { id: "d-dyring-po-wrap", projectId: "p-dyring05", name: "Sundancer PO DYRING05-1.0188 — wall wrap.pdf", kind: "purchase_order", sizeBytes: 145_255, version: 1, requiresAcknowledgement: false, uploadedAt: at(-225, 10), uploadedById: "u-fin", url: "/demo-files/dyring-05/sundancer-po-dyring05-1-0188-wall-wrap.pdf", note: "$675.60 ex GST, ordered 15 Dec 2025. The second PO (wall & ceiling insulation) was not supplied with the sample pack." },
+  { id: "d-dyring-swms", projectId: "p-dyring05", name: "SWMS — ceiling spread, Lot 5 3 Dyring St.pdf", kind: "swms", sizeBytes: 2_821_783, version: 1, requiresAcknowledgement: true, uploadedAt: at(-46, 16, 15), uploadedById: "u-mstempinski", url: "/demo-files/dyring-05/swms-ceiling-spread.pdf", note: "Completed on site 12 Jun 2026, 4:15pm — Stage 3." },
+  { id: "d-dyring-cert", projectId: "p-dyring05", name: "EnviroShield compliance certificate.pdf", kind: "completion_certificate", sizeBytes: 69_650, version: 1, requiresAcknowledgement: false, uploadedAt: at(-40, 15), uploadedById: "u-mstempinski", url: "/demo-files/dyring-05/enviroshield-compliance-certificate.pdf", note: "External R2.7, internal R2.0, ceiling R6.0. Certified to NCC 2022, AS/NZS 4859.1:2018, AS 1530.3-1999. Issued to the builder 18 Jun 2026." },
 ];
 
 export const inspections: Inspection[] = [
@@ -699,6 +863,22 @@ export const inspections: Inspection[] = [
       { id: "ii-8", prompt: "Infection control barriers removed and area cleaned", isCritical: false, passed: true, comment: null },
     ],
   },
+  /** The QA gate the compliance certificate depends on. */
+  {
+    id: "i-dyring05",
+    projectId: "p-dyring05",
+    result: "pass",
+    inspectorId: "u-ola",
+    scheduledFor: at(-41, 9),
+    completedAt: at(-40, 11),
+    items: [
+      { id: "ii-dy-1", prompt: "Installation matches the CSR marked-up plan", isCritical: true, passed: true, comment: null },
+      { id: "ii-dy-2", prompt: "Correct products installed — R2.7 external, R2.0 internal, R6.0 ceiling", isCritical: true, passed: true, comment: null },
+      { id: "ii-dy-3", prompt: "Ceiling coverage even, no gaps at perimeter or penetrations", isCritical: true, passed: true, comment: null },
+      { id: "ii-dy-4", prompt: "Wall wrap lapped and taped to manufacturer's specification", isCritical: false, passed: true, comment: null },
+      { id: "ii-dy-5", prompt: "Site cleaned and excess material removed", isCritical: false, passed: true, comment: null },
+    ],
+  },
 ];
 
 export const defects: Defect[] = [
@@ -715,6 +895,21 @@ export const events: ProjectEvent[] = [
   { id: "e-6", projectId: "p-1045", type: "automation.status", summary: "PO received — moved to Waiting for Scheduling", actorId: null, occurredAt: at(-2, 10, 15) },
   { id: "e-7", projectId: "p-1046", type: "quote.accepted", summary: "Quote NLI-2026-0046-Q1 accepted by Grace Lau", actorId: "u-dee", occurredAt: at(-1, 15, 40) },
   { id: "e-8", projectId: "p-1048", type: "quote.sent", summary: "Quote NLI-2026-0048-Q1 issued to Harbourside Developments", actorId: "u-dee", occurredAt: at(-1, 16, 0) },
+  // The Sundancer job, in the order Michael described it.
+  { id: "e-dy-1", projectId: "p-dyring05", type: "request.received", summary: "Quote request from Murray Quotes — plans and NatHERS attached", actorId: "u-dee", occurredAt: at(-283, 9) },
+  { id: "e-dy-2", projectId: "p-dyring05", type: "procurement.sent", summary: "Plans and NatHERS forwarded to Scott Vincent at CSR Bradford for take-off", actorId: "u-dee", occurredAt: at(-283, 11) },
+  { id: "e-dy-3", projectId: "p-dyring05", type: "procurement.received", summary: "CSR take-off GYP2510220 and marked-up plan received", actorId: "u-dee", occurredAt: at(-280, 14) },
+  { id: "e-dy-4", projectId: "p-dyring05", type: "quote.sent", summary: "Quote NLI-2026-0052-Q1 emailed to Murray Quotes", actorId: "u-dee", occurredAt: at(-274, 11) },
+  { id: "e-dy-5", projectId: "p-dyring05", type: "purchase_order.received", summary: "Purchase order DYRING05/1.0188 received for wall wrap — $675.60 ex GST", actorId: "u-fin", occurredAt: at(-225, 10) },
+  { id: "e-dy-6", projectId: "p-dyring05", type: "callup.received", summary: "Call-up 1 of 3 from site supervisor David Hansen — wall wrap", actorId: "u-kit", occurredAt: at(-143, 8) },
+  { id: "e-dy-7", projectId: "p-dyring05", type: "field.complete", summary: "Stage 1 complete — wall wrap installed", actorId: "u-mstempinski", occurredAt: at(-140, 12) },
+  { id: "e-dy-8", projectId: "p-dyring05", type: "callup.received", summary: "Call-up 2 of 3 — wall & ceiling insulation, framing complete", actorId: "u-kit", occurredAt: at(-76, 8) },
+  { id: "e-dy-9", projectId: "p-dyring05", type: "procurement.ordered", summary: "Batts ordered from CSR Bradford against take-off GYP2510220", actorId: "u-dee", occurredAt: at(-76, 10) },
+  { id: "e-dy-10", projectId: "p-dyring05", type: "field.complete", summary: "Stage 2 complete — wall batts installed, ceiling batts loaded into roof cavity", actorId: "u-mstempinski", occurredAt: at(-69, 16) },
+  { id: "e-dy-11", projectId: "p-dyring05", type: "callup.received", summary: "Call-up 3 of 3 — ceiling spread, plaster complete", actorId: "u-kit", occurredAt: at(-49, 9) },
+  { id: "e-dy-12", projectId: "p-dyring05", type: "field.swms", summary: "SWMS completed on site for ceiling spread", actorId: "u-mstempinski", occurredAt: at(-46, 16, 15) },
+  { id: "e-dy-13", projectId: "p-dyring05", type: "qa.passed", summary: "QA inspection passed — matches marked-up plan, correct products", actorId: "u-ola", occurredAt: at(-40, 11) },
+  { id: "e-dy-14", projectId: "p-dyring05", type: "certificate.issued", summary: "Compliance certificate issued to the builder", actorId: "u-mstempinski", occurredAt: at(-40, 15) },
 ];
 
 // Backfill the denormalised counters the list views read.

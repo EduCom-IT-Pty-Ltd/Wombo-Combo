@@ -83,14 +83,14 @@ function freshStore(): LocalStore {
     statusSettings: DEFAULT_STATUS_SETTINGS,
     statusTaskTemplates: DEFAULT_STATUS_TASK_TEMPLATES,
     statusFieldTemplates: DEFAULT_STATUS_FIELD_TEMPLATES,
-    workflowFieldValues: [],
+    workflowFieldValues: seed.workflowFieldValues,
     catalogueMaterials: [],
     customerPriceLists: [],
     productionTemplates: [],
     projectTemplates: [],
     archivedProjects: [],
     archivedCustomers: [],
-    schedulePhases: [],
+    schedulePhases: seed.schedulePhases,
   });
 }
 
@@ -103,7 +103,7 @@ export async function readLocalStore(): Promise<LocalStore> {
       setting.status === "lost" || setting.status === "cancelled" ? { ...setting, inProgressFlow: false } : setting,
     );
     const catalogueMaterials = (store.catalogueMaterials ?? []).map((material) => ({ ...material, standardPriceCentsPerM2: material.standardPriceCentsPerM2 ?? Math.round(material.costCentsPerM2 * 1.4) }));
-    return { ...freshStore(), ...store, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates: store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES), workflowFieldValues: store.workflowFieldValues ?? [], catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], productionTemplates: store.productionTemplates ?? [], projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? [] };
+    return { ...freshStore(), ...store, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates: store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES), workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], productionTemplates: store.productionTemplates ?? [], projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;

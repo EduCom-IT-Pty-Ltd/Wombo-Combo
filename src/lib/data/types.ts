@@ -233,6 +233,14 @@ export interface DocumentRecord {
   requiresAcknowledgement: boolean;
   uploadedAt: string;
   uploadedById: string | null;
+  /**
+   * Where the bytes can be fetched. Null until the file itself is stored —
+   * TODO(sharepoint): this becomes the Graph download URL for the item in the
+   * project's document library, resolved per-request against the caller's org.
+   */
+  url?: string | null;
+  /** Free-text note shown under the file name. Explains why the file is here. */
+  note?: string | null;
 }
 
 export interface Inspection {

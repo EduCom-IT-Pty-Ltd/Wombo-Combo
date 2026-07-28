@@ -1,4 +1,4 @@
-import { FileText, ShieldAlert } from "lucide-react";
+import { ExternalLink, FileText, ShieldAlert } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { listDocuments, listPeople } from "@/lib/data/repository";
@@ -59,7 +59,20 @@ export default async function ProjectDocumentsPage({ params }: { params: Promise
                     <li key={doc.id} className="flex items-center gap-3 px-4 py-3">
                       <FileText className="size-5 shrink-0 text-muted-foreground" />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm">{doc.name}</p>
+                        {doc.url ? (
+                          <a
+                            href={doc.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex min-h-11 items-center gap-1.5 text-sm underline-offset-2 hover:underline"
+                          >
+                            <span className="truncate">{doc.name}</span>
+                            <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
+                          </a>
+                        ) : (
+                          <p className="truncate text-sm">{doc.name}</p>
+                        )}
+                        {doc.note ? <p className="text-xs text-muted-foreground">{doc.note}</p> : null}
                         <p className="text-xs text-muted-foreground">
                           v{doc.version} · {formatBytes(doc.sizeBytes)} · {uploader?.name ?? "Unknown"} ·{" "}
                           {formatDate(doc.uploadedAt)}
