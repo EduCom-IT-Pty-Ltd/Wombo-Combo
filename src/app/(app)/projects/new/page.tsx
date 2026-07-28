@@ -15,7 +15,7 @@ export default async function NewProjectPage({
 }) {
   const [session, { customerId }] = await Promise.all([getSession(), searchParams]);
 
-  if (!can(session.role, "project.create")) {
+  if (!can(session.role, "project.create", session.permissionOverrides)) {
     return (
       <Card>
         <EmptyState title="Not available" description="Your role cannot create projects." />

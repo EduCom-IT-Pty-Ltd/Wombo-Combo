@@ -39,13 +39,9 @@ export const projectStatusEnum = pgEnum("project_status", PROJECT_STATUSES);
 export const ROLES = [
   "owner",
   "admin",
-  "project_manager",
-  "scheduler",
-  "estimator",
-  "installer",
-  "qa_inspector",
+  "manager",
   "finance",
-  "viewer",
+  "staff",
 ] as const;
 export type Role = (typeof ROLES)[number];
 export const roleEnum = pgEnum("role", ROLES);

@@ -16,12 +16,14 @@ import type {
   Defect,
   DocumentRecord,
   Inspection,
+  OrganisationSettings,
   ProjectDetail,
   ProjectEvent,
   Site,
   Task,
 } from "./types";
 import type { AutomationEffect, AutomationTrigger } from "@/lib/domain/automation";
+import type { RolePermissionOverrides } from "@/lib/domain/permissions";
 import type { ProjectStatus } from "@/lib/domain/status";
 import { DEFAULT_STATUS_FIELD_TEMPLATES, DEFAULT_STATUS_SETTINGS, DEFAULT_STATUS_TASK_TEMPLATES, type StatusFieldTemplate, type StatusSetting, type StatusTaskTemplate, type WorkflowFieldValue } from "@/lib/domain/status-settings";
 
@@ -56,12 +58,16 @@ export type LocalStore = {
   customerPriceLists: CustomerPriceList[];
   productionTemplates: ProductionTemplate[];
   projectTemplates: ProjectTemplate[];
+  organisation: OrganisationSettings;
+  rolePermissions: RolePermissionOverrides;
   archivedProjects: ProjectDetail[];
   archivedCustomers: Customer[];
   schedulePhases: SchedulePhase[];
 };
 
 const storePath = join(process.cwd(), ".wombo-data", "test-data.json");
+const DEFAULT_ORGANISATION: OrganisationSettings = { name: "Northline Interiors", slug: "northline", currency: "AUD", timezone: "Australia/Sydney", projectNumberPrefix: "NLI", logoUrl: null };
+const LEGACY_ROLE_MAP: Record<string, Person["role"]> = { project_manager: "manager", scheduler: "manager", estimator: "manager", installer: "staff", qa_inspector: "staff", viewer: "staff" };
 
 function freshStore(): LocalStore {
   return structuredClone({
@@ -88,6 +94,8 @@ function freshStore(): LocalStore {
     customerPriceLists: [],
     productionTemplates: [],
     projectTemplates: [],
+    organisation: DEFAULT_ORGANISATION,
+    rolePermissions: {},
     archivedProjects: [],
     archivedCustomers: [],
     schedulePhases: seed.schedulePhases,
@@ -104,12 +112,19 @@ export async function readLocalStore(): Promise<LocalStore> {
     );
     const catalogueMaterials = (store.catalogueMaterials ?? []).map((material) => ({ ...material, standardPriceCentsPerM2: material.standardPriceCentsPerM2 ?? Math.round(material.costCentsPerM2 * 1.4) }));
     const statusFieldTemplates = (store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES)).map((template) => ({ ...template, required: template.required ?? false }));
-    return { ...freshStore(), ...store, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], productionTemplates: store.productionTemplates ?? [], projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
+    const people = (store.people ?? structuredClone(seed.people)).map((person) => ({ ...person, role: LEGACY_ROLE_MAP[person.role] ?? person.role }));
+    const organisation = { ...DEFAULT_ORGANISATION, ...(store.organisation ?? {}) };
+    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], productionTemplates: store.productionTemplates ?? [], projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
   }
 }
+
+export async function readOrganisationSettings() { return (await readLocalStore()).organisation; }
+export async function saveOrganisationSettings(settings: OrganisationSettings) { await updateLocalStore((store) => { store.organisation = settings; }); }
+export async function readRolePermissions() { return (await readLocalStore()).rolePermissions; }
+export async function saveRolePermissions(permissions: RolePermissionOverrides) { await updateLocalStore((store) => { store.rolePermissions = permissions; }); }
 
 export async function readStatusSettings(): Promise<StatusSetting[]> {
   return (await readLocalStore()).statusSettings;
@@ -757,6 +772,7 @@ export async function createLocalSchedulePhase(input: Omit<SchedulePhase, "id">)
   return updateLocalStore((store) => {
     if (!store.projects.some((project) => project.id === input.projectId)) throw new Error("Project not found");
     if (!store.people.some((person) => person.id === input.userId)) throw new Error("User not found");
+    assertUserAvailable(store, input.userId, input.date);
     const phase = { id: `phase-${randomUUID()}`, ...input };
     store.schedulePhases.push(phase);
     return phase;
@@ -768,12 +784,44 @@ export async function updateLocalSchedulePhase(id: string, input: Omit<ScheduleP
     const phase = store.schedulePhases.find((item) => item.id === id);
     if (!phase) throw new Error("Phase not found");
     if (!store.people.some((person) => person.id === input.userId)) throw new Error("User not found");
+    assertUserAvailable(store, input.userId, input.date);
     Object.assign(phase, input);
   });
 }
 
+function assertUserAvailable(store: LocalStore, userId: string, date: string) {
+  const unavailable = store.leave.find((entry) => entry.userId === userId && entry.status !== "cancelled" && entry.status !== "declined" && date >= availabilityDate(entry.startsAt) && date <= availabilityDate(entry.endsAt));
+  if (unavailable) throw new Error(`This person is unavailable on that date (${unavailable.type.replaceAll("_", " ")}).`);
+}
+
+function availabilityDate(value: string) { if (value.length === 10) return value; const date = new Date(value); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
+
 export async function deleteLocalSchedulePhase(id: string) {
   await updateLocalStore((store) => { store.schedulePhases = store.schedulePhases.filter((item) => item.id !== id); });
+}
+
+/** Schedule (or reschedule) the QA inspection and mirror it to the calendar. */
+export async function scheduleLocalInspection(input: { inspectionId?: string | null; projectId: string; inspectorId: string; date: string }) {
+  return updateLocalStore((store) => {
+    let inspection = input.inspectionId ? store.inspections.find((item) => item.id === input.inspectionId && item.projectId === input.projectId) : null;
+    if (!inspection) {
+      inspection = { id: `qa-${randomUUID()}`, projectId: input.projectId, result: "pending", inspectorId: null, scheduledFor: null, completedAt: null, items: [
+        { id: `item-${randomUUID()}`, prompt: "Workmanship meets approved scope", isCritical: true, passed: null, comment: null },
+        { id: `item-${randomUUID()}`, prompt: "Site is clean and safe", isCritical: false, passed: null, comment: null },
+      ] };
+      store.inspections.push(inspection);
+    }
+    const inspector = store.people.find((person) => person.id === input.inspectorId);
+    if (!inspector) throw new Error("User not found");
+    assertUserAvailable(store, input.inspectorId, input.date);
+    inspection.inspectorId = input.inspectorId;
+    inspection.scheduledFor = input.date;
+    const existing = store.schedulePhases.find((phase) => phase.inspectionId === inspection.id);
+    if (existing) Object.assign(existing, { userId: input.inspectorId, date: input.date, title: "QA inspection", description: "Scheduled QA inspection", inspectionId: inspection.id });
+    else store.schedulePhases.push({ id: `phase-${randomUUID()}`, projectId: input.projectId, title: "QA inspection", description: "Scheduled QA inspection", userId: input.inspectorId, date: input.date, inspectionId: inspection.id });
+    addEvent(store, input.projectId, `QA inspection scheduled for ${input.date} with ${inspector.name}`, input.inspectorId);
+    return inspection;
+  });
 }
 
 function initialsFor(name: string) { return name.split(" ").filter(Boolean).map((part) => part[0]).slice(0, 2).join("").toUpperCase() || "?"; }

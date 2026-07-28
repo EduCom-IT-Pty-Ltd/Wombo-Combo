@@ -1,7 +1,8 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
 import type { Role } from "@/lib/db/schema/enums";
-import { type Capability, can } from "@/lib/domain/permissions";
+import { type Capability, can, type RolePermissionOverrides } from "@/lib/domain/permissions";
+import { readLocalStore } from "@/lib/data/local-store";
 
 /**
  * Auth adapter.
@@ -35,12 +36,14 @@ export interface SessionOrg {
   currency: string;
   timezone: string;
   projectNumberPrefix: string;
+  logoUrl: string | null;
 }
 
 export interface Session {
   user: SessionUser;
   org: SessionOrg;
   role: Role;
+  permissionOverrides: RolePermissionOverrides;
   /** True when running against demo data rather than a real WorkOS session. */
   isDemo: boolean;
 }
@@ -52,6 +55,7 @@ export const DEMO_ORG: SessionOrg = {
   currency: "AUD",
   timezone: "Australia/Sydney",
   projectNumberPrefix: "NLI",
+  logoUrl: null,
 };
 
 export const DEMO_USER: SessionUser = {
@@ -64,27 +68,42 @@ export const DEMO_USER: SessionUser = {
 };
 
 export const DEMO_ROLE_COOKIE = "wc_demo_role";
+export const DEMO_USER_COOKIE = "wc_demo_user";
 
 /**
- * In demo mode the session user is an office account, so the field screens
- * borrow an installer identity to have real assignments and timesheets to work
- * against. With WorkOS this collapses to `session.user.id`. Both the field page
- * and the field actions go through here so they always agree on who is on site.
+ * The demo user is selectable from the top bar, so field screens use the same
+ * identity as the rest of the application. With WorkOS this remains simply the
+ * signed-in user's id.
  */
-export const DEMO_FIELD_USER_ID = "u-ash";
-
 export function fieldUserId(session: Session): string {
-  return session.isDemo ? DEMO_FIELD_USER_ID : session.user.id;
+  return session.user.id;
 }
 
 async function loadSession(): Promise<Session> {
   const jar = await cookies();
-  const role = (jar.get(DEMO_ROLE_COOKIE)?.value as Role | undefined) ?? "project_manager";
+  const store = await readLocalStore();
+  const requestedUserId = jar.get(DEMO_USER_COOKIE)?.value;
+  const person = store.people.find((item) => item.id === requestedUserId)
+    ?? store.people.find((item) => item.id === "u-sam")
+    ?? store.people[0];
+  const roleFromCookie = jar.get(DEMO_ROLE_COOKIE)?.value;
+  const role = (["owner", "admin", "manager", "finance", "staff"] as const).includes(roleFromCookie as Role)
+    ? roleFromCookie as Role
+    : person?.role ?? "manager";
+  const nameParts = (person?.name ?? "Sam Rivera").trim().split(/\s+/);
 
   return {
-    user: DEMO_USER,
-    org: DEMO_ORG,
+    user: {
+      id: person?.id ?? DEMO_USER.id,
+      workosUserId: null,
+      email: person?.email ?? DEMO_USER.email,
+      firstName: nameParts[0] ?? null,
+      lastName: nameParts.slice(1).join(" ") || null,
+      avatarUrl: null,
+    },
+    org: { ...DEMO_ORG, ...store.organisation },
     role,
+    permissionOverrides: store.rolePermissions,
     isDemo: true,
   };
 }
@@ -112,11 +131,11 @@ export class ForbiddenError extends Error {
  */
 export async function requireCapability(capability: Capability): Promise<Session> {
   const session = await requireSession();
-  if (!can(session.role, capability)) throw new ForbiddenError(capability);
+  if (!can(session.role, capability, session.permissionOverrides)) throw new ForbiddenError(capability);
   return session;
 }
 
 export async function hasCapability(capability: Capability): Promise<boolean> {
   const session = await getSession();
-  return can(session.role, capability);
+  return can(session.role, capability, session.permissionOverrides);
 }

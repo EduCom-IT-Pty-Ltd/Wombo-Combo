@@ -34,7 +34,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const params = await searchParams;
   const filter = FILTERS.some((item) => item.key === params.group) ? params.group as FilterKey : "active";
   const session = await getSession();
-  const showFinancials = can(session.role, "finance.view");
+  const showFinancials = can(session.role, "finance.revenue.view", session.permissionOverrides);
   const [allProjects, people, statusSettings, projectTemplates, archivedProjects] = await Promise.all([
     listProjects(session.org.id),
     listPeople(session.org.id),
@@ -49,14 +49,14 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
       <PageHeader
         title="Projects"
         description={`${projects.length} ${filter === "active" ? "active " : ""}${projects.length === 1 ? "project" : "projects"}`}
-        action={can(session.role, "project.create") ? <div className="flex gap-2"><ProjectTemplateDialog templates={projectTemplates} statuses={orderedFlow(statusSettings)} /><ButtonLink href="/projects/new" variant="primary" size="sm"><Plus className="size-4" /> New project</ButtonLink></div> : null}
+        action={can(session.role, "project.create", session.permissionOverrides) ? <div className="flex gap-2"><ProjectTemplateDialog templates={projectTemplates} statuses={orderedFlow(statusSettings)} /><ButtonLink href="/projects/new" variant="primary" size="sm"><Plus className="size-4" /> New project</ButtonLink></div> : null}
       />
 
       <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Project filters">
         {FILTERS.map((item) => <Link key={item.key} href={item.key === "active" ? "/projects" : `/projects?group=${item.key}`} className={cn("shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-colors", filter === item.key ? "bg-primary text-primary-foreground shadow-sm" : "bg-surface-muted text-muted-foreground hover:bg-surface hover:text-foreground")}>{item.label}</Link>)}
       </nav>
 
-      {projects.length === 0 ? <Card><EmptyState title={`No ${filter} projects`} description="There is nothing in this view yet." /></Card> : filter === "active" ? <ActiveProjectBoard projects={projects} statusSettings={statusSettings} canTransition={can(session.role, "project.transition")} /> : <ProjectList projects={projects} people={people} showFinancials={showFinancials} />}
+      {projects.length === 0 ? <Card><EmptyState title={`No ${filter} projects`} description="There is nothing in this view yet." /></Card> : filter === "active" ? <ActiveProjectBoard projects={projects} statusSettings={statusSettings} canTransition={can(session.role, "project.transition", session.permissionOverrides)} /> : <ProjectList projects={projects} people={people} showFinancials={showFinancials} />}
     </div>
   );
 }

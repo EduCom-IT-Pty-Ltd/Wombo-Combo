@@ -35,7 +35,7 @@ export async function FieldJobPage({ projectId, activeSegment = "field" }: { pro
   const userId = fieldUserId(session);
   const [project, openEntry] = await Promise.all([getProject(session.org.id, projectId), getOpenTimeEntry(session.org.id, userId)]);
   if (!project) notFound();
-  const tabs = PROJECT_TABS.filter((item) => can(session.role, item.capability));
+  const tabs = PROJECT_TABS.filter((item) => can(session.role, item.capability, session.permissionOverrides));
   const Page = projectPages[activeSegment as keyof typeof projectPages];
   if (!Page) notFound();
   const fieldBase = `/field/${project.id}`;

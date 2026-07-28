@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
-import { getProject, listPeople, listSchedulePhases } from "@/lib/data/repository";
+import { getProject, listLeave, listPeople, listSchedulePhases } from "@/lib/data/repository";
 import { SchedulePhaseManager } from "@/components/projects/schedule-phase-manager";
 
 export default async function ProjectSchedulePage({ params }: { params: Promise<{ id: string }> }) {
@@ -9,6 +9,6 @@ export default async function ProjectSchedulePage({ params }: { params: Promise<
   const session = await getSession();
   const project = await getProject(session.org.id, id);
   if (!project) notFound();
-  const [phases, people] = await Promise.all([listSchedulePhases(session.org.id, { projectId: id }), listPeople(session.org.id)]);
-  return <SchedulePhaseManager projectId={project.id} phases={phases} people={people} canManage={can(session.role, "schedule.manage")} />;
+  const [phases, people, leave] = await Promise.all([listSchedulePhases(session.org.id, { projectId: id }), listPeople(session.org.id), listLeave(session.org.id)]);
+  return <SchedulePhaseManager projectId={project.id} phases={phases} people={people} leave={leave} canManage={can(session.role, "schedule.manage", session.permissionOverrides)} />;
 }

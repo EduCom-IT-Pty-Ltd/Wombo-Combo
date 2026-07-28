@@ -71,7 +71,7 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
   }
 
   if (confirmJump && completeSkipped) await completeWorkflowTasksThrough(projectId, to);
-  if (check.warnings.length > 0 && !can(session.role, "project.transition.override")) {
+  if (check.warnings.length > 0 && !can(session.role, "project.transition.override", session.permissionOverrides)) {
     return {
       ok: false,
       message: "Your role cannot override these requirements",

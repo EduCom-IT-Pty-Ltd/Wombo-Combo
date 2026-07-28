@@ -1,5 +1,5 @@
 import type { Role } from "@/lib/db/schema/enums";
-import { type Capability, can, isFieldOnly } from "@/lib/domain/permissions";
+import { type Capability, can, isFieldOnly, type RolePermissionOverrides } from "@/lib/domain/permissions";
 
 export interface NavItem {
   href: string;
@@ -34,7 +34,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/customers", label: "Customers", icon: "users", capability: "customer.view" },
   { href: "/materials", label: "Materials", icon: "materials", capability: "quote.edit" },
   { href: "/production-templates", label: "Production templates", icon: "production", capability: "quote.edit" },
-  { href: "/finance", label: "Finance", icon: "receipt", capability: "finance.view" },
+  { href: "/finance", label: "Finance", icon: "receipt", capability: "finance.profit.view" },
   { href: "/qa", label: "QA & Compliance", shortLabel: "QA", icon: "shield", capability: "qa.view" },
   { href: "/hr", label: "People", icon: "users", capability: "hr.view" },
   { href: "/admin", label: "Settings", icon: "settings", capability: "admin.manage" },
@@ -54,7 +54,7 @@ export const PROJECT_TABS: ProjectTab[] = [
   { segment: "field", label: "Field", capability: "project.view" },
   { segment: "documents", label: "Documents", capability: "document.view" },
   { segment: "qa", label: "QA", capability: "qa.view" },
-  { segment: "costing", label: "Costing", capability: "finance.view" },
+  { segment: "costing", label: "Costing", capability: "finance.profit.view" },
   { segment: "activity", label: "Activity", capability: "project.view" },
 ];
 
@@ -63,7 +63,7 @@ export const PROJECT_TABS: ProjectTab[] = [
  * three-destination bar — My Day, Calendar, Projects — because the dashboard
  * redirects them to `/field` anyway and everything else is office work.
  */
-export function navItemsFor(role: Role): NavItem[] {
-  const items = NAV_ITEMS.filter((item) => can(role, item.capability));
-  return isFieldOnly(role) ? items.filter((item) => item.href !== "/") : items;
+export function navItemsFor(role: Role, overrides?: RolePermissionOverrides): NavItem[] {
+  const items = NAV_ITEMS.filter((item) => can(role, item.capability, overrides));
+  return isFieldOnly(role, overrides) ? items.filter((item) => item.href !== "/") : items;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import type { NavItem } from "@/lib/nav";
 import { cn } from "@/lib/utils";
@@ -11,15 +12,13 @@ function isActive(pathname: string, href: string) {
 }
 
 /** Desktop-only rail. Mobile navigation lives in `bottom-nav.tsx`. */
-export function Sidebar({ items, orgName }: { items: NavItem[]; orgName: string }) {
+export function Sidebar({ items, orgName, logoUrl }: { items: NavItem[]; orgName: string; logoUrl?: string | null }) {
   const pathname = usePathname();
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-border-subtle bg-surface/95 shadow-[8px_0_30px_rgb(15_23_42/0.025)] backdrop-blur lg:flex">
       <div className="flex h-14 items-center gap-2 border-b border-border-subtle px-4">
-        <span className="grid size-7 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-[0_4px_12px_rgb(49_95_231/0.28)]">
-          WC
-        </span>
+        {logoUrl ? <Image src={logoUrl} alt="" width={28} height={28} className="size-7 rounded-lg object-contain" /> : <span className="grid size-7 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-[0_4px_12px_rgb(49_95_231/0.28)]">WC</span>}
         <span className="truncate text-sm font-semibold">{orgName}</span>
       </div>
 

@@ -15,7 +15,7 @@ function isActive(pathname: string, href: string) {
  * Mobile navigation. Four primary destinations plus a "More" sheet — the field
  * crew's two taps (My Day, then a job) should never need a menu.
  *
- * Which four depends on the role: an installer gets My Day first, office staff
+ * Which four depends on the role: field staff get My Day first, office staff
  * get the dashboard.
  */
 export function BottomNav({ items }: { items: NavItem[] }) {

@@ -24,9 +24,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     isCustomerArchived(session.org.id, customer.id),
   ]);
   const quotes = (await Promise.all(projects.map((project) => listQuotes(session.org.id, project.id)))).flat();
-  const showFinancials = can(session.role, "finance.view");
+  const showFinancials = can(session.role, "finance.revenue.view", session.permissionOverrides);
   const createProjectHref = `/projects/new?customerId=${customer.id}`;
-  const canCreateProject = can(session.role, "project.create") && !archived;
+  const canCreateProject = can(session.role, "project.create", session.permissionOverrides) && !archived;
 
   const won = projects.filter((p) => !["new_request", "quoting", "quote_sent", "awaiting_approval", "lost"].includes(p.status));
   const quoted = projects.filter((p) => ["quote_sent", "awaiting_approval", "approved", "lost"].includes(p.status));
@@ -47,7 +47,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <div className="min-w-0">
           <div className="flex items-center gap-1">
             <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{customer.name}</h1>
-            {can(session.role, "customer.manage") ? (
+            {can(session.role, "customer.manage", session.permissionOverrides) ? (
               <CustomerOptions
                 customer={customer}
                 priceLists={priceLists.map((list) => ({ id: list.id, name: list.name }))}

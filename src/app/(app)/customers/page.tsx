@@ -12,14 +12,14 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   const session = await getSession();
   const archived = params.archived === "1";
   const customers = archived ? await listArchivedCustomers(session.org.id) : await listCustomers(session.org.id);
-  const showFinancials = can(session.role, "finance.view");
+  const showFinancials = can(session.role, "finance.revenue.view", session.permissionOverrides);
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Customers"
         description={`${customers.length} ${archived ? "archived " : ""}accounts`}
-        action={can(session.role, "customer.manage") ? <ButtonLink href="/customers/new" variant="primary" size="sm">Add customer</ButtonLink> : null}
+        action={can(session.role, "customer.manage", session.permissionOverrides) ? <ButtonLink href="/customers/new" variant="primary" size="sm">Add customer</ButtonLink> : null}
       />
 
       <div className="flex gap-2"><Link href="/customers" className={`rounded-full px-4 py-2 text-sm font-bold ${!archived ? "bg-primary text-primary-foreground" : "bg-surface-muted text-muted-foreground"}`}>Active</Link><Link href="/customers?archived=1" className={`rounded-full px-4 py-2 text-sm font-bold ${archived ? "bg-primary text-primary-foreground" : "bg-surface-muted text-muted-foreground"}`}>Archived</Link></div>

@@ -43,6 +43,16 @@ export interface Customer {
   defaultProjectTemplateId?: string | null;
 }
 
+/** Local organisation profile until the production organisation table is wired up. */
+export interface OrganisationSettings {
+  name: string;
+  slug: string;
+  currency: string;
+  timezone: string;
+  projectNumberPrefix: string;
+  logoUrl: string | null;
+}
+
 export interface CatalogueMaterial {
   id: string;
   name: string;
@@ -173,6 +183,8 @@ export interface SchedulePhase {
   description: string | null;
   userId: string;
   date: string; // YYYY-MM-DD
+  /** Present when this Call-Up was created by the QA inspection scheduler. */
+  inspectionId?: string | null;
 }
 
 export interface SchedulePhaseView extends SchedulePhase {

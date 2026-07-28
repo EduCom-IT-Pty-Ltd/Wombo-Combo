@@ -35,7 +35,7 @@ export const memberships = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    role: roleEnum("role").notNull().default("viewer"),
+    role: roleEnum("role").notNull().default("staff"),
     /** Installers are schedulable resources; office staff are not. */
     isSchedulable: boolean("is_schedulable").notNull().default(false),
     /** Cost rate used for job costing, in cents per hour. */

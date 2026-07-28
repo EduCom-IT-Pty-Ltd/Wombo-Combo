@@ -72,14 +72,14 @@ const person = (
 });
 
 export const people: Person[] = [
-  person("u-sam", "Sam Rivera", "project_manager"),
-  person("u-dee", "Dee Okafor", "estimator"),
-  person("u-kit", "Kit Nguyen", "scheduler"),
-  person("u-ash", "Ash Malik", "installer", { isSchedulable: true, costRateCentsPerHour: 6800 }),
-  person("u-jo", "Jo Petrov", "installer", { isSchedulable: true, costRateCentsPerHour: 7200 }),
-  person("u-rae", "Rae Lindqvist", "installer", { isSchedulable: true, costRateCentsPerHour: 6500 }),
-  person("u-max", "Max Toure", "installer", { isSchedulable: true, costRateCentsPerHour: 7000 }),
-  person("u-ola", "Ola Bergström", "qa_inspector"),
+  person("u-sam", "Sam Rivera", "manager"),
+  person("u-dee", "Dee Okafor", "manager"),
+  person("u-kit", "Kit Nguyen", "manager"),
+  person("u-ash", "Ash Malik", "staff", { isSchedulable: true, costRateCentsPerHour: 6800 }),
+  person("u-jo", "Jo Petrov", "staff", { isSchedulable: true, costRateCentsPerHour: 7200 }),
+  person("u-rae", "Rae Lindqvist", "staff", { isSchedulable: true, costRateCentsPerHour: 6500 }),
+  person("u-max", "Max Toure", "staff", { isSchedulable: true, costRateCentsPerHour: 7000 }),
+  person("u-ola", "Ola Bergström", "staff"),
   person("u-fin", "Fin Carrasco", "finance"),
   // Signatory on the real compliance certificate seeded with the Sundancer job,
   // so the walk-through names the same person the paperwork does.
@@ -87,7 +87,7 @@ export const people: Person[] = [
     id: "u-mstempinski",
     name: "Michael Stempinski",
     initials: "MS",
-    role: "installer",
+    role: "staff",
     email: "ms@esinsulation.com",
     isSchedulable: true,
     costRateCentsPerHour: 6800,

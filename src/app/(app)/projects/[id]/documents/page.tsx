@@ -36,7 +36,7 @@ export default async function ProjectDocumentsPage({ params }: { params: Promise
         title="Documents"
         description="Drawings, SWMS, permits and certificates"
         action={
-          can(session.role, "document.upload") ? (
+          can(session.role, "document.upload", session.permissionOverrides) ? (
             <Button size="sm" variant="secondary">
               Upload
             </Button>

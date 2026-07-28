@@ -7,6 +7,7 @@ import { StatusSettingsProvider } from "@/components/status-settings-provider";
 import { readStatusSettings } from "@/lib/data/local-store";
 import { PageTransition } from "@/components/layout/page-transition";
 import { getOpenTimeEntry, getProject } from "@/lib/data/repository";
+import { listPeople } from "@/lib/data/repository";
 
 /**
  * The authenticated shell. Navigation is filtered by capability here rather than
@@ -14,9 +15,9 @@ import { getOpenTimeEntry, getProject } from "@/lib/data/repository";
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  const [statusSettings, openEntry] = await Promise.all([readStatusSettings(), getOpenTimeEntry(session.org.id, fieldUserId(session))]);
+  const [statusSettings, openEntry, people] = await Promise.all([readStatusSettings(), getOpenTimeEntry(session.org.id, fieldUserId(session)), listPeople(session.org.id)]);
   const activeProject = openEntry ? await getProject(session.org.id, openEntry.projectId) : null;
-  const items = navItemsFor(session.role);
+  const items = navItemsFor(session.role, session.permissionOverrides);
 
   const userName = [session.user.firstName, session.user.lastName].filter(Boolean).join(" ") || session.user.email;
   const initials =
@@ -25,7 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <StatusSettingsProvider settings={statusSettings}><div className="flex min-h-dvh">
-      <Sidebar items={items} orgName={session.org.name} />
+      <Sidebar items={items} orgName={session.org.name} logoUrl={session.org.logoUrl} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
@@ -34,6 +35,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           initials={initials}
           role={session.role}
           isDemo={session.isDemo}
+          logoUrl={session.org.logoUrl}
+          userId={session.user.id}
+          demoPeople={session.isDemo ? people.map(({ id, name, role }) => ({ id, name, role })) : undefined}
           activeShift={openEntry && activeProject ? { projectId: activeProject.id, projectTitle: activeProject.title, startedAt: openEntry.startedAt, paused: Boolean(openEntry.pausedAt) } : null}
         />
 

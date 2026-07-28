@@ -33,19 +33,24 @@ export const CAPABILITIES = [
   "qa.certify",
   "finance.view", // costs, margins, profitability
   "finance.manage",
+  "finance.revenue.view",
+  "finance.costs.view",
+  "finance.labour.view",
+  "finance.profit.view",
   "hr.view",
   "hr.manage",
   "admin.manage",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
+export type RolePermissionOverrides = Partial<Record<Role, Capability[]>>;
 
 const ALL: Capability[] = [...CAPABILITIES];
 
 const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
   owner: ALL,
   admin: ALL,
-  project_manager: [
+  manager: [
     "project.view",
     "project.create",
     "project.edit",
@@ -63,34 +68,10 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     "document.upload",
     "qa.view",
     "qa.inspect",
-    "finance.view",
+    "finance.revenue.view",
     "hr.view",
   ],
-  scheduler: [
-    "project.view",
-    "project.transition",
-    "customer.view",
-    "schedule.view",
-    "schedule.manage",
-    "document.view",
-    "hr.view",
-  ],
-  estimator: [
-    "project.view",
-    "project.create",
-    "project.edit",
-    "project.transition",
-    "customer.view",
-    "customer.manage",
-    "quote.view",
-    "quote.edit",
-    "quote.send",
-    "document.view",
-    "document.upload",
-    "finance.view",
-  ],
-  // Deliberately no `finance.view`: installers should not see job margins.
-  installer: [
+  staff: [
     "project.view",
     "schedule.view",
     "field.clock",
@@ -99,16 +80,6 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     "document.upload",
     "qa.view",
   ],
-  qa_inspector: [
-    "project.view",
-    "project.transition",
-    "schedule.view",
-    "document.view",
-    "document.upload",
-    "qa.view",
-    "qa.inspect",
-    "qa.certify",
-  ],
   finance: [
     "project.view",
     "customer.view",
@@ -116,20 +87,25 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     "document.view",
     "finance.view",
     "finance.manage",
+    "finance.revenue.view",
+    "finance.costs.view",
+    "finance.labour.view",
+    "finance.profit.view",
   ],
-  viewer: ["project.view", "customer.view", "schedule.view", "document.view"],
 };
 
-export function capabilitiesFor(role: Role): Capability[] {
-  return ROLE_CAPABILITIES[role] ?? [];
+export function capabilitiesFor(role: Role, overrides?: RolePermissionOverrides): Capability[] {
+  // Owner and Administrator are deliberately never customisable.
+  if (role === "owner" || role === "admin") return ALL;
+  return overrides?.[role] ?? ROLE_CAPABILITIES[role] ?? [];
 }
 
-export function can(role: Role, capability: Capability): boolean {
-  return capabilitiesFor(role).includes(capability);
+export function can(role: Role, capability: Capability, overrides?: RolePermissionOverrides): boolean {
+  return capabilitiesFor(role, overrides).includes(capability);
 }
 
-export function canAny(role: Role, capabilities: Capability[]): boolean {
-  return capabilities.some((c) => can(role, c));
+export function canAny(role: Role, capabilities: Capability[], overrides?: RolePermissionOverrides): boolean {
+  return capabilities.some((c) => can(role, c, overrides));
 }
 
 /**
@@ -137,18 +113,32 @@ export function canAny(role: Role, capabilities: Capability[]): boolean {
  * field experience: `/field` as their home, and none of the office navigation.
  * Deliberately derived from capabilities so a new site-based role inherits it.
  */
-export function isFieldOnly(role: Role): boolean {
-  return can(role, "field.clock") && !can(role, "project.edit");
+export function isFieldOnly(role: Role, overrides?: RolePermissionOverrides): boolean {
+  return can(role, "field.clock", overrides) && !can(role, "project.edit", overrides);
 }
 
 export const ROLE_LABELS: Record<Role, string> = {
   owner: "Owner",
   admin: "Administrator",
-  project_manager: "Project Manager",
-  scheduler: "Scheduler",
-  estimator: "Estimator",
-  installer: "Installer",
-  qa_inspector: "QA Inspector",
+  manager: "Manager",
   finance: "Finance",
-  viewer: "Viewer",
+  staff: "Staff",
 };
+
+/** The plain-language permission controls shown in Settings. Each Edit switch
+ * grants the linked editing capabilities for that part of the app. */
+export const PERMISSION_AREAS: Array<{ name: string; description: string; view: Capability[]; edit: Capability[] }> = [
+  { name: "Projects", description: "Project details, status flow and activity", view: ["project.view"], edit: ["project.create", "project.edit", "project.transition", "project.transition.override"] },
+  { name: "Customers", description: "Customer profiles, contacts and defaults", view: ["customer.view"], edit: ["customer.manage"] },
+  { name: "Materials & price lists", description: "Materials, customer pricing and production templates", view: ["quote.view"], edit: ["quote.edit", "quote.approve", "quote.send"] },
+  { name: "Calendar & Call-Ups", description: "Calendar and project Call-Ups", view: ["schedule.view"], edit: ["schedule.manage"] },
+  { name: "Field", description: "On-site clock, materials, notes and variations", view: ["field.clock"], edit: ["field.record"] },
+  { name: "Documents", description: "Project documents and uploads", view: ["document.view"], edit: ["document.upload"] },
+  { name: "QA & compliance", description: "QA checks, inspections and certificates", view: ["qa.view"], edit: ["qa.inspect", "qa.certify"] },
+  { name: "People", description: "People, availability and hourly rates", view: ["hr.view"], edit: ["hr.manage"] },
+  { name: "Revenue", description: "Quoted and earned revenue figures", view: ["finance.revenue.view"], edit: ["finance.manage"] },
+  { name: "Material costs", description: "Material cost figures across projects", view: ["finance.costs.view"], edit: ["finance.manage"] },
+  { name: "Labour costs", description: "Hourly rates, time and labour cost figures", view: ["finance.labour.view"], edit: ["finance.manage"] },
+  { name: "Profit & finance", description: "Profit, margins and the Finance module", view: ["finance.view", "finance.profit.view"], edit: ["finance.manage"] },
+  { name: "Settings", description: "Organisation, status flow and access settings", view: ["admin.manage"], edit: ["admin.manage"] },
+];

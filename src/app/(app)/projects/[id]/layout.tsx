@@ -31,8 +31,8 @@ export default async function ProjectLayout({
   const project = await getProject(session.org.id, id);
   if (!project) notFound();
 
-  const tabs = PROJECT_TABS.filter((t) => can(session.role, t.capability));
-  const showFinancials = can(session.role, "finance.view");
+  const tabs = PROJECT_TABS.filter((t) => can(session.role, t.capability, session.permissionOverrides));
+  const showFinancials = can(session.role, "finance.revenue.view", session.permissionOverrides);
   const [statusSettings, customers, archived] = await Promise.all([
     readStatusSettings(),
     listCustomers(session.org.id),
@@ -69,7 +69,7 @@ export default async function ProjectLayout({
                 </span>
               ) : null}
             </div>
-            <div className="mt-1 flex items-center gap-1"><h1 className="text-lg font-semibold tracking-tight sm:text-xl">{project.title}</h1>{can(session.role, "project.edit") ? <ProjectOptions project={project} customers={customers.map((customer) => ({ id: customer.id, name: customer.name }))} archived={archived} /> : null}</div>
+            <div className="mt-1 flex items-center gap-1"><h1 className="text-lg font-semibold tracking-tight sm:text-xl">{project.title}</h1>{can(session.role, "project.edit", session.permissionOverrides) ? <ProjectOptions project={project} customers={customers.map((customer) => ({ id: customer.id, name: customer.name }))} archived={archived} /> : null}</div>
             <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
               <Link href={`/customers/${project.customerId}`} className="hover:text-foreground">
                 {project.customerName}
@@ -88,12 +88,12 @@ export default async function ProjectLayout({
               <p className="text-lg font-semibold tabular-nums">
                 {formatMoney(project.contractValueCents, session.org.currency)}
               </p>
-              <p className="text-xs text-muted-foreground">{project.quotedMarginPct.toFixed(1)}% quoted margin</p>
+              {can(session.role, "finance.profit.view", session.permissionOverrides) ? <p className="text-xs text-muted-foreground">{project.quotedMarginPct.toFixed(1)}% quoted margin</p> : null}
             </div>
           ) : null}
         </div>
 
-        <StatusStepper status={project.status} projectId={project.id} tasksByStatus={tasksByStatus} fieldsByStatus={fieldsByStatus} canEdit={can(session.role, "project.edit")} />
+        <StatusStepper status={project.status} projectId={project.id} tasksByStatus={tasksByStatus} fieldsByStatus={fieldsByStatus} canEdit={can(session.role, "project.edit", session.permissionOverrides)} />
       </div>
 
       <ProjectTabs projectId={project.id} tabs={tabs} />

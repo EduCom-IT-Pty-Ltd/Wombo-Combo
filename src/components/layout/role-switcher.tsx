@@ -8,7 +8,7 @@ import { setDemoRole } from "@/app/actions/demo";
 
 /**
  * Demo-only affordance: flips the session role so you can see the app as an
- * installer, a scheduler, finance, etc. without seeding accounts.
+ * owner, admin, manager, finance and staff access without changing accounts.
  *
  * Delete this component and its server action when WorkOS is wired up — the
  * role will come from the organization membership instead.

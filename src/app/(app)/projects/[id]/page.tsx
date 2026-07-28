@@ -69,7 +69,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
                 <span className="text-muted-foreground">Not received</span>
               )}
             </Field>
-            {can(session.role, "finance.view") ? (
+            {can(session.role, "finance.revenue.view", session.permissionOverrides) ? (
               <Field label="Deposit">
                 {project.depositRequiredCents ? (
                   <>

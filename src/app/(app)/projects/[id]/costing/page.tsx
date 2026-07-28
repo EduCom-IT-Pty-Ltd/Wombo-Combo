@@ -10,7 +10,7 @@ export default async function ProjectCostingPage({ params }: { params: Promise<{
   const { id } = await params;
   const session = await getSession();
 
-  if (!can(session.role, "finance.view")) {
+  if (!can(session.role, "finance.profit.view", session.permissionOverrides)) {
     return <Card><EmptyState title="Not available" description="Your role does not have access to job costing." /></Card>;
   }
 

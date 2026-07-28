@@ -29,7 +29,9 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
     listQuotes(session.org.id, id),
   ]);
 
-  const showCosts = can(session.role, "finance.view");
+  const showMaterialCosts = can(session.role, "finance.costs.view", session.permissionOverrides);
+  const showLabourCosts = can(session.role, "finance.labour.view", session.permissionOverrides);
+  const showRevenue = can(session.role, "finance.revenue.view", session.permissionOverrides);
   const totalHours = entries.reduce(
     (s, e) => s + entryHours(new Date(e.startedAt), e.endedAt ? new Date(e.endedAt) : null, e.breakMinutes),
     0,
@@ -50,11 +52,11 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat label="Hours logged" value={totalHours.toFixed(1)} hint={`${entries.length} entries`} />
         <Stat label="On site now" value={onSite.length} tone={onSite.length > 0 ? "good" : "default"} />
-        <Stat label="Labour cost" value={showCosts ? formatMoney(labourCost, session.org.currency, { compact: true }) : "—"} hint="Logged time × hourly rate" />
+        <Stat label="Labour cost" value={showLabourCosts ? formatMoney(labourCost, session.org.currency, { compact: true }) : "—"} hint="Logged time × hourly rate" />
         <Stat
           label="Materials"
-          value={showCosts ? formatMoney(quotedMaterialCost || materialCost, session.org.currency, { compact: true }) : latestQuote?.lines.length ?? materials.length}
-          hint={latestQuote ? `${latestQuote.lines.length} quoted lines · ${materials.length} used` : showCosts ? `${materials.length} lines used` : "lines recorded"}
+          value={showMaterialCosts ? formatMoney(quotedMaterialCost || materialCost, session.org.currency, { compact: true }) : latestQuote?.lines.length ?? materials.length}
+          hint={latestQuote ? `${latestQuote.lines.length} quoted lines · ${materials.length} used` : showMaterialCosts ? `${materials.length} lines used` : "lines recorded"}
         />
         <Stat
           label="Variations"
@@ -65,7 +67,7 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
 
       <Card>
         <CardHeader title="Labour by team member" description="Time logged against this project and its snapped hourly cost rate." />
-        {labourByPerson.length ? <ul className="divide-y divide-border-subtle">{labourByPerson.map(({ person, hours, cost }) => <li key={person.id} className="flex items-center justify-between gap-3 px-4 py-3"><div className="flex items-center gap-2.5"><Avatar initials={person.initials} /><div><p className="text-sm font-bold">{person.name}</p><p className="text-xs text-muted-foreground">{hours.toFixed(1)} hours logged</p></div></div>{showCosts ? <p className="text-sm font-bold tabular-nums">{formatMoney(cost, session.org.currency)}</p> : <p className="text-sm font-bold tabular-nums">{hours.toFixed(1)}h</p>}</li>)}</ul> : <EmptyState title="No labour logged" />}
+        {labourByPerson.length ? <ul className="divide-y divide-border-subtle">{labourByPerson.map(({ person, hours, cost }) => <li key={person.id} className="flex items-center justify-between gap-3 px-4 py-3"><div className="flex items-center gap-2.5"><Avatar initials={person.initials} /><div><p className="text-sm font-bold">{person.name}</p><p className="text-xs text-muted-foreground">{hours.toFixed(1)} hours logged</p></div></div>{showLabourCosts ? <p className="text-sm font-bold tabular-nums">{formatMoney(cost, session.org.currency)}</p> : <p className="text-sm font-bold tabular-nums">{hours.toFixed(1)}h</p>}</li>)}</ul> : <EmptyState title="No labour logged" />}
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -123,7 +125,7 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
                         {m.quantity} {m.unit} · {formatDate(m.recordedAt)}
                       </p>
                     </div>
-                    {showCosts ? (
+                    {showMaterialCosts ? (
                       <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
                         {formatMoney(Math.round(m.quantity * m.unitCostCents), session.org.currency)}
                       </span>
@@ -148,7 +150,7 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
                     </div>
                     <div className="shrink-0 text-right">
                       <Badge tone={VARIATION_TONES[v.status as keyof typeof VARIATION_TONES]}>{v.status}</Badge>
-                      {showCosts ? (
+                      {showRevenue ? (
                         <p className="mt-1 text-xs tabular-nums text-muted-foreground">
                           {formatMoney(v.quotedSellCents, session.org.currency)}
                         </p>

@@ -1,7 +1,9 @@
 import { Check, Minus, X } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { listDefects, listInspections, listPeople } from "@/lib/data/repository";
+import { can } from "@/lib/domain/permissions";
+import { getProject, listDefects, listInspections, listLeave, listPeople } from "@/lib/data/repository";
 import { Badge, Card, CardHeader, EmptyState } from "@/components/ui";
+import { QaInspectionQueue } from "@/components/qa/qa-inspection-queue";
 import { formatDate, formatRelative } from "@/lib/utils";
 
 const RESULT_TONES = { pending: "amber", pass: "emerald", pass_with_defects: "amber", fail: "rose" } as const;
@@ -10,11 +12,15 @@ const SEVERITY_TONES = { minor: "slate", major: "amber", critical: "rose" } as c
 export default async function ProjectQaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSession();
-  const [inspections, defects, people] = await Promise.all([
+  const [project, inspections, defects, people, leave] = await Promise.all([
+    getProject(session.org.id, id),
     listInspections(session.org.id, id),
     listDefects(session.org.id, { projectId: id }),
     listPeople(session.org.id),
+    listLeave(session.org.id),
   ]);
+  if (!project) return <Card><EmptyState title="Project not found" /></Card>;
+  const pendingInspection = inspections.find((inspection) => inspection.result === "pending");
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -79,6 +85,7 @@ export default async function ProjectQaPage({ params }: { params: Promise<{ id: 
             );
           })
         )}
+        <Card><CardHeader title="Schedule QA" description="Assign an inspector and add the QA inspection to their calendar." /><QaInspectionQueue queue={[{ project, inspection: pendingInspection ?? null }]} people={people} leave={leave} canSchedule={can(session.role, "qa.inspect", session.permissionOverrides)} /></Card>
       </div>
 
       <Card>
