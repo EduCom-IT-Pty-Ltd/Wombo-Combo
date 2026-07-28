@@ -30,7 +30,7 @@ export function StatusBadge({ status, className }: { status: ProjectStatus; clas
  * asks to change this workflow UI. Settings may change labels, colours, tasks
  * and order only.
  */
-export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { status: ProjectStatus; projectId?: string; tasks?: Task[]; fields?: WorkflowField[]; canEdit?: boolean }) {
+export function StatusStepper({ status, projectId, tasksByStatus = {}, fieldsByStatus = {}, canEdit }: { status: ProjectStatus; projectId?: string; tasksByStatus?: Partial<Record<ProjectStatus, Task[]>>; fieldsByStatus?: Partial<Record<ProjectStatus, WorkflowField[]>>; canEdit?: boolean }) {
   const { flow: configuredFlow, settingFor, settings } = useStatusSettings();
   // A project can retain a legacy/deleted stage. Keep the complete workflow
   // UI available for it instead of falling back to an unstyled status label.
@@ -45,9 +45,17 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
   const [editingTimestamp, setEditingTimestamp] = useState<string | null>(null);
   const [timestampValue, setTimestampValue] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
-  const [fieldValues, setFieldValues] = useState<Record<string, string>>(() => Object.fromEntries((fields ?? []).map((field) => [field.id, field.value])));
+  const [viewingStatus, setViewingStatus] = useState<ProjectStatus>(status);
+  const [fieldDirtyStatus, setFieldDirtyStatus] = useState<ProjectStatus | null>(null);
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>(() => Object.fromEntries(Object.values(fieldsByStatus).flat().map((field) => [field.id, field.value])));
   const router = useRouter();
-  const incomplete = (tasks ?? []).filter((task) => task.status !== "done" && task.status !== "cancelled");
+  const viewingIndex = flow.findIndex((setting) => setting.status === viewingStatus);
+  const viewingSetting = flow.find((setting) => setting.status === viewingStatus) ?? currentSetting;
+  const viewingTasks = tasksByStatus[viewingStatus] ?? [];
+  const viewingFields = fieldsByStatus[viewingStatus] ?? [];
+  const incomplete = viewingTasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
+  const missingRequiredFields = viewingFields.filter((field) => field.required && !(fieldValues[field.id] ?? field.value).trim());
+  const currentMissingRequiredFields = (fieldsByStatus[status] ?? []).filter((field) => field.required && !(fieldValues[field.id] ?? field.value).trim());
   const next = index >= 0 ? flow[index + 1] : undefined;
 
   const offRampStatuses = settings.filter((setting) => setting.status === "lost" || setting.status === "cancelled");
@@ -73,8 +81,12 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
   function saveFields() {
     if (!projectId) return;
     startTransition(async () => {
-      const result = await saveWorkflowFieldValues({ projectId, values: Object.entries(fieldValues).map(([templateId, value]) => ({ templateId, value })) });
-      if (result.ok) router.refresh();
+      const result = await saveWorkflowFieldValues({ projectId, values: viewingFields.map((field) => ({ templateId: field.id, value: fieldValues[field.id] ?? field.value })) });
+      if (result.ok) {
+        setFieldDirtyStatus(null);
+        router.refresh();
+      }
+      else setActionError(result.message);
     });
   }
 
@@ -82,9 +94,18 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
     if (!projectId) return;
     setActionError(null);
     startTransition(async () => {
+      if (fieldDirtyStatus === viewingStatus && viewingFields.length) {
+        const fieldResult = await saveWorkflowFieldValues({ projectId, values: viewingFields.map((field) => ({ templateId: field.id, value: fieldValues[field.id] ?? field.value })) });
+        if (!fieldResult.ok) {
+          setActionError(fieldResult.message);
+          return;
+        }
+        setFieldDirtyStatus(null);
+      }
       const result = await transitionProject({ projectId, to, confirmJump: true, completeSkipped, overrideReason: "Workflow stage confirmed" });
       if (result.ok) {
         setConfirming(null);
+        setViewingStatus(to);
         router.refresh();
       } else setActionError(result.message);
     });
@@ -96,6 +117,29 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
   // what is being left behind before deciding to tick it off.
   const skippedStages =
     confirming && !offPipeline && confirmingIndex > index ? flow.slice(index, confirmingIndex).map((setting) => setting.label) : [];
+
+  function selectStage(target: ProjectStatus) {
+    setActionError(null);
+    setViewingStatus(target);
+  }
+
+  function moveFromViewedStage() {
+    if (viewingStatus !== status) {
+      if (viewingIndex > index && currentMissingRequiredFields.length) {
+        setActionError(`Enter the required ${currentMissingRequiredFields.length === 1 ? "field" : "fields"}: ${currentMissingRequiredFields.map((field) => field.label).join(", ")}.`);
+        return;
+      }
+      setConfirming(viewingStatus);
+      return;
+    }
+    if (!next) return;
+    if (missingRequiredFields.length) {
+      setActionError(`Enter the required ${missingRequiredFields.length === 1 ? "field" : "fields"}: ${missingRequiredFields.map((field) => field.label).join(", ")}.`);
+      return;
+    }
+    if (incomplete.length > 0) setConfirming(next.status);
+    else move(next.status);
+  }
 
   return (
     <section className="rounded-xl border-2 border-border-strong bg-surface p-4 shadow-sm sm:p-5">
@@ -120,12 +164,12 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
               <button
                 key={setting.status}
                 type="button"
-                title={`Move to ${setting.label}`}
-                onClick={() => canEdit && setting.status !== status && setConfirming(setting.status)}
+                title={`View ${setting.label}`}
+                onClick={() => canEdit && selectStage(setting.status)}
                 disabled={!canEdit || pending}
                 className={cn(
                   "workflow-tile-glow relative flex w-24 shrink-0 flex-col overflow-hidden rounded-lg border text-left transition-all",
-                  current ? "border-foreground shadow-md" : "border-border-subtle",
+                  current ? "border-foreground shadow-md" : setting.status === viewingStatus ? "border-primary shadow-sm" : "border-border-subtle",
                   active ? "bg-surface" : "bg-surface-muted opacity-80",
                 )}
                 style={{ borderTopWidth: "6px", borderTopColor: active ? setting.color : "var(--border)", "--tile-accent": active ? setting.color : "var(--border)" } as CSSProperties}
@@ -145,15 +189,15 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Stage checklist</p>
-              <p className="mt-1 text-base font-bold">Complete these tasks to progress</p>
+              <p className="mt-1 text-base font-bold">{viewingStatus === status ? "Complete these tasks to progress" : `Viewing ${viewingSetting?.label ?? "stage"}`}</p>
             </div>
-            {next ? <Button size="md" variant="primary" disabled={!canEdit || pending} onClick={() => incomplete.length > 0 ? setConfirming(next.status) : move(next.status)}>Move to {next.label}</Button> : null}
+            {viewingStatus !== status && viewingSetting ? <Button size="md" variant="primary" disabled={!canEdit || pending} onClick={moveFromViewedStage}>{viewingIndex < index ? `Move back to ${viewingSetting.label}` : `Move to ${viewingSetting.label}`}</Button> : next ? <Button size="md" variant="primary" disabled={!canEdit || pending} onClick={moveFromViewedStage}>Move to {next.label}</Button> : null}
           </div>
 
-          {fields?.length ? <div className="mt-4 rounded-lg border border-border-strong bg-surface p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Project details</p><p className="mt-0.5 text-sm font-semibold">Information required at this stage</p></div><Button size="sm" variant="secondary" disabled={!canEdit || pending} onClick={saveFields}>Save details</Button></div><div className="mt-3 grid gap-3 sm:grid-cols-2">{fields.map((field) => <label key={field.id} className="block"><span className="mb-1 block text-xs font-bold text-muted-foreground">{field.label}</span><input value={fieldValues[field.id] ?? ""} onChange={(event) => setFieldValues((current) => ({ ...current, [field.id]: event.target.value }))} disabled={!canEdit || pending} className="h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-foreground" placeholder={`Enter ${field.label.toLowerCase()}`} />{field.updatedAt ? <span className="mt-1 block text-[10px] text-muted-foreground">Updated {formatCompletionTime(field.updatedAt)}</span> : null}</label>)}</div></div> : null}
-          {tasks?.length ? (
+          {viewingFields.length ? <div className="mt-4 rounded-lg border border-border-strong bg-surface p-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Project details</p><Button size="sm" variant="secondary" disabled={!canEdit || pending} onClick={saveFields}>Save details</Button></div><div className="mt-3 grid gap-3 sm:grid-cols-2">{viewingFields.map((field) => <label key={field.id} className="block"><span className="mb-1 block text-xs font-bold text-muted-foreground">{field.label}{field.required ? <span className="ml-1 text-rose-500">*</span> : null}</span><input value={fieldValues[field.id] ?? field.value} onChange={(event) => { setFieldValues((current) => ({ ...current, [field.id]: event.target.value })); setFieldDirtyStatus(viewingStatus); }} disabled={!canEdit || pending} required={field.required} className="h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-foreground" placeholder={`Enter ${field.label.toLowerCase()}`} />{field.required ? <span className="mt-1 block text-[10px] font-semibold text-rose-600">Mandatory before progressing</span> : null}{field.updatedAt ? <span className="mt-1 block text-[10px] text-muted-foreground">Updated {formatCompletionTime(field.updatedAt)}</span> : null}</label>)}</div></div> : null}
+          {viewingTasks.length ? (
             <ul className="mt-4 space-y-2">
-              {tasks.map((task) => {
+              {viewingTasks.map((task) => {
                 const done = task.status === "done";
                 return (
                   <li key={task.id} className={cn("flex min-h-14 items-center gap-3 rounded-lg border px-3 py-2.5", done ? "border-emerald-500/40 bg-emerald-500/10" : "border-border-strong bg-surface")}>
@@ -176,7 +220,7 @@ export function StatusStepper({ status, projectId, tasks, fields, canEdit }: { s
               })}
             </ul>
           ) : <p className="mt-4 text-sm text-muted-foreground">No checklist tasks configured for this stage.</p>}
-          {incomplete.length > 0 && next ? <p className="mt-3 text-sm font-medium text-muted-foreground">Mark every task complete to unlock the next stage.</p> : null}
+          {viewingStatus === status && incomplete.length > 0 && next ? <p className="mt-3 text-sm font-medium text-muted-foreground">Mark every task complete to unlock the next stage.</p> : null}
           {actionError ? <p className="mt-3 text-sm font-semibold text-[var(--tone-rose-fg)]">{actionError}</p> : null}
         </div>
       ) : null}

@@ -10,6 +10,7 @@ export async function createMaterialQuote(input: { projectId: string; selections
   if (!input.projectId || !selections.length) return { ok: false, message: "Select at least one material and quantity." };
   const quote = await createLocalMaterialQuote({ projectId: input.projectId, materialIds: selections });
   revalidatePath(`/projects/${input.projectId}/quote`);
+  revalidatePath(`/projects/${input.projectId}/costing`);
   revalidatePath(`/customers`);
   return { ok: true, quoteId: quote.id, message: `Created ${quote.reference}` };
 }

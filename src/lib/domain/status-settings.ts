@@ -19,6 +19,8 @@ export interface StatusFieldTemplate {
   id: string;
   status: ProjectStatus;
   label: string;
+  /** A required field must be filled before progressing from this stage. */
+  required: boolean;
   position: number;
 }
 
@@ -63,7 +65,7 @@ export const DEFAULT_STATUS_TASK_TEMPLATES: StatusTaskTemplate[] = [
 ].map(([status, title], index) => ({ id: `workflow-${status}`, status: status as ProjectStatus, title, position: index + 1 }));
 
 export const DEFAULT_STATUS_FIELD_TEMPLATES: StatusFieldTemplate[] = [
-  { id: "field-approved-1", status: "approved", label: "PO Number", position: 1 },
+  { id: "field-approved-1", status: "approved", label: "PO Number", required: false, position: 1 },
 ];
 
 export function orderedFlow(settings: StatusSetting[]) {

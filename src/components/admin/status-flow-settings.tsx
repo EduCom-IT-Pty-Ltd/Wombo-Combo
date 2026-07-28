@@ -8,7 +8,9 @@ import { saveStatusSettingsAction, type SaveStatusSettingsState } from "@/app/ac
 import { Button, Card, CardHeader } from "@/components/ui";
 import type { StatusFieldTemplate, StatusSetting, StatusTaskTemplate } from "@/lib/domain/status-settings";
 
-type EditableStatus = StatusSetting & { tasks: string[]; fields: string[] };
+type EditableField = { label: string; required: boolean };
+type EditableStatus = StatusSetting & { tasks: string[]; fields: EditableField[] };
+
 const initial: SaveStatusSettingsState = { status: "idle" };
 const extraStatuses: Array<{ status: StatusSetting["status"]; label: string }> = [
   { status: "awaiting_approval", label: "Approval pending" },
@@ -17,7 +19,11 @@ const extraStatuses: Array<{ status: StatusSetting["status"]; label: string }> =
 const inputClass = "h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-primary";
 
 function mergeSettings(settings: StatusSetting[], templates: StatusTaskTemplate[], fields: StatusFieldTemplate[]): EditableStatus[] {
-  return settings.map((setting) => ({ ...setting, tasks: templates.filter((task) => task.status === setting.status).sort((a, b) => a.position - b.position).map((task) => task.title), fields: fields.filter((field) => field.status === setting.status).sort((a, b) => a.position - b.position).map((field) => field.label) }));
+  return settings.map((setting) => ({
+    ...setting,
+    tasks: templates.filter((task) => task.status === setting.status).sort((a, b) => a.position - b.position).map((task) => task.title),
+    fields: fields.filter((field) => field.status === setting.status).sort((a, b) => a.position - b.position).map((field) => ({ label: field.label, required: field.required ?? false })),
+  }));
 }
 
 export function StatusFlowSettings({ settings, templates, fields }: { settings: StatusSetting[]; templates: StatusTaskTemplate[]; fields: StatusFieldTemplate[] }) {
@@ -46,7 +52,12 @@ export function StatusFlowSettings({ settings, templates, fields }: { settings: 
   }
 
   function saveEditor(item: EditableStatus) {
-    const cleaned = { ...item, label: item.label.trim(), tasks: item.tasks.map((task) => task.trim()).filter(Boolean) };
+    const cleaned = {
+      ...item,
+      label: item.label.trim(),
+      tasks: item.tasks.map((task) => task.trim()).filter(Boolean),
+      fields: item.fields.map((field) => ({ ...field, label: field.label.trim() })).filter((field) => field.label),
+    };
     setItems((current) => isNew ? [...current, cleaned] : current.map((entry) => entry.status === cleaned.status ? cleaned : entry));
     setEditing(null);
   }
@@ -63,7 +74,8 @@ export function StatusFlowSettings({ settings, templates, fields }: { settings: 
     setEditing({ status: option.status, label: option.label, color: "#2563eb", position: flow.length + 1, inProgressFlow: true, tasks: [], fields: [] });
   }
 
-  return <form action={action}><input type="hidden" name="status-settings" value={payload} />
+  return <form action={action}>
+    <input type="hidden" name="status-settings" value={payload} />
     <Card>
       <CardHeader title="Project status flow" description="Drag stages to change their order. Edit a stage to change its name, colour and checklist." action={<Button type="button" size="sm" variant="primary" onClick={newStatus} disabled={available.length === 0}><Plus className="size-4" /> Add status</Button>} />
       <div className="p-4 sm:p-5">
@@ -83,5 +95,21 @@ export function StatusFlowSettings({ settings, templates, fields }: { settings: 
 
 function StatusEditor({ item, isNew, extraOptions, canDelete, onClose, onSave, onDelete }: { item: EditableStatus; isNew: boolean; extraOptions: Array<{ status: StatusSetting["status"]; label: string }>; canDelete: boolean; onClose: () => void; onSave: (item: EditableStatus) => void; onDelete: (status: StatusSetting["status"]) => void }) {
   const [draft, setDraft] = useState(item);
-  return createPortal(<><button type="button" aria-label="Close status editor" onClick={onClose} className="fixed inset-0 z-[90] bg-black/45" /><section role="dialog" aria-modal="true" aria-labelledby="status-editor-title" className="fixed top-1/2 left-1/2 z-[100] max-h-[calc(100dvh-2rem)] w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border-strong bg-surface shadow-2xl"><div className="flex items-center justify-between border-b border-border-subtle px-5 py-4"><div><p className="text-xs font-bold tracking-[0.12em] text-primary uppercase">Status editor</p><h2 id="status-editor-title" className="mt-0.5 text-lg font-bold">{isNew ? "Add status" : "Edit status"}</h2></div><button type="button" onClick={onClose} className="grid size-10 place-items-center rounded-lg text-muted-foreground hover:bg-surface-muted"><X className="size-5" /></button></div><div className="space-y-4 p-5"><label className="block"><span className="mb-1.5 block text-xs font-bold text-muted-foreground">Status name</span><input value={draft.label} onChange={(event) => setDraft({ ...draft, label: event.target.value })} className={inputClass} autoFocus /></label>{isNew ? <label className="block"><span className="mb-1.5 block text-xs font-bold text-muted-foreground">Status type</span><select value={draft.status} onChange={(event) => { const option = extraOptions.find((entry) => entry.status === event.target.value); if (option) setDraft({ ...draft, status: option.status, label: option.label }); }} className={inputClass}>{extraOptions.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}</select></label> : null}<label className="block"><span className="mb-1.5 block text-xs font-bold text-muted-foreground">Stage colour</span><div className="flex items-center gap-3"><input type="color" value={draft.color} onChange={(event) => setDraft({ ...draft, color: event.target.value })} className="size-11 rounded-lg border border-border-strong bg-surface p-1" /><span className="rounded-full px-3 py-1.5 text-sm font-bold text-white" style={{ backgroundColor: draft.color }}>{draft.label || "Preview"}</span></div></label><label className="block"><span className="mb-1.5 block text-xs font-bold text-muted-foreground">Checklist tasks</span><span className="mb-2 block text-xs text-muted-foreground">One task per line. These appear on the project at this stage.</span><textarea rows={5} value={draft.tasks.join("\n")} onChange={(event) => setDraft({ ...draft, tasks: event.target.value.split("\n") })} className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-foreground" placeholder={"First task\nSecond task\nThird task"} /></label><label className="block"><span className="mb-1.5 block text-xs font-bold text-muted-foreground">Project detail fields</span><span className="mb-2 block text-xs text-muted-foreground">One field label per line, e.g. PO Number. The project shows a saved text input for each field at this stage.</span><textarea rows={4} value={draft.fields.join("\n")} onChange={(event) => setDraft({ ...draft, fields: event.target.value.split("\n") })} className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-foreground" placeholder={"PO Number\nPO received date"} /></label></div><div className="flex items-center justify-between gap-2 border-t border-border-subtle px-5 py-4">{canDelete ? <Button type="button" variant="danger" size="sm" onClick={() => { if (window.confirm(`Delete ${draft.label}? Its own checklist and detail-field templates will be removed when you save the status flow.`)) onDelete(draft.status); }}><Trash2 className="size-3.5" /> Delete status</Button> : <span />}{" "}<div className="flex gap-2"><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="button" variant="primary" disabled={draft.label.trim().length < 2} onClick={() => onSave(draft)}>Save status</Button></div></div></section></>, document.body);
+  function updateField(index: number, patch: Partial<EditableField>) {
+    setDraft((current) => ({ ...current, fields: current.fields.map((field, fieldIndex) => fieldIndex === index ? { ...field, ...patch } : field) }));
+  }
+  return createPortal(<>
+    <button type="button" aria-label="Close status editor" onClick={onClose} className="fixed inset-0 z-[90] bg-black/45" />
+    <section role="dialog" aria-modal="true" aria-labelledby="status-editor-title" className="fixed top-1/2 left-1/2 z-[100] max-h-[calc(100dvh-2rem)] w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border-strong bg-surface shadow-2xl">
+      <div className="flex items-center justify-between border-b border-border-subtle px-5 py-4"><div><p className="text-xs font-bold tracking-[0.12em] text-primary uppercase">Status editor</p><h2 id="status-editor-title" className="mt-0.5 text-lg font-bold">{isNew ? "Add status" : "Edit status"}</h2></div><button type="button" onClick={onClose} className="grid size-10 place-items-center rounded-lg text-muted-foreground hover:bg-surface-muted"><X className="size-5" /></button></div>
+      <div className="space-y-4 p-5">
+        <label className="block"><span className="mb-1.5 block text-xs font-bold text-muted-foreground">Status name</span><input value={draft.label} onChange={(event) => setDraft({ ...draft, label: event.target.value })} className={inputClass} autoFocus /></label>
+        {isNew ? <label className="block"><span className="mb-1.5 block text-xs font-bold text-muted-foreground">Status type</span><select value={draft.status} onChange={(event) => { const option = extraOptions.find((entry) => entry.status === event.target.value); if (option) setDraft({ ...draft, status: option.status, label: option.label }); }} className={inputClass}>{extraOptions.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}</select></label> : null}
+        <label className="block"><span className="mb-1.5 block text-xs font-bold text-muted-foreground">Stage colour</span><div className="flex items-center gap-3"><input type="color" value={draft.color} onChange={(event) => setDraft({ ...draft, color: event.target.value })} className="size-11 rounded-lg border border-border-strong bg-surface p-1" /><span className="rounded-full px-3 py-1.5 text-sm font-bold text-white" style={{ backgroundColor: draft.color }}>{draft.label || "Preview"}</span></div></label>
+        <label className="block"><span className="mb-1.5 block text-xs font-bold text-muted-foreground">Checklist tasks</span><span className="mb-2 block text-xs text-muted-foreground">One task per line. These appear on the project at this stage.</span><textarea rows={5} value={draft.tasks.join("\n")} onChange={(event) => setDraft({ ...draft, tasks: event.target.value.split("\n") })} className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-foreground" placeholder={"First task\nSecond task\nThird task"} /></label>
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-bold">Custom project fields</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Add each piece of information you need at this status. Mandatory fields must be filled before the project can move forward.</p></div><Button type="button" size="sm" variant="secondary" onClick={() => setDraft((current) => ({ ...current, fields: [...current.fields, { label: "", required: false }] }))}><Plus className="size-3.5" /> Add field</Button></div><div className="mt-3 space-y-2">{draft.fields.length ? draft.fields.map((field, index) => <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg border border-border-strong bg-surface p-2"><input value={field.label} onChange={(event) => updateField(index, { label: event.target.value })} className="h-10 min-w-[12rem] flex-1 rounded-md border border-border-strong bg-surface px-3 text-sm text-foreground" placeholder="Field label, e.g. PO Number" /><label className="flex h-10 items-center gap-2 rounded-md bg-surface-muted px-2 text-xs font-bold text-foreground"><input type="checkbox" checked={field.required} onChange={(event) => updateField(index, { required: event.target.checked })} className="size-4 accent-[var(--primary)]" /> Mandatory</label><button type="button" onClick={() => setDraft((current) => ({ ...current, fields: current.fields.filter((_, fieldIndex) => fieldIndex !== index) }))} className="grid size-10 place-items-center rounded-md text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600" aria-label={`Remove ${field.label || "field"}`}><Trash2 className="size-4" /></button></div>) : <p className="rounded-lg border border-dashed border-border-strong px-3 py-4 text-sm text-muted-foreground">No custom fields yet. Add one for details such as a PO number.</p>}</div></div>
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-5 py-4">{canDelete ? <Button type="button" variant="danger" size="sm" onClick={() => { if (window.confirm(`Delete ${draft.label}? Its own checklist and detail-field templates will be removed when you save the status flow.`)) onDelete(draft.status); }}><Trash2 className="size-3.5" /> Delete status</Button> : <span />}<div className="flex gap-2"><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="button" variant="primary" disabled={draft.label.trim().length < 2} onClick={() => onSave(draft)}>Save status</Button></div></div>
+    </section>
+  </>, document.body);
 }

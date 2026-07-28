@@ -13,7 +13,7 @@ const settingSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Choose a six-digit colour"),
   inProgressFlow: z.boolean(),
   tasks: z.array(z.string().trim().min(1).max(160)).max(30),
-  fields: z.array(z.string().trim().min(1).max(80)).max(20),
+  fields: z.array(z.object({ label: z.string().trim().min(1).max(80), required: z.boolean() })).max(20),
 });
 
 const payloadSchema = z.object({ settings: z.array(settingSchema).min(2).max(PROJECT_STATUSES.length) });
@@ -46,10 +46,11 @@ export async function saveStatusSettingsAction(_previous: SaveStatusSettingsStat
     title,
     position: index + 1,
   })));
-  const fields: StatusFieldTemplate[] = flow.flatMap((setting) => setting.fields.map((label, index) => ({
+  const fields: StatusFieldTemplate[] = flow.flatMap((setting) => setting.fields.map((field, index) => ({
     id: `field-${setting.status}-${index + 1}`,
     status: setting.status,
-    label,
+    label: field.label,
+    required: field.required,
     position: index + 1,
   })));
   await saveStatusSettings(settings);

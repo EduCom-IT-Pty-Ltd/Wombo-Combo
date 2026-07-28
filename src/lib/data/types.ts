@@ -281,6 +281,7 @@ export interface ProjectEvent {
 export interface WorkflowField {
   id: string;
   label: string;
+  required: boolean;
   value: string;
   updatedAt: string | null;
 }

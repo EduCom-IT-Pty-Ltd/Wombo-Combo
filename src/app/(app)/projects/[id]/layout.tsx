@@ -10,6 +10,7 @@ import { StatusBadge, StatusStepper } from "@/components/status-badge";
 import { ProjectTabs } from "@/components/projects/project-tabs";
 import { ProjectOptions } from "@/components/projects/project-options";
 import { ProjectTabTransition } from "@/components/projects/project-tab-transition";
+import { readStatusSettings } from "@/lib/data/local-store";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -32,12 +33,20 @@ export default async function ProjectLayout({
 
   const tabs = PROJECT_TABS.filter((t) => can(session.role, t.capability));
   const showFinancials = can(session.role, "finance.view");
-  const [workflowTasks, workflowFields, customers, archived] = await Promise.all([
-    listWorkflowTasks(session.org.id, project.id, project.status),
-    listWorkflowFields(session.org.id, project.id, project.status),
+  const [statusSettings, customers, archived] = await Promise.all([
+    readStatusSettings(),
     listCustomers(session.org.id),
     isProjectArchived(session.org.id, project.id),
   ]);
+  const workflowStatuses = statusSettings.filter((setting) => setting.inProgressFlow).map((setting) => setting.status);
+  if (!workflowStatuses.includes(project.status)) workflowStatuses.push(project.status);
+  const workflowEntries = await Promise.all(workflowStatuses.map(async (workflowStatus) => [
+    workflowStatus,
+    await listWorkflowTasks(session.org.id, project.id, workflowStatus),
+    await listWorkflowFields(session.org.id, project.id, workflowStatus),
+  ] as const));
+  const tasksByStatus = Object.fromEntries(workflowEntries.map(([workflowStatus, tasks]) => [workflowStatus, tasks]));
+  const fieldsByStatus = Object.fromEntries(workflowEntries.map(([workflowStatus, , fields]) => [workflowStatus, fields]));
 
   return (
     <div className="space-y-4">
@@ -84,7 +93,7 @@ export default async function ProjectLayout({
           ) : null}
         </div>
 
-        <StatusStepper status={project.status} projectId={project.id} tasks={workflowTasks} fields={workflowFields} canEdit={can(session.role, "project.edit")} />
+        <StatusStepper status={project.status} projectId={project.id} tasksByStatus={tasksByStatus} fieldsByStatus={fieldsByStatus} canEdit={can(session.role, "project.edit")} />
       </div>
 
       <ProjectTabs projectId={project.id} tabs={tabs} />

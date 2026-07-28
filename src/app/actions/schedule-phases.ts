@@ -19,18 +19,18 @@ export async function addSchedulePhase(_state: SchedulePhaseActionState, formDat
   await requireCapability("schedule.manage");
   const projectId = String(formData.get("projectId") ?? "");
   const parsed = phaseSchema.safeParse(Object.fromEntries(formData));
-  if (!projectId || !parsed.success) return { ok: false, message: "Enter a phase, assign a user, and choose a date." };
+  if (!projectId || !parsed.success) return { ok: false, message: "Enter a Call-Up, assign a user, and choose a date." };
   try { await createLocalSchedulePhase({ projectId, ...parsed.data, description: parsed.data.description || null }); } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not add phase." }; }
-  revalidateSchedule(projectId); return { ok: true, message: "Phase added." };
+  revalidateSchedule(projectId); return { ok: true, message: "Call-Up added." };
 }
 
 export async function updateSchedulePhase(_state: SchedulePhaseActionState, formData: FormData): Promise<SchedulePhaseActionState> {
   await requireCapability("schedule.manage");
   const projectId = String(formData.get("projectId") ?? ""); const id = String(formData.get("id") ?? "");
   const parsed = phaseSchema.safeParse(Object.fromEntries(formData));
-  if (!projectId || !id || !parsed.success) return { ok: false, message: "Check the phase details." };
+  if (!projectId || !id || !parsed.success) return { ok: false, message: "Check the Call-Up details." };
   try { await updateLocalSchedulePhase(id, { ...parsed.data, description: parsed.data.description || null }); } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not update phase." }; }
-  revalidateSchedule(projectId); return { ok: true, message: "Phase updated." };
+  revalidateSchedule(projectId); return { ok: true, message: "Call-Up updated." };
 }
 
 export async function deleteSchedulePhase(id: string, projectId: string) { await requireCapability("schedule.manage"); await deleteLocalSchedulePhase(id); revalidateSchedule(projectId); }

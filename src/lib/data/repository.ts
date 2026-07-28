@@ -24,7 +24,7 @@ import type {
   WorkflowField,
 } from "./types";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
-import { calculateCosting, entryHours, type CostingResult } from "@/lib/domain/costing";
+import { calculateCosting, type CostingResult } from "@/lib/domain/costing";
 import { EMPTY_CONTEXT, type TransitionContext } from "@/lib/domain/status";
 
 /**
@@ -164,7 +164,7 @@ export async function listWorkflowFields(_orgId: string, projectId: string, stat
   const [store, templates] = await Promise.all([readLocalStore(), readStatusFieldTemplates()]);
   return templates.filter((template) => template.status === status).sort((a, b) => a.position - b.position).map((template) => {
     const value = store.workflowFieldValues.find((entry) => entry.projectId === projectId && entry.templateId === template.id);
-    return { id: template.id, label: template.label, value: value?.value ?? "", updatedAt: value?.updatedAt ?? null };
+    return { id: template.id, label: template.label, required: template.required ?? false, value: value?.value ?? "", updatedAt: value?.updatedAt ?? null };
   });
 }
 
@@ -275,28 +275,17 @@ export async function buildTransitionContext(orgId: string, project: ProjectDeta
 }
 
 export async function getCosting(orgId: string, project: ProjectDetail): Promise<CostingResult> {
-  const [entries, materials, variations, quotes] = await Promise.all([
-    listTimeEntries(orgId, { projectId: project.id }),
-    listMaterials(orgId, project.id),
-    listVariations(orgId, project.id),
-    listQuotes(orgId, project.id),
-  ]);
-
-  const accepted = quotes.find((q) => q.status === "accepted");
-
+  // The project costing screen intentionally follows the simplified quoting
+  // workflow: the newest quote supplies revenue and its material lines supply
+  // cost. Labour, field material-use records and variations are not included.
+  const quotes = await listQuotes(orgId, project.id);
+  const quote = quotes[0];
   return calculateCosting({
-    quotedSellCents: accepted?.subtotalSellCents ?? project.contractValueCents,
-    quotedCostCents: accepted?.subtotalCostCents ?? Math.round(project.contractValueCents * 0.7),
-    labour: entries.map((e) => ({
-      hours: entryHours(new Date(e.startedAt), e.endedAt ? new Date(e.endedAt) : null, e.breakMinutes),
-      costRateCentsPerHour: e.costRateCentsPerHour,
-    })),
-    materials: materials.map((m) => ({ quantity: m.quantity, unitCostCents: m.unitCostCents })),
-    variations: variations.map((v) => ({
-      status: v.status,
-      quotedSellCents: v.quotedSellCents,
-      estimatedCostCents: v.estimatedCostCents,
-    })),
+    quotedSellCents: quote?.subtotalSellCents ?? 0,
+    quotedCostCents: quote?.subtotalCostCents ?? 0,
+    labour: [],
+    materials: (quote?.lines ?? []).map((line) => ({ quantity: line.quantity, unitCostCents: line.unitCostCents })),
+    variations: [],
   });
 }
 
