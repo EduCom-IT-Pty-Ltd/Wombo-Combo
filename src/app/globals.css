@@ -161,10 +161,27 @@ button:active:not(:disabled) {
 /* A live shift is deliberately noticeable without changing the calendar tile
    layout or obscuring the assigned person's colour. */
 .active-shift-link {
-  background: linear-gradient(120deg, #059669, #10b981, #2563eb, #059669);
-  background-size: 260% 100%;
-  animation: onsite-gradient 3.4s linear infinite;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: linear-gradient(120deg, #047857, #059669 42%, #2563eb);
   box-shadow: 0 5px 16px rgb(5 150 105 / 0.35);
+}
+.active-shift-link > :not(.active-shift-sweep) {
+  position: relative;
+  z-index: 1;
+}
+.active-shift-sweep {
+  position: absolute;
+  z-index: 0;
+  top: -60%;
+  bottom: -60%;
+  left: 0;
+  width: 58%;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 0%, rgb(255 255 255 / 0.1) 22%, rgb(255 255 255 / 0.68) 50%, rgb(110 231 183 / 0.32) 68%, transparent 100%);
+  transform: translateX(-210%) skewX(-16deg);
+  animation: active-shift-sweep 2.35s cubic-bezier(0.32, 0.04, 0.18, 0.98) infinite;
 }
 .onsite-calendar-tile {
   isolation: isolate;
@@ -173,12 +190,27 @@ button:active:not(:disabled) {
 }
 .onsite-calendar-shimmer {
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  left: 0;
   z-index: 0;
+  width: 68%;
   opacity: 0.88;
-  background: linear-gradient(110deg, transparent 8%, rgb(255 255 255 / 0.16) 28%, rgb(255 255 255 / 0.82) 50%, rgb(134 239 172 / 0.42) 62%, transparent 88%);
-  background-size: 240% 100%;
-  animation: onsite-gradient 1.75s linear infinite;
+  background: linear-gradient(105deg, transparent 0%, rgb(255 255 255 / 0.1) 24%, rgb(255 255 255 / 0.84) 50%, rgb(134 239 172 / 0.48) 66%, transparent 100%);
+  transform: translateX(-180%) skewX(-14deg);
+  animation: onsite-shimmer-sweep 2.15s cubic-bezier(0.32, 0.04, 0.18, 0.98) infinite;
+}
+.onsite-calendar-colour-flow {
+  position: absolute;
+  z-index: 0;
+  top: -65%;
+  bottom: -65%;
+  left: 0;
+  width: 76%;
+  opacity: 0.8;
+  background: linear-gradient(105deg, transparent 0%, rgb(16 185 129 / 0.2) 15%, rgb(45 212 191 / 0.56) 36%, rgb(59 130 246 / 0.62) 53%, rgb(139 92 246 / 0.5) 70%, rgb(16 185 129 / 0.24) 85%, transparent 100%);
+  transform: translateX(-190%) skewX(-14deg);
+  animation: onsite-colour-sweep 3.25s cubic-bezier(0.32, 0.04, 0.18, 0.98) infinite;
 }
 .onsite-calendar-dot {
   position: absolute;
@@ -194,9 +226,17 @@ button:active:not(:disabled) {
   box-shadow: 0 0 0 3px rgb(6 78 59 / 0.3), 0 0 14px 3px rgb(52 211 153 / 0.95);
   animation: onsite-dot-pulse 1.1s ease-in-out infinite;
 }
-@keyframes onsite-gradient {
-  from { background-position: 200% 0; }
-  to { background-position: -40% 0; }
+@keyframes active-shift-sweep {
+  from { transform: translateX(-210%) skewX(-16deg); }
+  to { transform: translateX(300%) skewX(-16deg); }
+}
+@keyframes onsite-shimmer-sweep {
+  from { transform: translateX(-180%) skewX(-14deg); }
+  to { transform: translateX(280%) skewX(-14deg); }
+}
+@keyframes onsite-colour-sweep {
+  from { transform: translateX(-190%) skewX(-14deg); }
+  to { transform: translateX(270%) skewX(-14deg); }
 }
 @keyframes onsite-tile-pulse {
   0%, 100% { box-shadow: 0 0 0 2px rgb(255 255 255 / 0.92), 0 0 0 4px #10b981, 0 0 18px 3px rgb(16 185 129 / 0.42); }
