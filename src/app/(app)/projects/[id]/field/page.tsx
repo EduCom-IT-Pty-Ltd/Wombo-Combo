@@ -35,12 +35,19 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
   );
   const materialCost = materials.reduce((s, m) => s + m.quantity * m.unitCostCents, 0);
   const onSite = entries.filter((e) => !e.endedAt);
+  const labourCost = entries.reduce((sum, entry) => sum + Math.round(entryHours(new Date(entry.startedAt), entry.endedAt ? new Date(entry.endedAt) : null, entry.breakMinutes) * entry.costRateCentsPerHour), 0);
+  const labourByPerson = people.map((person) => {
+    const personEntries = entries.filter((entry) => entry.userId === person.id);
+    const hours = personEntries.reduce((sum, entry) => sum + entryHours(new Date(entry.startedAt), entry.endedAt ? new Date(entry.endedAt) : null, entry.breakMinutes), 0);
+    return { person, hours, cost: Math.round(hours * person.costRateCentsPerHour) };
+  }).filter((row) => row.hours > 0);
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat label="Hours logged" value={totalHours.toFixed(1)} hint={`${entries.length} entries`} />
         <Stat label="On site now" value={onSite.length} tone={onSite.length > 0 ? "good" : "default"} />
+        <Stat label="Labour cost" value={showCosts ? formatMoney(labourCost, session.org.currency, { compact: true }) : "—"} hint="Logged time × hourly rate" />
         <Stat
           label="Materials used"
           value={showCosts ? formatMoney(materialCost, session.org.currency, { compact: true }) : materials.length}
@@ -52,6 +59,11 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
           hint={`${variations.filter((v) => v.status === "approved").length} approved`}
         />
       </div>
+
+      <Card>
+        <CardHeader title="Labour by team member" description="Time logged against this project and its snapped hourly cost rate." />
+        {labourByPerson.length ? <ul className="divide-y divide-border-subtle">{labourByPerson.map(({ person, hours, cost }) => <li key={person.id} className="flex items-center justify-between gap-3 px-4 py-3"><div className="flex items-center gap-2.5"><Avatar initials={person.initials} /><div><p className="text-sm font-bold">{person.name}</p><p className="text-xs text-muted-foreground">{hours.toFixed(1)} hours logged</p></div></div>{showCosts ? <p className="text-sm font-bold tabular-nums">{formatMoney(cost, session.org.currency)}</p> : <p className="text-sm font-bold tabular-nums">{hours.toFixed(1)}h</p>}</li>)}</ul> : <EmptyState title="No labour logged" />}
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

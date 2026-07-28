@@ -132,14 +132,6 @@ export async function getQuote(_orgId: string, id: string): Promise<QuoteSummary
   return (await readLocalStore()).quotes.find((quote) => quote.id === id) ?? null;
 }
 
-export async function listTasks(_orgId: string, opts: { projectId?: string; assigneeId?: string } = {}): Promise<Task[]> {
-  return (await readLocalStore()).tasks.filter(
-    (t) =>
-      (!opts.projectId || t.projectId === opts.projectId) &&
-      (!opts.assigneeId || t.assigneeId === opts.assigneeId),
-  );
-}
-
 /** Checklist tasks for one workflow stage. Templates are shown immediately; a real task is written on completion or transition. */
 export async function listWorkflowTasks(_orgId: string, projectId: string, status: ProjectStatus): Promise<Task[]> {
   const [store, templates] = await Promise.all([readLocalStore(), readStatusTaskTemplates()]);
@@ -244,10 +236,9 @@ export async function listEvents(_orgId: string, projectId: string): Promise<Pro
  * rather than in the domain layer so `status.ts` stays free of data access.
  */
 export async function buildTransitionContext(orgId: string, project: ProjectDetail): Promise<TransitionContext> {
-  const [quotes, assignments, tasks, inspections, defects] = await Promise.all([
+  const [quotes, assignments, inspections, defects] = await Promise.all([
     listQuotes(orgId, project.id),
     listAssignments(orgId, { projectId: project.id }),
-    listTasks(orgId, { projectId: project.id }),
     listInspections(orgId, project.id),
     listDefects(orgId, { projectId: project.id }),
   ]);
@@ -264,9 +255,9 @@ export async function buildTransitionContext(orgId: string, project: ProjectDeta
     depositSatisfied: !project.depositRequiredCents || Boolean(project.depositReceivedAt),
     hasConfirmedAssignment: assignments.some((a) => a.status === "confirmed"),
     hasScheduledDates: Boolean(project.scheduledStartAt && project.scheduledEndAt),
-    allInstallTasksDone: tasks
-      .filter((t) => t.kind === "install")
-      .every((t) => t.status === "done" || t.status === "cancelled"),
+    // Project progression is controlled by the status checklist, not a
+    // separate legacy task board.
+    allInstallTasksDone: true,
     qaPassed: latestInspection?.result === "pass" || latestInspection?.result === "pass_with_defects",
     openCriticalDefects: defects.filter((d) => !d.resolvedAt && d.severity === "critical").length,
     costingFinalised: project.status === "ready_for_invoice" || project.status === "closed",
@@ -298,17 +289,14 @@ export interface DashboardMetrics {
   wipValueCents: number;
   readyToInvoiceCents: number;
   openDefects: number;
-  overdueTasks: number;
 }
 
 export async function getDashboardMetrics(orgId: string): Promise<DashboardMetrics> {
-  const [projects, tasks, defects] = await Promise.all([
+  const [projects, defects] = await Promise.all([
     listProjects(orgId),
-    listTasks(orgId),
     listDefects(orgId),
   ]);
   const openEntries = (await readLocalStore()).timeEntries.filter((t) => t.endedAt === null);
-  const now = new Date();
 
   const pending: ProjectStatus[] = ["quote_sent", "awaiting_approval"];
   const wip: ProjectStatus[] = ["scheduled", "in_progress", "installation_complete", "qa"];
@@ -326,8 +314,5 @@ export async function getDashboardMetrics(orgId: string): Promise<DashboardMetri
       .filter((p) => p.status === "ready_for_invoice")
       .reduce((s, p) => s + p.contractValueCents, 0),
     openDefects: defects.filter((d) => !d.resolvedAt).length,
-    overdueTasks: tasks.filter(
-      (t) => t.dueOn && new Date(t.dueOn) < now && t.status !== "done" && t.status !== "cancelled",
-    ).length,
   };
 }

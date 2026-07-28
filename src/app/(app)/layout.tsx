@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth/session";
+import { fieldUserId, getSession } from "@/lib/auth/session";
 import { navItemsFor } from "@/lib/nav";
 import { Sidebar } from "@/components/layout/sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -6,6 +6,7 @@ import { TopBar } from "@/components/layout/topbar";
 import { StatusSettingsProvider } from "@/components/status-settings-provider";
 import { readStatusSettings } from "@/lib/data/local-store";
 import { PageTransition } from "@/components/layout/page-transition";
+import { getOpenTimeEntry, getProject } from "@/lib/data/repository";
 
 /**
  * The authenticated shell. Navigation is filtered by capability here rather than
@@ -13,7 +14,9 @@ import { PageTransition } from "@/components/layout/page-transition";
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  const [items, statusSettings] = [navItemsFor(session.role), await readStatusSettings()];
+  const [statusSettings, openEntry] = await Promise.all([readStatusSettings(), getOpenTimeEntry(session.org.id, fieldUserId(session))]);
+  const activeProject = openEntry ? await getProject(session.org.id, openEntry.projectId) : null;
+  const items = navItemsFor(session.role);
 
   const userName = [session.user.firstName, session.user.lastName].filter(Boolean).join(" ") || session.user.email;
   const initials =
@@ -31,6 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           initials={initials}
           role={session.role}
           isDemo={session.isDemo}
+          activeShift={openEntry && activeProject ? { projectId: activeProject.id, projectTitle: activeProject.title, startedAt: openEntry.startedAt, paused: Boolean(openEntry.pausedAt) } : null}
         />
 
         {/* pb-20 clears the mobile bottom nav; lg drops it. */}

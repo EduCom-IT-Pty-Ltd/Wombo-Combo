@@ -6,16 +6,16 @@ import type { ProjectTab } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 /** Horizontally scrollable on mobile — nine tabs never fit a phone. */
-export function ProjectTabs({ projectId, tabs }: { projectId: string; tabs: ProjectTab[] }) {
+export function ProjectTabs({ projectId, tabs, activeSegment, basePath, overviewHref }: { projectId: string; tabs: ProjectTab[]; activeSegment?: string; basePath?: string; overviewHref?: string }) {
   const pathname = usePathname();
-  const base = `/projects/${projectId}`;
+  const base = basePath ?? `/projects/${projectId}`;
 
   return (
     <nav className="-mx-4 overflow-x-auto border-b border-border-subtle px-4 sm:mx-0 sm:px-0">
       <ul className="flex gap-1">
         {tabs.map((tab) => {
-          const href = tab.segment ? `${base}/${tab.segment}` : base;
-          const active = pathname === href;
+          const href = tab.segment ? `${base}/${tab.segment}` : overviewHref ?? base;
+          const active = activeSegment !== undefined ? tab.segment === activeSegment : pathname === href;
           return (
             <li key={tab.segment || "overview"}>
               <Link

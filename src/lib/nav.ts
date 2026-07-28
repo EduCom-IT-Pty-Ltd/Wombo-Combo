@@ -51,7 +51,6 @@ export const PROJECT_TABS: ProjectTab[] = [
   { segment: "", label: "Overview", capability: "project.view" },
   { segment: "quote", label: "Quote", capability: "quote.view" },
   { segment: "schedule", label: "Schedule", capability: "schedule.view" },
-  { segment: "tasks", label: "Tasks", capability: "project.view" },
   { segment: "field", label: "Field", capability: "project.view" },
   { segment: "documents", label: "Documents", capability: "document.view" },
   { segment: "qa", label: "QA", capability: "qa.view" },

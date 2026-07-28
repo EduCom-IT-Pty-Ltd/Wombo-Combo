@@ -6,10 +6,9 @@ import {
   getProject,
   listEvents,
   listPeople,
-  listTasks,
 } from "@/lib/data/repository";
 import { Card, CardHeader, EmptyState, Field } from "@/components/ui";
-import { formatDate, formatRelative, isOverdue } from "@/lib/utils";
+import { formatDate, formatRelative } from "@/lib/utils";
 
 export default async function ProjectOverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -17,13 +16,11 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
   const project = await getProject(session.org.id, id);
   if (!project) notFound();
 
-  const [tasks, events, people] = await Promise.all([
-    listTasks(session.org.id, { projectId: id }),
+  const [events, people] = await Promise.all([
     listEvents(session.org.id, id),
     listPeople(session.org.id),
   ]);
 
-  const openTasks = tasks.filter((t) => t.status !== "done" && t.status !== "cancelled");
   const pm = people.find((p) => p.id === project.projectManagerId);
 
   return (
@@ -95,34 +92,6 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
           </dl>
         </Card>
 
-        <Card>
-          <CardHeader title="Open tasks" description={`${openTasks.length} outstanding`} />
-          {openTasks.length ? (
-            <ul className="divide-y divide-border-subtle">
-              {openTasks.map((task) => {
-                const assignee = people.find((p) => p.id === task.assigneeId);
-                return (
-                  <li key={task.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm">{task.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {assignee?.name ?? "Unassigned"}
-                        {task.createdByAutomation ? " · auto-created" : ""}
-                      </p>
-                    </div>
-                    <span
-                      className={`shrink-0 text-xs ${isOverdue(task.dueOn) ? "font-medium text-[var(--tone-rose-fg)]" : "text-muted-foreground"}`}
-                    >
-                      {formatRelative(task.dueOn)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <EmptyState title="No open tasks" />
-          )}
-        </Card>
       </div>
 
       <div className="space-y-4">

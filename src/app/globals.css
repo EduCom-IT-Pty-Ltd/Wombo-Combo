@@ -157,6 +157,30 @@ button:active:not(:disabled) {
 .task-check-pop {
   animation: task-check-pop 360ms cubic-bezier(0.18, 0.9, 0.3, 1.35) both;
 }
+
+/* A live shift is deliberately noticeable without changing the calendar tile
+   layout or obscuring the assigned person's colour. */
+.active-shift-link {
+  background: linear-gradient(120deg, #059669, #10b981, #2563eb, #059669);
+  background-size: 260% 100%;
+  animation: onsite-gradient 3.4s linear infinite;
+  box-shadow: 0 5px 16px rgb(5 150 105 / 0.35);
+}
+.onsite-calendar-tile {
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.84), 0 0 0 4px #10b981, 0 8px 18px rgb(16 185 129 / 0.38);
+}
+.onsite-calendar-shimmer {
+  position: absolute;
+  inset: 0;
+  opacity: 0.48;
+  background: linear-gradient(110deg, transparent 12%, rgb(255 255 255 / 0.07) 34%, rgb(255 255 255 / 0.5) 50%, rgb(255 255 255 / 0.08) 64%, transparent 88%);
+  background-size: 220% 100%;
+  animation: onsite-gradient 2.4s linear infinite;
+}
+@keyframes onsite-gradient {
+  from { background-position: 200% 0; }
+  to { background-position: -40% 0; }
+}
 .button-secondary-pop {
   color: var(--foreground);
   background: linear-gradient(135deg, var(--surface) 0%, var(--primary-muted) 160%);

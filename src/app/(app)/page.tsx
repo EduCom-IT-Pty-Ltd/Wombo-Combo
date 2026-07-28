@@ -10,11 +10,10 @@ import {
   listAssignments,
   listPeople,
   listProjects,
-  listTasks,
 } from "@/lib/data/repository";
 import { Card, CardHeader, EmptyState, Stat } from "@/components/ui";
 import { ProjectRow } from "@/components/projects/project-row";
-import { formatDate, formatRelative, isOverdue } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -24,18 +23,12 @@ export default async function DashboardPage() {
   const showFinancials = can(session.role, "finance.view");
 
   const now = new Date();
-  const [metrics, projects, people, tasks, assignments] = await Promise.all([
+  const [metrics, projects, people, assignments] = await Promise.all([
     getDashboardMetrics(orgId),
     listProjects(orgId),
     listPeople(orgId),
-    listTasks(orgId),
     listAssignments(orgId, { from: now, to: new Date(now.getTime() + 14 * 86_400_000) }),
   ]);
-
-  const myTasks = tasks
-    .filter((t) => t.status !== "done" && t.status !== "cancelled")
-    .sort((a, b) => (a.dueOn ?? "").localeCompare(b.dueOn ?? ""))
-    .slice(0, 6);
 
   const needsAttention = projects
     .filter((p) => ["waiting_for_scheduling", "approved", "awaiting_approval", "qa"].includes(p.status))
@@ -80,10 +73,10 @@ export default async function DashboardPage() {
           tone={metrics.awaitingScheduling > 0 ? "warn" : "default"}
         />
         <Stat
-          label="Overdue tasks"
-          value={metrics.overdueTasks}
-          hint={`${metrics.openDefects} open defects`}
-          tone={metrics.overdueTasks > 0 ? "warn" : "good"}
+          label="Open defects"
+          value={metrics.openDefects}
+          hint="Needs QA attention"
+          tone={metrics.openDefects > 0 ? "warn" : "good"}
         />
       </div>
 
@@ -126,41 +119,6 @@ export default async function DashboardPage() {
         </Card>
 
         <div className="space-y-4">
-          <Card>
-            <CardHeader title="Open tasks" description="Across all projects" />
-            {myTasks.length ? (
-              <ul className="divide-y divide-border-subtle">
-                {myTasks.map((task) => {
-                  const project = projects.find((p) => p.id === task.projectId);
-                  const overdue = isOverdue(task.dueOn);
-                  return (
-                    <li key={task.id}>
-                      <Link
-                        href={`/projects/${task.projectId}/tasks`}
-                        className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-surface-muted"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm">{task.title}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {project?.projectNumber}
-                            {task.createdByAutomation ? " · auto-created" : ""}
-                          </p>
-                        </div>
-                        <span
-                          className={`shrink-0 text-xs tabular-nums ${overdue ? "font-medium text-[var(--tone-rose-fg)]" : "text-muted-foreground"}`}
-                        >
-                          {formatRelative(task.dueOn)}
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <EmptyState title="No open tasks" />
-            )}
-          </Card>
-
           <Card>
             <CardHeader
               title="Next 14 days on site"

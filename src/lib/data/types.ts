@@ -198,6 +198,8 @@ export interface TimeEntry {
   startedAt: string;
   endedAt: string | null;
   breakMinutes: number;
+  /** A live field shift may be paused; paused time is added to breakMinutes. */
+  pausedAt?: string | null;
   costRateCentsPerHour: number;
   notes: string | null;
 }

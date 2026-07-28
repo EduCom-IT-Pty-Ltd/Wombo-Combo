@@ -10,6 +10,8 @@ import {
   addLocalVariation,
   endLocalTimeEntry,
   startLocalTimeEntry,
+  toggleLocalTimeEntryPause,
+  updateLocalTimeEntry,
 } from "@/lib/data/local-store";
 import type { ActionResult } from "./projects";
 
@@ -23,7 +25,9 @@ const clockSchema = z.object({
 /** Every field write shows up on the crew's own screen and on the project. */
 function revalidateField(projectId: string) {
   revalidatePath("/field");
+  revalidatePath(`/field/${projectId}`);
   revalidatePath(`/projects/${projectId}`, "layout");
+  revalidatePath(`/projects/${projectId}/field`);
 }
 
 export async function clockOn(input: unknown): Promise<ActionResult> {
@@ -34,7 +38,8 @@ export async function clockOn(input: unknown): Promise<ActionResult> {
 
   // TODO(neon): store latitude/longitude against the entry as attendance evidence.
   if (isDemoMode) {
-    await startLocalTimeEntry({ projectId: parsed.data.projectId, userId: fieldUserId(session) });
+    const entry = await startLocalTimeEntry({ projectId: parsed.data.projectId, userId: fieldUserId(session) });
+    if (entry.projectId !== parsed.data.projectId) return { ok: false, message: "Clock off your current job before starting another shift" };
     revalidateField(parsed.data.projectId);
     return { ok: true, message: "Clocked on" };
   }
@@ -54,6 +59,39 @@ export async function clockOff(input: unknown): Promise<ActionResult> {
     return { ok: true, message: "Clocked off" };
   }
   throw new Error("clockOff is not implemented against the database yet");
+}
+
+export async function toggleClockPause(input: unknown): Promise<ActionResult> {
+  const parsed = z.object({ entryId: z.string().min(1) }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Invalid time entry" };
+  const session = await requireCapability("field.clock");
+  if (isDemoMode) {
+    const entry = await toggleLocalTimeEntryPause({ entryId: parsed.data.entryId, userId: fieldUserId(session) });
+    if (!entry) return { ok: false, message: "That shift is already closed" };
+    revalidateField(entry.projectId);
+    return { ok: true, message: entry.pausedAt ? "Shift paused" : "Shift resumed" };
+  }
+  throw new Error("toggleClockPause is not implemented against the database yet");
+}
+
+const editTimeSchema = z.object({
+  entryId: z.string().min(1),
+  startedAt: z.string().datetime(),
+  endedAt: z.string().datetime(),
+  breakMinutes: z.number().min(0).max(480),
+});
+
+export async function editTimeEntry(input: unknown): Promise<ActionResult> {
+  const parsed = editTimeSchema.safeParse(input);
+  if (!parsed.success || new Date(parsed.data.endedAt) <= new Date(parsed.data.startedAt)) return { ok: false, message: "Check the start and finish times" };
+  const session = await requireCapability("field.clock");
+  if (isDemoMode) {
+    const entry = await updateLocalTimeEntry({ ...parsed.data, userId: fieldUserId(session) });
+    if (!entry) return { ok: false, message: "Only completed entries can be edited" };
+    revalidateField(entry.projectId);
+    return { ok: true, message: "Time entry updated" };
+  }
+  throw new Error("editTimeEntry is not implemented against the database yet");
 }
 
 const materialSchema = z.object({

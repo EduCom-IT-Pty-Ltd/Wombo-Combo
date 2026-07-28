@@ -4,6 +4,7 @@ import { ROLE_LABELS } from "@/lib/domain/permissions";
 import { Avatar } from "@/components/ui";
 import { RoleSwitcher } from "./role-switcher";
 import { ThemeToggle } from "./theme";
+import { ActiveShiftLink } from "@/components/field/active-shift-link";
 
 export function TopBar({
   orgName,
@@ -11,12 +12,14 @@ export function TopBar({
   initials,
   role,
   isDemo,
+  activeShift,
 }: {
   orgName: string;
   userName: string;
   initials: string;
   role: Role;
   isDemo: boolean;
+  activeShift?: { projectId: string; projectTitle: string; startedAt: string; paused: boolean } | null;
 }) {
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border-subtle bg-surface/90 px-4 pt-safe shadow-[0_4px_18px_rgb(15_23_42/0.025)] backdrop-blur">
@@ -42,6 +45,7 @@ export function TopBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+        {activeShift ? <ActiveShiftLink {...activeShift} /> : null}
         {isDemo ? <RoleSwitcher role={role} /> : null}
         <ThemeToggle />
         <div className="flex items-center gap-2">

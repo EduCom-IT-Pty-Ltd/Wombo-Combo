@@ -23,7 +23,7 @@ export function ClockButton({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [elapsed, setElapsed] = useState("");
-  const [breakMinutes, setBreakMinutes] = useState(30);
+  const [breakMinutes, setBreakMinutes] = useState(0);
 
   useEffect(() => {
     if (!openEntry) return;

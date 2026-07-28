@@ -226,6 +226,7 @@ export async function startLocalTimeEntry(input: { projectId: string; userId: st
       startedAt: new Date().toISOString(),
       endedAt: null,
       breakMinutes: 0,
+      pausedAt: null,
       costRateCentsPerHour: person?.costRateCentsPerHour ?? 0,
       notes: input.notes?.trim() || null,
     };
@@ -239,10 +240,44 @@ export async function endLocalTimeEntry(input: { entryId: string; userId: string
   return updateLocalStore((store) => {
     const entry = store.timeEntries.find((item) => item.id === input.entryId && item.userId === input.userId);
     if (!entry || entry.endedAt) return null;
-    entry.endedAt = new Date().toISOString();
-    entry.breakMinutes = input.breakMinutes;
+    const now = new Date();
+    entry.endedAt = now.toISOString();
+    const pausedMinutes = entry.pausedAt ? Math.max(0, Math.round((now.getTime() - new Date(entry.pausedAt).getTime()) / 60_000)) : 0;
+    entry.pausedAt = null;
+    entry.breakMinutes += input.breakMinutes + pausedMinutes;
     const person = store.people.find((item) => item.id === input.userId);
     addEvent(store, entry.projectId, `${person?.name ?? "Crew"} clocked off site`, input.userId);
+    return entry;
+  });
+}
+
+export async function toggleLocalTimeEntryPause(input: { entryId: string; userId: string }) {
+  return updateLocalStore((store) => {
+    const entry = store.timeEntries.find((item) => item.id === input.entryId && item.userId === input.userId);
+    if (!entry || entry.endedAt) return null;
+    const person = store.people.find((item) => item.id === input.userId);
+    if (entry.pausedAt) {
+      entry.breakMinutes += Math.max(0, Math.round((Date.now() - new Date(entry.pausedAt).getTime()) / 60_000));
+      entry.pausedAt = null;
+      addEvent(store, entry.projectId, `${person?.name ?? "Crew"} resumed their shift`, input.userId);
+    } else {
+      entry.pausedAt = new Date().toISOString();
+      addEvent(store, entry.projectId, `${person?.name ?? "Crew"} paused their shift`, input.userId);
+    }
+    return entry;
+  });
+}
+
+export async function updateLocalTimeEntry(input: { entryId: string; userId: string; startedAt: string; endedAt: string; breakMinutes: number }) {
+  return updateLocalStore((store) => {
+    const entry = store.timeEntries.find((item) => item.id === input.entryId && item.userId === input.userId);
+    if (!entry || !entry.endedAt) return null;
+    entry.startedAt = input.startedAt;
+    entry.endedAt = input.endedAt;
+    entry.breakMinutes = input.breakMinutes;
+    entry.pausedAt = null;
+    const person = store.people.find((item) => item.id === input.userId);
+    addEvent(store, entry.projectId, `${person?.name ?? "Crew"} edited a time entry`, input.userId);
     return entry;
   });
 }
