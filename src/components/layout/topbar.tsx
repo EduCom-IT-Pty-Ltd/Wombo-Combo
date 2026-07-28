@@ -30,7 +30,7 @@ export function TopBar({
   demoPeople?: Array<{ id: string; name: string; role: Role }>;
 }) {
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border-subtle bg-surface/90 px-4 pt-safe shadow-[0_4px_18px_rgb(15_23_42/0.025)] backdrop-blur">
+    <header className="neumorphic-shell sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border-subtle bg-surface/90 px-4 pt-safe shadow-[0_4px_18px_rgb(15_23_42/0.025)] backdrop-blur">
       {/* Org identity is in the sidebar on desktop; repeat it on mobile.
           `min-w-0` lets a long org name truncate rather than shove the theme
           toggle and avatar off the right edge of a phone. */}

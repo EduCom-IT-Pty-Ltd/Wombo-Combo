@@ -24,8 +24,8 @@ export function ProjectTabs({ projectId, tabs, activeSegment, basePath, overview
                 className={cn(
                   "relative block border-b-2 px-3 py-2.5 text-sm whitespace-nowrap transition-all duration-200",
                   active
-                    ? "border-primary font-semibold text-primary drop-shadow-[0_2px_7px_rgb(49_95_231/0.28)]"
-                    : "border-transparent text-muted-foreground hover:-translate-y-px hover:border-primary/30 hover:text-primary",
+                    ? "neumorphic-tab-active border-primary font-semibold text-primary"
+                    : "neumorphic-tab text-muted-foreground hover:-translate-y-px hover:border-primary/30 hover:text-primary",
                 )}
               >
                 {tab.label}

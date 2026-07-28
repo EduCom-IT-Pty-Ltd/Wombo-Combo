@@ -57,7 +57,7 @@ export function BottomNav({ items }: { items: NavItem[] }) {
         </div>
       ) : null}
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border-subtle bg-surface/95 pb-safe shadow-[0_-8px_24px_rgb(15_23_42/0.06)] backdrop-blur lg:hidden">
+      <nav className="neumorphic-shell fixed inset-x-0 bottom-0 z-30 border-t border-border-subtle bg-surface/95 pb-safe shadow-[0_-8px_24px_rgb(15_23_42/0.06)] backdrop-blur lg:hidden">
         {/* Column count tracks the visible items — a role with fewer primary
             destinations should still fill the bar rather than leave a gap. */}
         <ul
@@ -73,7 +73,7 @@ export function BottomNav({ items }: { items: NavItem[] }) {
                   aria-current={active ? "page" : undefined}
                   className={cn(
                     "flex h-14 flex-col items-center justify-center gap-0.5 text-[11px]",
-                    active ? "font-medium text-primary" : "text-muted-foreground",
+                    active ? "neumorphic-mobile-active font-medium text-primary" : "text-muted-foreground",
                   )}
                 >
                   <NavIcon name={item.icon} className="size-5" />
@@ -88,7 +88,7 @@ export function BottomNav({ items }: { items: NavItem[] }) {
               aria-expanded={moreOpen}
               className={cn(
                 "flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[11px]",
-                moreOpen ? "font-medium text-primary" : "text-muted-foreground",
+                moreOpen ? "neumorphic-mobile-active font-medium text-primary" : "text-muted-foreground",
               )}
             >
               <NavIcon name="more" className="size-5" />

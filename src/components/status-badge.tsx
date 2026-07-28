@@ -142,7 +142,7 @@ export function StatusStepper({ status, projectId, tasksByStatus = {}, fieldsByS
   }
 
   return (
-    <section className="rounded-xl border-2 border-border-strong bg-surface p-4 shadow-sm sm:p-5">
+    <section className="neumorphic-workflow-shell rounded-xl border-2 border-border-strong bg-surface p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-end justify-between gap-3">
         <div>
           <p className="text-xs font-bold tracking-[0.12em] text-muted-foreground uppercase">Project workflow</p>
@@ -168,9 +168,10 @@ export function StatusStepper({ status, projectId, tasksByStatus = {}, fieldsByS
                 onClick={() => canEdit && selectStage(setting.status)}
                 disabled={!canEdit || pending}
                 className={cn(
-                  "workflow-tile-glow relative flex w-24 shrink-0 flex-col overflow-hidden rounded-lg border text-left transition-all",
+                  "workflow-tile-glow neumorphic-workflow-tile relative flex w-24 shrink-0 flex-col overflow-hidden rounded-lg border text-left transition-all",
                   current ? "border-foreground shadow-md" : setting.status === viewingStatus ? "border-primary shadow-sm" : "border-border-subtle",
                   active ? "bg-surface" : "bg-surface-muted opacity-80",
+                  current ? "workflow-tile-current" : setting.status === viewingStatus ? "workflow-tile-viewing" : completed ? "workflow-tile-complete" : "workflow-tile-upcoming",
                 )}
                 style={{ borderTopWidth: "6px", borderTopColor: active ? setting.color : "var(--border)", "--tile-accent": active ? setting.color : "var(--border)" } as CSSProperties}
               >
@@ -185,7 +186,7 @@ export function StatusStepper({ status, projectId, tasksByStatus = {}, fieldsByS
       </div>
 
       {projectId && !offPipeline ? (
-        <div className="mt-4 rounded-lg border border-border-strong bg-surface-muted p-4 sm:p-5">
+        <div className="workflow-checklist-well mt-4 rounded-lg border border-border-strong bg-surface-muted p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Stage checklist</p>
