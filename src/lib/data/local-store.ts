@@ -462,13 +462,48 @@ export async function createLocalMaterialQuote(args: { projectId: string; materi
       const material = store.catalogueMaterials.find((item) => item.id === materialId);
       if (!material) throw new Error("Material not found");
       const sell = priceList?.entries.find((entry) => entry.materialId === material.id)?.priceCentsPerM2 ?? material.standardPriceCentsPerM2;
-      return { id: `ql-${randomUUID()}`, kind: "material" as const, description: material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
+      return { id: `ql-${randomUUID()}`, catalogueMaterialId: material.id, kind: "material" as const, description: material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
     });
     const subtotalSellCents = lines.reduce((sum, line) => sum + line.quantity * (line.unitSellCentsOverride ?? 0), 0);
     const subtotalCostCents = lines.reduce((sum, line) => sum + line.quantity * line.unitCostCents, 0);
     const quote = { id: `quote-${randomUUID()}`, projectId: project.id, reference: `${project.projectNumber}-Q${version}`, version, status: "draft" as const, totalCents: Math.round(subtotalSellCents * 1.1), subtotalSellCents, subtotalCostCents, marginPct: subtotalSellCents ? ((subtotalSellCents - subtotalCostCents) / subtotalSellCents) * 100 : 0, taxRatePct: 10, validUntil: null, sentAt: null, preparedById: "u-sam", lines };
     store.quotes.push(quote);
     addEvent(store, project.id, `Quote ${quote.reference} created from the materials catalogue`);
+    return quote;
+  });
+}
+
+export async function updateLocalMaterialQuote(args: { quoteId: string; materialIds: Array<{ materialId: string; quantity: number }> }) {
+  return updateLocalStore((store) => {
+    const quote = store.quotes.find((item) => item.id === args.quoteId);
+    if (!quote) return null;
+    const project = store.projects.find((item) => item.id === quote.projectId);
+    if (!project) return null;
+    const priceList = project.customer.priceListId ? store.customerPriceLists.find((list) => list.id === project.customer.priceListId) : null;
+    const lines = args.materialIds.map(({ materialId, quantity }) => {
+      const material = store.catalogueMaterials.find((item) => item.id === materialId);
+      if (!material) throw new Error("Material not found");
+      const sell = priceList?.entries.find((entry) => entry.materialId === material.id)?.priceCentsPerM2 ?? material.standardPriceCentsPerM2;
+      return { id: `ql-${randomUUID()}`, catalogueMaterialId: material.id, kind: "material" as const, description: material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
+    });
+    const subtotalSellCents = lines.reduce((sum, line) => sum + line.quantity * (line.unitSellCentsOverride ?? 0), 0);
+    const subtotalCostCents = lines.reduce((sum, line) => sum + line.quantity * line.unitCostCents, 0);
+    quote.lines = lines;
+    quote.subtotalSellCents = subtotalSellCents;
+    quote.subtotalCostCents = subtotalCostCents;
+    quote.totalCents = Math.round(subtotalSellCents * (1 + quote.taxRatePct / 100));
+    quote.marginPct = subtotalSellCents ? ((subtotalSellCents - subtotalCostCents) / subtotalSellCents) * 100 : 0;
+    addEvent(store, project.id, `Quote ${quote.reference} updated`);
+    return quote;
+  });
+}
+
+export async function deleteLocalMaterialQuote(quoteId: string) {
+  return updateLocalStore((store) => {
+    const quote = store.quotes.find((item) => item.id === quoteId);
+    if (!quote) return null;
+    store.quotes = store.quotes.filter((item) => item.id !== quoteId);
+    addEvent(store, quote.projectId, `Quote ${quote.reference} deleted`);
     return quote;
   });
 }

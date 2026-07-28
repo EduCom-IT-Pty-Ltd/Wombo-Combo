@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { entryHours } from "@/lib/domain/costing";
 import { formatMoney } from "@/lib/domain/money";
-import { getProject, listMaterials, listPeople, listTimeEntries, listVariations } from "@/lib/data/repository";
+import { getProject, listMaterials, listPeople, listQuotes, listTimeEntries, listVariations } from "@/lib/data/repository";
 import { Avatar, Badge, Card, CardHeader, EmptyState, Stat } from "@/components/ui";
 import { formatDate, formatTime } from "@/lib/utils";
 
@@ -21,11 +21,12 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
   const project = await getProject(session.org.id, id);
   if (!project) notFound();
 
-  const [entries, materials, variations, people] = await Promise.all([
+  const [entries, materials, variations, people, quotes] = await Promise.all([
     listTimeEntries(session.org.id, { projectId: id }),
     listMaterials(session.org.id, id),
     listVariations(session.org.id, id),
     listPeople(session.org.id),
+    listQuotes(session.org.id, id),
   ]);
 
   const showCosts = can(session.role, "finance.view");
@@ -34,6 +35,8 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
     0,
   );
   const materialCost = materials.reduce((s, m) => s + m.quantity * m.unitCostCents, 0);
+  const latestQuote = quotes[0] ?? null;
+  const quotedMaterialCost = latestQuote?.subtotalCostCents ?? 0;
   const onSite = entries.filter((e) => !e.endedAt);
   const labourCost = entries.reduce((sum, entry) => sum + Math.round(entryHours(new Date(entry.startedAt), entry.endedAt ? new Date(entry.endedAt) : null, entry.breakMinutes) * entry.costRateCentsPerHour), 0);
   const labourByPerson = people.map((person) => {
@@ -49,9 +52,9 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
         <Stat label="On site now" value={onSite.length} tone={onSite.length > 0 ? "good" : "default"} />
         <Stat label="Labour cost" value={showCosts ? formatMoney(labourCost, session.org.currency, { compact: true }) : "—"} hint="Logged time × hourly rate" />
         <Stat
-          label="Materials used"
-          value={showCosts ? formatMoney(materialCost, session.org.currency, { compact: true }) : materials.length}
-          hint={showCosts ? `${materials.length} lines` : "lines recorded"}
+          label="Materials"
+          value={showCosts ? formatMoney(quotedMaterialCost || materialCost, session.org.currency, { compact: true }) : latestQuote?.lines.length ?? materials.length}
+          hint={latestQuote ? `${latestQuote.lines.length} quoted lines · ${materials.length} used` : showCosts ? `${materials.length} lines used` : "lines recorded"}
         />
         <Stat
           label="Variations"

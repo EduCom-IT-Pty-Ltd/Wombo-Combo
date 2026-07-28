@@ -3,6 +3,8 @@ import { convert, marginPctOf, sellFromMargin } from "./money";
 
 export interface QuoteLineInput {
   id?: string;
+  /** Links catalogue-derived material lines back to the source material for editing. */
+  catalogueMaterialId?: string;
   kind: LineKind;
   description: string;
   quantity: number;
