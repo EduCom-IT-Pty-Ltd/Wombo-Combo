@@ -110,11 +110,19 @@ export async function readLocalStore(): Promise<LocalStore> {
     const statusSettings = savedSettings.map((setting) =>
       setting.status === "lost" || setting.status === "cancelled" ? { ...setting, inProgressFlow: false } : setting,
     );
-    const catalogueMaterials = (store.catalogueMaterials ?? []).map((material) => ({ ...material, standardPriceCentsPerM2: material.standardPriceCentsPerM2 ?? Math.round(material.costCentsPerM2 * 1.4) }));
+    const catalogueMaterials = (store.catalogueMaterials ?? []).map((material) => ({ ...material, variation: material.variation ?? null, standardPriceCentsPerM2: material.standardPriceCentsPerM2 ?? Math.round(material.costCentsPerM2 * 1.4) }));
+    const productionTemplates = (store.productionTemplates ?? []).map((template) => ({
+      ...template,
+      materials: (template.materials ?? []).map((item) => ({
+        ...item,
+        mainMaterialName: item.mainMaterialName ?? catalogueMaterials.find((material) => material.id === item.materialId)?.name ?? "",
+        allowVariationChoice: item.allowVariationChoice ?? false,
+      })),
+    }));
     const statusFieldTemplates = (store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES)).map((template) => ({ ...template, required: template.required ?? false }));
     const people = (store.people ?? structuredClone(seed.people)).map((person) => ({ ...person, role: LEGACY_ROLE_MAP[person.role] ?? person.role }));
     const organisation = { ...DEFAULT_ORGANISATION, ...(store.organisation ?? {}) };
-    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], productionTemplates: store.productionTemplates ?? [], projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
+    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], productionTemplates, projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
@@ -393,6 +401,25 @@ export async function createLocalCatalogueMaterial(input: Omit<CatalogueMaterial
   });
 }
 
+/** CSV imports update matching SKUs and create any new material rows in one write. */
+export async function importLocalCatalogueMaterials(inputs: Array<Omit<CatalogueMaterial, "id">>) {
+  return updateLocalStore((store) => {
+    let created = 0;
+    let updated = 0;
+    for (const input of inputs) {
+      const existing = store.catalogueMaterials.find((material) => material.sku.toLowerCase() === input.sku.toLowerCase());
+      if (existing) {
+        Object.assign(existing, input);
+        updated += 1;
+      } else {
+        store.catalogueMaterials.push({ id: `mat-${randomUUID()}`, ...input });
+        created += 1;
+      }
+    }
+    return { created, updated };
+  });
+}
+
 export async function createLocalPriceList(input: { name: string; entries: CustomerPriceList["entries"] }) {
   return updateLocalStore((store) => {
     const list = { id: `pl-${randomUUID()}`, ...input };
@@ -477,7 +504,7 @@ export async function createLocalMaterialQuote(args: { projectId: string; materi
       const material = store.catalogueMaterials.find((item) => item.id === materialId);
       if (!material) throw new Error("Material not found");
       const sell = priceList?.entries.find((entry) => entry.materialId === material.id)?.priceCentsPerM2 ?? material.standardPriceCentsPerM2;
-      return { id: `ql-${randomUUID()}`, catalogueMaterialId: material.id, kind: "material" as const, description: material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
+      return { id: `ql-${randomUUID()}`, catalogueMaterialId: material.id, kind: "material" as const, description: material.variation ? `${material.name} — ${material.variation}` : material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
     });
     const subtotalSellCents = lines.reduce((sum, line) => sum + line.quantity * (line.unitSellCentsOverride ?? 0), 0);
     const subtotalCostCents = lines.reduce((sum, line) => sum + line.quantity * line.unitCostCents, 0);
@@ -499,7 +526,7 @@ export async function updateLocalMaterialQuote(args: { quoteId: string; material
       const material = store.catalogueMaterials.find((item) => item.id === materialId);
       if (!material) throw new Error("Material not found");
       const sell = priceList?.entries.find((entry) => entry.materialId === material.id)?.priceCentsPerM2 ?? material.standardPriceCentsPerM2;
-      return { id: `ql-${randomUUID()}`, catalogueMaterialId: material.id, kind: "material" as const, description: material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
+      return { id: `ql-${randomUUID()}`, catalogueMaterialId: material.id, kind: "material" as const, description: material.variation ? `${material.name} — ${material.variation}` : material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
     });
     const subtotalSellCents = lines.reduce((sum, line) => sum + line.quantity * (line.unitSellCentsOverride ?? 0), 0);
     const subtotalCostCents = lines.reduce((sum, line) => sum + line.quantity * line.unitCostCents, 0);

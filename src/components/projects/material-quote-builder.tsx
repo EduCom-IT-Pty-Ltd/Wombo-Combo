@@ -1,88 +1,55 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { createMaterialQuote } from "@/app/actions/quotes";
 import { Button, Card, CardHeader } from "@/components/ui";
 import type { CatalogueMaterial, ProductionTemplate } from "@/lib/data/types";
 import { formatMoney } from "@/lib/domain/money";
 
-type QuoteMaterial = CatalogueMaterial & {
-  quotePriceCentsPerM2: number;
-  usesCustomerPrice: boolean;
-};
+type QuoteMaterial = CatalogueMaterial & { quotePriceCentsPerM2: number; usesCustomerPrice: boolean };
+function materialLabel(material: CatalogueMaterial) { return material.variation ? `${material.name} — ${material.variation}` : material.name; }
 
-export function MaterialQuoteBuilder({
-  projectId,
-  materials,
-  priceListName,
-  productionTemplates,
-}: {
-  projectId: string;
-  materials: QuoteMaterial[];
-  priceListName: string | null;
-  productionTemplates: ProductionTemplate[];
-}) {
+export function MaterialQuoteBuilder({ projectId, materials, priceListName, productionTemplates }: { projectId: string; materials: QuoteMaterial[]; priceListName: string | null; productionTemplates: ProductionTemplate[] }) {
   const [quantities, setQuantities] = useState<Record<string, string>>({});
-  const [addedTemplateIds, setAddedTemplateIds] = useState<string[]>([]);
+  const [templateSelections, setTemplateSelections] = useState<Record<string, string[]>>({});
   const [showProductionPicker, setShowProductionPicker] = useState(false);
+  const [configuringTemplate, setConfiguringTemplate] = useState<ProductionTemplate | null>(null);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
-
-  const selectedTemplates = productionTemplates.filter((template) => addedTemplateIds.includes(template.id));
-  const includedIds = new Set(selectedTemplates.flatMap((template) => template.materials.map((item) => item.materialId)));
-  const quoteMaterials = materials.filter((material) => includedIds.has(material.id));
-  const lines = quoteMaterials.map((material) => {
-    const quantity = Number(quantities[material.id]) || 0;
-    return { material, quantity, totalCents: Math.round(quantity * material.quotePriceCentsPerM2) };
-  });
+  const selectedTemplates = productionTemplates.filter((template) => templateSelections[template.id]);
+  const includedIds = new Set(Object.values(templateSelections).flat());
+  const quoteMaterials = materials.filter((material) => includedIds.has(material.id) && material.quotePriceCentsPerM2 > 0);
+  const lines = quoteMaterials.map((material) => ({ material, quantity: Number(quantities[material.id]) || 0, totalCents: Math.round((Number(quantities[material.id]) || 0) * material.quotePriceCentsPerM2) }));
   const subtotalCents = lines.reduce((total, line) => total + line.totalCents, 0);
 
-  function addProduction(template: ProductionTemplate) {
-    if (addedTemplateIds.includes(template.id)) return;
-    setAddedTemplateIds((current) => [...current, template.id]);
+  function applyProduction(template: ProductionTemplate, materialIds: string[]) {
+    setTemplateSelections((current) => ({ ...current, [template.id]: materialIds }));
     setQuantities((current) => {
       const next = { ...current };
-      for (const item of template.materials) {
-        next[item.materialId] = String((Number(next[item.materialId]) || 0) + item.defaultQuantity);
-      }
+      template.materials.forEach((item, index) => { const materialId = materialIds[index]; if (materialId) next[materialId] = String((Number(next[materialId]) || 0) + item.defaultQuantity); });
       return next;
     });
-    setShowProductionPicker(false);
-    setMessage("");
+    setConfiguringTemplate(null); setShowProductionPicker(false); setMessage("");
   }
+  function addProduction(template: ProductionTemplate) { if (templateSelections[template.id]) return; if (template.materials.some((item) => item.allowVariationChoice)) { setConfiguringTemplate(template); setShowProductionPicker(false); } else applyProduction(template, template.materials.map((item) => item.materialId)); }
+  function create() { startTransition(async () => { const result = await createMaterialQuote({ projectId, selections: lines.map(({ material, quantity }) => ({ materialId: material.id, quantity })) }); setMessage(result.message); }); }
 
-  function create() {
-    startTransition(async () => {
-      const result = await createMaterialQuote({
-        projectId,
-        selections: lines.map(({ material, quantity }) => ({ materialId: material.id, quantity })),
-      });
-      setMessage(result.message);
-    });
-  }
-
-  return (
-    <Card>
-      <CardHeader
-        title="Create material quote"
-        description={priceListName ? `Using ${priceListName}; blank customer prices use the standard price.` : "Using standard material pricing."}
-        action={<Button type="button" size="sm" variant="primary" disabled={!productionTemplates.length} onClick={() => setShowProductionPicker(true)}>Add production</Button>}
-      />
-      {selectedTemplates.length ? <div className="flex flex-wrap gap-2 border-b border-border-subtle px-4 py-3">{selectedTemplates.map((template) => <span key={template.id} className="inline-flex items-center gap-2 rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold">{template.name}<button type="button" className="text-muted-foreground hover:text-foreground" aria-label={`Remove ${template.name}`} onClick={() => setAddedTemplateIds((current) => current.filter((id) => id !== template.id))}>×</button></span>)}</div> : <div className="border-b border-border-subtle px-4 py-5 text-sm text-muted-foreground">Choose a production template to add its materials to this quote.</div>}
-      {quoteMaterials.length ? <div className="overflow-x-auto"><InvoiceRows materials={quoteMaterials} quantities={quantities} onQuantityChange={setQuantities} /><div className="grid min-w-[640px] grid-cols-[minmax(220px,1fr)_120px_130px_140px] items-center gap-3 bg-surface-muted px-4 py-4"><p className="col-span-3 text-right text-sm font-bold">Subtotal</p><p className="text-right text-lg font-bold">{formatMoney(subtotalCents)}</p></div></div> : null}
-      <div className="flex flex-wrap items-center gap-3 border-t border-border-subtle p-4">
-        <Button type="button" variant="primary" disabled={pending || !subtotalCents} onClick={create}>{pending ? "Creating…" : "Generate quote"}</Button>
-        {message ? <p className="text-xs text-muted-foreground">{message}</p> : null}
-      </div>
-      {showProductionPicker ? <ProductionPicker templates={productionTemplates} addedTemplateIds={addedTemplateIds} onAdd={addProduction} onClose={() => setShowProductionPicker(false)} /> : null}
-    </Card>
-  );
+  return <Card><CardHeader title="Create material quote" description={priceListName ? `Using ${priceListName}; blank customer prices use the standard price.` : "Using standard material pricing."} action={<Button type="button" size="sm" variant="primary" disabled={!productionTemplates.length} onClick={() => setShowProductionPicker(true)}>Add production</Button>} />
+    {selectedTemplates.length ? <div className="flex flex-wrap gap-2 border-b border-border-subtle px-4 py-3">{selectedTemplates.map((template) => <span key={template.id} className="inline-flex items-center gap-2 rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold">{template.name}<button type="button" className="text-muted-foreground hover:text-foreground" aria-label={`Remove ${template.name}`} onClick={() => setTemplateSelections((current) => { const next = { ...current }; delete next[template.id]; return next; })}>×</button></span>)}</div> : <div className="border-b border-border-subtle px-4 py-5 text-sm text-muted-foreground">Choose a production template to add its materials to this quote.</div>}
+    {quoteMaterials.length ? <div className="overflow-x-auto"><InvoiceRows materials={quoteMaterials} quantities={quantities} onQuantityChange={setQuantities} /><div className="grid min-w-[640px] grid-cols-[minmax(220px,1fr)_120px_130px_140px] items-center gap-3 bg-surface-muted px-4 py-4"><p className="col-span-3 text-right text-sm font-bold">Subtotal</p><p className="text-right text-lg font-bold">{formatMoney(subtotalCents)}</p></div></div> : null}
+    <div className="flex flex-wrap items-center gap-3 border-t border-border-subtle p-4"><Button type="button" variant="primary" disabled={pending || !subtotalCents} onClick={create}>{pending ? "Creating…" : "Generate quote"}</Button>{message ? <p className="text-xs text-muted-foreground">{message}</p> : null}</div>
+    {showProductionPicker ? <ProductionPicker templates={productionTemplates} addedTemplateIds={Object.keys(templateSelections)} onAdd={addProduction} onClose={() => setShowProductionPicker(false)} /> : null}
+    {configuringTemplate ? <VariationChooser template={configuringTemplate} materials={materials} onApply={applyProduction} onClose={() => setConfiguringTemplate(null)} /> : null}
+  </Card>;
 }
 
-function InvoiceRows({ materials, quantities, onQuantityChange }: { materials: QuoteMaterial[]; quantities: Record<string, string>; onQuantityChange: (next: Record<string, string>) => void }) {
-  return <div className="min-w-[640px] divide-y divide-border-subtle"><div className="grid grid-cols-[minmax(220px,1fr)_120px_130px_140px] gap-3 bg-surface-muted px-4 py-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"><span>Material</span><span>Quantity (m²)</span><span className="text-right">Price / m²</span><span className="text-right">Line total</span></div>{materials.map((material) => { const totalCents = Math.round((Number(quantities[material.id]) || 0) * material.quotePriceCentsPerM2); return <div key={material.id} className="grid min-h-16 grid-cols-[minmax(220px,1fr)_120px_130px_140px] items-center gap-3 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-bold">{material.name}</p><p className="truncate text-xs text-muted-foreground">{material.sku} · {material.usesCustomerPrice ? "Customer price" : "Standard price"}</p></div><input aria-label={`Quantity for ${material.name}`} type="number" min="0" step="0.1" value={quantities[material.id] ?? ""} onChange={(event) => onQuantityChange({ ...quantities, [material.id]: event.target.value })} className="h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm font-semibold" /><p className="text-right text-sm font-medium">{formatMoney(material.quotePriceCentsPerM2)}</p><p className="text-right text-base font-bold">{formatMoney(totalCents)}</p></div>; })}</div>;
-}
+function InvoiceRows({ materials, quantities, onQuantityChange }: { materials: QuoteMaterial[]; quantities: Record<string, string>; onQuantityChange: (next: Record<string, string>) => void }) { return <div className="min-w-[640px] divide-y divide-border-subtle"><div className="grid grid-cols-[minmax(220px,1fr)_120px_130px_140px] gap-3 bg-surface-muted px-4 py-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"><span>Material</span><span>Quantity (m²)</span><span className="text-right">Price / m²</span><span className="text-right">Line total</span></div>{materials.map((material) => { const totalCents = Math.round((Number(quantities[material.id]) || 0) * material.quotePriceCentsPerM2); return <div key={material.id} className="grid min-h-16 grid-cols-[minmax(220px,1fr)_120px_130px_140px] items-center gap-3 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-bold">{materialLabel(material)}</p><p className="truncate text-xs text-muted-foreground">{material.sku} · {material.usesCustomerPrice ? "Customer price" : "Standard price"}</p></div><input aria-label={`Quantity for ${materialLabel(material)}`} type="number" min="0" step="0.1" value={quantities[material.id] ?? ""} onChange={(event) => onQuantityChange({ ...quantities, [material.id]: event.target.value })} className="h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm font-semibold" /><p className="text-right text-sm font-medium">{formatMoney(material.quotePriceCentsPerM2)}</p><p className="text-right text-base font-bold">{formatMoney(totalCents)}</p></div>; })}</div>; }
 
-function ProductionPicker({ templates, addedTemplateIds, onAdd, onClose }: { templates: ProductionTemplate[]; addedTemplateIds: string[]; onAdd: (template: ProductionTemplate) => void; onClose: () => void }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Add production template"><div className="w-full max-w-xl overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl"><div className="flex items-start justify-between gap-3 border-b border-border-subtle px-5 py-4"><div><h2 className="text-base font-bold">Add production</h2><p className="mt-0.5 text-sm text-muted-foreground">Select a production model to add its materials and default quantities.</p></div><Button size="sm" variant="ghost" onClick={onClose}>Close</Button></div><div className="max-h-[60vh] divide-y divide-border-subtle overflow-y-auto">{templates.map((template) => { const alreadyAdded = addedTemplateIds.includes(template.id); return <div key={template.id} className="flex items-center justify-between gap-3 px-5 py-4"><div><p className="text-sm font-bold">{template.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{template.description || "No description"} · {template.materials.length} materials</p></div><Button size="sm" disabled={alreadyAdded} variant={alreadyAdded ? "ghost" : "primary"} onClick={() => onAdd(template)}>{alreadyAdded ? "Added" : "Add"}</Button></div>; })}</div></div></div>;
+function ProductionPicker({ templates, addedTemplateIds, onAdd, onClose }: { templates: ProductionTemplate[]; addedTemplateIds: string[]; onAdd: (template: ProductionTemplate) => void; onClose: () => void }) { return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Add production template"><div className="w-full max-w-xl overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl"><div className="flex items-start justify-between gap-3 border-b border-border-subtle px-5 py-4"><div><h2 className="text-base font-bold">Add production</h2><p className="mt-0.5 text-sm text-muted-foreground">Select a production model to add its materials and default quantities.</p></div><Button size="sm" variant="ghost" onClick={onClose}>Close</Button></div><div className="max-h-[60vh] divide-y divide-border-subtle overflow-y-auto">{templates.map((template) => { const alreadyAdded = addedTemplateIds.includes(template.id); const choices = template.materials.filter((item) => item.allowVariationChoice).length; return <div key={template.id} className="flex items-center justify-between gap-3 px-5 py-4"><div><p className="text-sm font-bold">{template.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{template.description || "No description"} · {template.materials.length} products{choices ? ` · ${choices} choice${choices === 1 ? "" : "s"} at quote` : ""}</p></div><Button size="sm" disabled={alreadyAdded} variant={alreadyAdded ? "ghost" : "primary"} onClick={() => onAdd(template)}>{alreadyAdded ? "Added" : choices ? "Choose variations" : "Add"}</Button></div>; })}</div></div></div>; }
+
+function VariationChooser({ template, materials, onApply, onClose }: { template: ProductionTemplate; materials: QuoteMaterial[]; onApply: (template: ProductionTemplate, ids: string[]) => void; onClose: () => void }) {
+  const choices = useMemo(() => Object.fromEntries(template.materials.map((item, index) => [index, item.allowVariationChoice ? "" : item.materialId])), [template]);
+  const [selected, setSelected] = useState<Record<number, string>>(choices);
+  const hasAllChoices = template.materials.every((item, index) => !item.allowVariationChoice || Boolean(selected[index]));
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label={`Choose variations for ${template.name}`}><div className="w-full max-w-xl overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl"><div className="flex items-start justify-between gap-3 border-b border-border-subtle px-5 py-4"><div><h2 className="text-base font-bold">Choose product variations</h2><p className="mt-0.5 text-sm text-muted-foreground">Select the variation to use in this quote for each flexible production item.</p></div><Button size="sm" variant="ghost" onClick={onClose}>Close</Button></div><div className="space-y-4 p-5">{template.materials.map((item, index) => { const variants = materials.filter((material) => material.name === item.mainMaterialName && Boolean(material.variation)); return <div key={`${item.mainMaterialName}-${index}`} className="rounded-lg border border-border-subtle p-3"><p className="text-sm font-bold">{item.mainMaterialName}</p>{item.allowVariationChoice ? <label className="mt-2 block text-xs font-semibold text-muted-foreground">Variation<select required aria-label={`Variation for ${item.mainMaterialName}`} value={selected[index] ?? ""} onChange={(event) => setSelected((current) => ({ ...current, [index]: event.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-foreground"><option value="" disabled>Choose a variation…</option>{variants.map((material) => <option key={material.id} value={material.id}>{material.variation} · {material.sku}</option>)}</select></label> : <p className="mt-1 text-xs text-muted-foreground">Using the template’s specified variation.</p>}</div>; })}</div><div className="flex justify-end gap-2 border-t border-border-subtle px-5 py-4"><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="button" variant="primary" disabled={!hasAllChoices} onClick={() => onApply(template, template.materials.map((item, index) => item.allowVariationChoice ? selected[index] : item.materialId))}>Add to quote</Button></div></div></div>;
 }

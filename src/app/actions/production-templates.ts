@@ -18,15 +18,23 @@ const templateSchema = z.object({
 export type ProductionTemplateActionState = { ok: boolean; message?: string };
 
 function parseMaterials(value: string) {
-  return value
-    .split("\n")
-    .map((row) => row.trim())
-    .filter(Boolean)
-    .map((row) => {
-      const [materialId, quantity] = row.split(":");
-      return { materialId, defaultQuantity: Number(quantity) };
-    })
-    .filter((entry) => entry.materialId && Number.isFinite(entry.defaultQuantity) && entry.defaultQuantity > 0);
+  try {
+    const entries: unknown = JSON.parse(value);
+    if (!Array.isArray(entries)) return [];
+    return entries
+      .map((entry) => {
+        const item = entry as Record<string, unknown>;
+        return {
+          materialId: typeof item.materialId === "string" ? item.materialId : "",
+          mainMaterialName: typeof item.mainMaterialName === "string" ? item.mainMaterialName : "",
+          defaultQuantity: Number(item.defaultQuantity),
+          allowVariationChoice: Boolean(item.allowVariationChoice),
+        };
+      })
+      .filter((entry) => entry.materialId && entry.mainMaterialName && Number.isFinite(entry.defaultQuantity) && entry.defaultQuantity > 0);
+  } catch {
+    return [];
+  }
 }
 
 function revalidateProduction() {

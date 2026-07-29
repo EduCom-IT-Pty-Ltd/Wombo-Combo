@@ -55,7 +55,10 @@ export interface OrganisationSettings {
 
 export interface CatalogueMaterial {
   id: string;
+  /** Product family, e.g. “Enviroseal Wall Wrap”. */
   name: string;
+  /** Optional selectable product variant, e.g. “Aero 1200”. */
+  variation: string | null;
   sku: string;
   description: string | null;
   costCentsPerM2: number;
@@ -73,7 +76,15 @@ export interface ProductionTemplate {
   id: string;
   name: string;
   description: string | null;
-  materials: Array<{ materialId: string; defaultQuantity: number }>;
+  materials: Array<{
+    /** The default (or fixed) catalogue variant. */
+    materialId: string;
+    /** Stored so a quote can offer all catalogue variations of this product. */
+    mainMaterialName: string;
+    defaultQuantity: number;
+    /** When true, the quote author chooses the variation before it is added. */
+    allowVariationChoice: boolean;
+  }>;
 }
 
 /** A starting point for a project workflow. */

@@ -1,80 +1,30 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  addProductionTemplate,
-  deleteProductionTemplate,
-  type ProductionTemplateActionState,
-  updateProductionTemplate,
-} from "@/app/actions/production-templates";
+import { addProductionTemplate, deleteProductionTemplate, type ProductionTemplateActionState, updateProductionTemplate } from "@/app/actions/production-templates";
 import { Button, Card, CardHeader, EmptyState } from "@/components/ui";
 import type { CatalogueMaterial, ProductionTemplate } from "@/lib/data/types";
 
 const initialState: ProductionTemplateActionState = { ok: false };
 const inputClass = "h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-foreground";
+type SelectedProduct = { materialId: string; defaultQuantity: string; allowVariationChoice: boolean };
+type SelectedProducts = Record<string, SelectedProduct>;
 
-export function ProductionTemplateManager({
-  materials,
-  templates,
-}: {
-  materials: CatalogueMaterial[];
-  templates: ProductionTemplate[];
-}) {
+function productGroups(materials: CatalogueMaterial[]) { return Array.from(materials.reduce((groups, material) => { const current = groups.get(material.name) ?? []; current.push(material); groups.set(material.name, current); return groups; }, new Map<string, CatalogueMaterial[]>()).entries()).flatMap(([name, group]) => { const variations = group.filter((material) => material.variation); const selectable = variations.length ? variations : group.filter((material) => material.standardPriceCentsPerM2 > 0); return selectable.length ? [[name, selectable] as [string, CatalogueMaterial[]]] : []; }); }
+function serialiseMaterials(selected: SelectedProducts) { return JSON.stringify(Object.entries(selected).filter(([, item]) => Number(item.defaultQuantity) > 0).map(([mainMaterialName, item]) => ({ ...item, mainMaterialName, defaultQuantity: Number(item.defaultQuantity) }))); }
+function selectedFromTemplate(template: ProductionTemplate) { return Object.fromEntries(template.materials.map((item) => [item.mainMaterialName, { materialId: item.materialId, defaultQuantity: String(item.defaultQuantity), allowVariationChoice: item.allowVariationChoice }])); }
+
+export function ProductionTemplateManager({ materials, templates }: { materials: CatalogueMaterial[]; templates: ProductionTemplate[] }) {
   const [state, action, pending] = useActionState(addProductionTemplate, initialState);
-  const [selected, setSelected] = useState<Record<string, string>>({});
-  const entries = serialiseMaterials(selected);
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader title="New production template" description="Build a reusable material model, including its default quantities." />
-        <form action={action} className="space-y-4 p-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input required name="name" placeholder="Template name" className={inputClass} />
-            <input name="description" placeholder="Description (optional)" className={inputClass} />
-          </div>
-          <input type="hidden" name="materials" value={entries} />
-          <MaterialChoices materials={materials} selected={selected} onChange={setSelected} />
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" variant="primary" disabled={pending || !materials.length}>{pending ? "Adding…" : "Add template"}</Button>
-            {state.message ? <p className="text-xs text-muted-foreground">{state.message}</p> : null}
-          </div>
-        </form>
-      </Card>
-      <Card>
-        <CardHeader title="Saved templates" description="Edit the model, selected materials, or its default quantities at any time." />
-        {templates.length ? <div className="divide-y divide-border-subtle">{templates.map((template) => <TemplateEditor key={template.id} template={template} materials={materials} />)}</div> : <EmptyState title="No production templates yet" description="Create your first production model above." />}
-      </Card>
-    </div>
-  );
+  const [selected, setSelected] = useState<SelectedProducts>({});
+  return <div className="space-y-4"><Card><CardHeader title="New production template" description="Choose a main product, then lock its variation or make the quote author choose one." /><form action={action} className="space-y-4 p-4"><div className="grid gap-3 sm:grid-cols-2"><input required name="name" placeholder="Template name" className={inputClass} /><input name="description" placeholder="Description (optional)" className={inputClass} /></div><input type="hidden" name="materials" value={serialiseMaterials(selected)} /><MaterialChoices materials={materials} selected={selected} onChange={setSelected} /><div className="flex flex-wrap items-center gap-3"><Button type="submit" variant="primary" disabled={pending || !Object.keys(selected).length}>{pending ? "Adding…" : "Add template"}</Button>{state.message ? <p className="text-xs text-muted-foreground">{state.message}</p> : null}</div></form></Card><Card><CardHeader title="Saved templates" description="Each product can be fixed to one variation or selected when the production is added to a quote." />{templates.length ? <div className="divide-y divide-border-subtle">{templates.map((template) => <TemplateEditor key={template.id} template={template} materials={materials} />)}</div> : <EmptyState title="No production templates yet" description="Create your first production model above." />}</Card></div>;
 }
 
-function MaterialChoices({
-  materials,
-  selected,
-  onChange,
-}: {
-  materials: CatalogueMaterial[];
-  selected: Record<string, string>;
-  onChange: (value: Record<string, string>) => void;
-}) {
+function MaterialChoices({ materials, selected, onChange }: { materials: CatalogueMaterial[]; selected: SelectedProducts; onChange: (value: SelectedProducts) => void }) {
+  const groups = useMemo(() => productGroups(materials), [materials]);
   if (!materials.length) return <p className="rounded-lg border border-dashed border-border-strong p-4 text-sm text-muted-foreground">Add materials in the Materials module before creating a template.</p>;
-  return <div className="overflow-x-auto rounded-lg border border-border-subtle"><div className="min-w-[520px] divide-y divide-border-subtle"><div className="grid grid-cols-[48px_minmax(200px,1fr)_140px] gap-3 bg-surface-muted px-3 py-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"><span>Use</span><span>Material</span><span>Default m²</span></div>{materials.map((material) => { const active = selected[material.id] !== undefined; return <div key={material.id} className="grid min-h-14 grid-cols-[48px_minmax(200px,1fr)_140px] items-center gap-3 px-3 py-2"><input aria-label={`Use ${material.name}`} type="checkbox" checked={active} onChange={() => onChange(active ? Object.fromEntries(Object.entries(selected).filter(([id]) => id !== material.id)) : { ...selected, [material.id]: "1" })} className="size-5 accent-primary" /><span><span className="block text-sm font-semibold">{material.name}</span><span className="block text-xs text-muted-foreground">{material.sku}</span></span><input aria-label={`Default quantity for ${material.name}`} type="number" min="0.1" step="0.1" disabled={!active} value={selected[material.id] ?? ""} onChange={(event) => onChange({ ...selected, [material.id]: event.target.value })} className={`${inputClass} disabled:opacity-40`} /></div>; })}</div></div>;
+  return <div className="overflow-x-auto rounded-lg border border-border-subtle"><div className="min-w-[720px] divide-y divide-border-subtle"><div className="grid grid-cols-[48px_minmax(170px,1fr)_190px_175px_120px] gap-3 bg-surface-muted px-3 py-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"><span>Use</span><span>Main product</span><span>Variation</span><span>Quote selection</span><span>Default m²</span></div>{groups.map(([name, variants]) => { const value = selected[name]; const active = value !== undefined; return <div key={name} className="grid min-h-14 grid-cols-[48px_minmax(170px,1fr)_190px_175px_120px] items-center gap-3 px-3 py-2"><input aria-label={`Use ${name}`} type="checkbox" checked={active} onChange={() => onChange(active ? Object.fromEntries(Object.entries(selected).filter(([product]) => product !== name)) : { ...selected, [name]: { materialId: variants[0].id, defaultQuantity: "1", allowVariationChoice: variants.length > 1 } })} className="size-5 accent-primary" /><span><span className="block text-sm font-semibold">{name}</span><span className="block text-xs text-muted-foreground">{variants.length} variation{variants.length === 1 ? "" : "s"}</span></span><select aria-label={`Default variation for ${name}`} disabled={!active} value={value?.materialId ?? variants[0].id} onChange={(event) => onChange({ ...selected, [name]: { ...(value ?? { defaultQuantity: "1", allowVariationChoice: false }), materialId: event.target.value } })} className={`${inputClass} disabled:opacity-40`}>{variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.variation || "Standard"} · {variant.sku}</option>)}</select><select aria-label={`Variation setting for ${name}`} disabled={!active || variants.length < 2} value={value?.allowVariationChoice ? "choose" : "specific"} onChange={(event) => onChange({ ...selected, [name]: { ...(value ?? { materialId: variants[0].id, defaultQuantity: "1" }), allowVariationChoice: event.target.value === "choose" } })} className={`${inputClass} disabled:opacity-40`}><option value="specific">Use this variation</option><option value="choose">Choose at quote</option></select><input aria-label={`Default quantity for ${name}`} type="number" min="0.1" step="0.1" disabled={!active} value={value?.defaultQuantity ?? ""} onChange={(event) => onChange({ ...selected, [name]: { ...(value ?? { materialId: variants[0].id, allowVariationChoice: false }), defaultQuantity: event.target.value } })} className={`${inputClass} disabled:opacity-40`} /></div>; })}</div></div>;
 }
 
-function TemplateEditor({ template, materials }: { template: ProductionTemplate; materials: CatalogueMaterial[] }) {
-  const [editing, setEditing] = useState(false);
-  const [state, action, pending] = useActionState(updateProductionTemplate, initialState);
-  const [deleting, startTransition] = useTransition();
-  const router = useRouter();
-  const [selected, setSelected] = useState<Record<string, string>>(() => Object.fromEntries(template.materials.map((item) => [item.materialId, String(item.defaultQuantity)])));
-
-  if (!editing) return <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4"><div><p className="text-sm font-bold">{template.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{template.description || "No description"} · {template.materials.length} materials</p></div><div className="flex gap-2"><Button size="sm" onClick={() => setEditing(true)}>Edit</Button><Button size="sm" variant="danger" disabled={deleting} onClick={() => { if (window.confirm(`Remove ${template.name}?`)) startTransition(async () => { await deleteProductionTemplate(template.id); router.refresh(); }); }}>Remove</Button></div></div>;
-
-  return <form action={action} className="space-y-4 bg-surface-muted p-4"><input type="hidden" name="id" value={template.id} /><div className="grid gap-3 sm:grid-cols-2"><input required name="name" defaultValue={template.name} className={inputClass} /><input name="description" defaultValue={template.description ?? ""} className={inputClass} /></div><input type="hidden" name="materials" value={serialiseMaterials(selected)} /><MaterialChoices materials={materials} selected={selected} onChange={setSelected} /><div className="flex flex-wrap items-center gap-2"><Button size="sm" type="submit" variant="primary" disabled={pending}>Save changes</Button><Button size="sm" type="button" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>{state.message ? <p className="text-xs text-muted-foreground">{state.message}</p> : null}</div></form>;
-}
-
-function serialiseMaterials(selected: Record<string, string>) {
-  return Object.entries(selected).filter(([, quantity]) => Number(quantity) > 0).map(([id, quantity]) => `${id}:${quantity}`).join("\n");
-}
+function TemplateEditor({ template, materials }: { template: ProductionTemplate; materials: CatalogueMaterial[] }) { const [editing, setEditing] = useState(false); const [state, action, pending] = useActionState(updateProductionTemplate, initialState); const [deleting, startTransition] = useTransition(); const router = useRouter(); const [selected, setSelected] = useState<SelectedProducts>(() => selectedFromTemplate(template)); const choices = template.materials.filter((item) => item.allowVariationChoice).length; if (!editing) return <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4"><div><p className="text-sm font-bold">{template.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{template.description || "No description"} · {template.materials.length} products{choices ? ` · ${choices} choose at quote` : ""}</p></div><div className="flex gap-2"><Button size="sm" onClick={() => setEditing(true)}>Edit</Button><Button size="sm" variant="danger" disabled={deleting} onClick={() => { if (window.confirm(`Remove ${template.name}?`)) startTransition(async () => { await deleteProductionTemplate(template.id); router.refresh(); }); }}>Remove</Button></div></div>; return <form action={action} className="space-y-4 bg-surface-muted p-4"><input type="hidden" name="id" value={template.id} /><div className="grid gap-3 sm:grid-cols-2"><input required name="name" defaultValue={template.name} className={inputClass} /><input name="description" defaultValue={template.description ?? ""} className={inputClass} /></div><input type="hidden" name="materials" value={serialiseMaterials(selected)} /><MaterialChoices materials={materials} selected={selected} onChange={setSelected} /><div className="flex flex-wrap items-center gap-2"><Button size="sm" type="submit" variant="primary" disabled={pending}>Save changes</Button><Button size="sm" type="button" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>{state.message ? <p className="text-xs text-muted-foreground">{state.message}</p> : null}</div></form>; }
