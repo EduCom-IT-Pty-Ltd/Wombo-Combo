@@ -2,15 +2,16 @@ import { getSession } from "@/lib/auth/session";
 import { AUTOMATION_RULES } from "@/lib/domain/automation";
 import { Badge, Card, CardHeader, PageHeader } from "@/components/ui";
 import { StatusFlowSettings } from "@/components/admin/status-flow-settings";
-import { readOrganisationSettings, readRolePermissions, readStatusFieldTemplates, readStatusSettings, readStatusTaskTemplates } from "@/lib/data/local-store";
+import { readOrganisationSettings, readQuoteDocumentTemplateSettings, readRolePermissions, readStatusFieldTemplates, readStatusSettings, readStatusTaskTemplates } from "@/lib/data/local-store";
 import { OrganisationSettingsForm } from "@/components/admin/organisation-settings";
 import { RolePermissionsManager } from "@/components/admin/role-permissions-manager";
+import { QuoteLetterheadDesigner } from "@/components/admin/quote-letterhead-designer";
 
 export const metadata = { title: "Admin" };
 
 export default async function AdminPage() {
   const session = await getSession();
-  const [statusSettings, statusTaskTemplates, statusFieldTemplates, organisation, rolePermissions] = await Promise.all([readStatusSettings(), readStatusTaskTemplates(), readStatusFieldTemplates(), readOrganisationSettings(), readRolePermissions()]);
+  const [statusSettings, statusTaskTemplates, statusFieldTemplates, organisation, rolePermissions, quoteTemplate] = await Promise.all([readStatusSettings(), readStatusTaskTemplates(), readStatusFieldTemplates(), readOrganisationSettings(), readRolePermissions(), readQuoteDocumentTemplateSettings()]);
 
   return (
     <div className="space-y-4">
@@ -19,6 +20,8 @@ export default async function AdminPage() {
       <StatusFlowSettings settings={statusSettings} templates={statusTaskTemplates} fields={statusFieldTemplates} />
 
       <OrganisationSettingsForm settings={organisation} isDemo={session.isDemo} />
+
+      <QuoteLetterheadDesigner settings={quoteTemplate} />
 
       <Card>
         <CardHeader

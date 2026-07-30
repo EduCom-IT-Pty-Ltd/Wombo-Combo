@@ -7,6 +7,7 @@ import type {
   CustomerPriceList,
   LabourSettings,
   ProjectCostingOptions,
+  QuoteDocumentTemplateSettings,
   ProductionTemplate,
   ProjectTemplate,
   SchedulePhaseView,
@@ -75,6 +76,10 @@ export async function getLabourSettings(_orgId: string): Promise<LabourSettings>
 
 export async function getProjectCostingOptions(_orgId: string, projectId: string): Promise<ProjectCostingOptions> {
   return (await readLocalStore()).projectCostingOptions[projectId] ?? { standardLabourEnabled: false, employeeCount: 0, includeSubcontractorMaterialCosts: false };
+}
+
+export async function getQuoteDocumentTemplateSettings(_orgId: string): Promise<QuoteDocumentTemplateSettings> {
+  return (await readLocalStore()).quoteDocumentTemplate;
 }
 
 export async function listProductionTemplates(_orgId: string): Promise<ProductionTemplate[]> {

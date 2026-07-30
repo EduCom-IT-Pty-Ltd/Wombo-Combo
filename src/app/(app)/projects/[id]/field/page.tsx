@@ -5,7 +5,8 @@ import { entryHours } from "@/lib/domain/costing";
 import { formatMoney } from "@/lib/domain/money";
 import { getProject, listMaterials, listPeople, listQuotes, listTimeEntries, listVariations } from "@/lib/data/repository";
 import { Avatar, Badge, Card, CardHeader, EmptyState, Stat } from "@/components/ui";
-import { formatDate, formatTime } from "@/lib/utils";
+import { TimeAttendanceManager } from "@/components/projects/time-attendance-manager";
+import { formatDate } from "@/lib/utils";
 
 const VARIATION_TONES = {
   draft: "slate",
@@ -32,6 +33,7 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
   const showMaterialCosts = can(session.role, "finance.costs.view", session.permissionOverrides);
   const showLabourCosts = can(session.role, "finance.labour.view", session.permissionOverrides);
   const showRevenue = can(session.role, "finance.revenue.view", session.permissionOverrides);
+  const canManageAttendance = can(session.role, "schedule.manage", session.permissionOverrides);
   const totalHours = entries.reduce(
     (s, e) => s + entryHours(new Date(e.startedAt), e.endedAt ? new Date(e.endedAt) : null, e.breakMinutes),
     0,
@@ -71,46 +73,7 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader title="Time & attendance" description="Clock on / clock off from the field app" />
-          {entries.length ? (
-            <ul className="divide-y divide-border-subtle">
-              {entries
-                .slice()
-                .reverse()
-                .map((entry) => {
-                  const person = people.find((p) => p.id === entry.userId);
-                  const hours = entryHours(
-                    new Date(entry.startedAt),
-                    entry.endedAt ? new Date(entry.endedAt) : null,
-                    entry.breakMinutes,
-                  );
-                  return (
-                    <li key={entry.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <Avatar initials={person?.initials ?? "?"} />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm">{person?.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDate(entry.startedAt)} · {formatTime(entry.startedAt)}–
-                            {entry.endedAt ? formatTime(entry.endedAt) : "now"}
-                            {entry.breakMinutes ? ` · ${entry.breakMinutes}m break` : ""}
-                          </p>
-                        </div>
-                      </div>
-                      {entry.endedAt ? (
-                        <span className="shrink-0 text-sm tabular-nums">{hours.toFixed(1)}h</span>
-                      ) : (
-                        <Badge tone="emerald">On site</Badge>
-                      )}
-                    </li>
-                  );
-                })}
-            </ul>
-          ) : (
-            <EmptyState title="No time logged" />
-          )}
-        </Card>
+        <TimeAttendanceManager projectId={project.id} entries={entries} people={people} canManage={canManageAttendance} />
 
         <div className="space-y-4">
           <Card>

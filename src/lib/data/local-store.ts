@@ -10,6 +10,7 @@ import type {
   CustomerPriceList,
   LabourSettings,
   ProjectCostingOptions,
+  QuoteDocumentTemplateSettings,
   ProductionTemplate,
   ProjectTemplate,
   SchedulePhase,
@@ -60,6 +61,7 @@ export type LocalStore = {
   customerPriceLists: CustomerPriceList[];
   labourSettings: LabourSettings;
   projectCostingOptions: Record<string, ProjectCostingOptions>;
+  quoteDocumentTemplate: QuoteDocumentTemplateSettings;
   productionTemplates: ProductionTemplate[];
   projectTemplates: ProjectTemplate[];
   organisation: OrganisationSettings;
@@ -98,6 +100,7 @@ function freshStore(): LocalStore {
     customerPriceLists: [],
     labourSettings: { standardLabourEnabled: false, standardLabourCostCentsPerEmployee: 0, subcontractorMaterialRates: [] },
     projectCostingOptions: {},
+    quoteDocumentTemplate: { letterheadUrl: null, fields: [], table: { x: 10, y: 38, width: 80 } },
     productionTemplates: [],
     projectTemplates: [],
     organisation: DEFAULT_ORGANISATION,
@@ -134,7 +137,8 @@ export async function readLocalStore(): Promise<LocalStore> {
     const statusFieldTemplates = (store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES)).map((template) => ({ ...template, required: template.required ?? false }));
     const people = (store.people ?? structuredClone(seed.people)).map((person) => ({ ...person, role: LEGACY_ROLE_MAP[person.role] ?? person.role }));
     const organisation = { ...DEFAULT_ORGANISATION, ...(store.organisation ?? {}) };
-    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], labourSettings: { standardLabourEnabled: store.labourSettings?.standardLabourEnabled ?? false, standardLabourCostCentsPerEmployee: store.labourSettings?.standardLabourCostCentsPerEmployee ?? 0, subcontractorMaterialRates: store.labourSettings?.subcontractorMaterialRates ?? [] }, projectCostingOptions: store.projectCostingOptions ?? {}, productionTemplates, projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
+    const quoteDocumentTemplate = { ...freshStore().quoteDocumentTemplate, ...(store.quoteDocumentTemplate ?? {}), table: { ...freshStore().quoteDocumentTemplate.table, ...(store.quoteDocumentTemplate?.table ?? {}) }, fields: store.quoteDocumentTemplate?.fields ?? [] };
+    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], labourSettings: { standardLabourEnabled: store.labourSettings?.standardLabourEnabled ?? false, standardLabourCostCentsPerEmployee: store.labourSettings?.standardLabourCostCentsPerEmployee ?? 0, subcontractorMaterialRates: store.labourSettings?.subcontractorMaterialRates ?? [] }, projectCostingOptions: store.projectCostingOptions ?? {}, quoteDocumentTemplate, productionTemplates, projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
@@ -143,6 +147,8 @@ export async function readLocalStore(): Promise<LocalStore> {
 
 export async function readOrganisationSettings() { return (await readLocalStore()).organisation; }
 export async function saveOrganisationSettings(settings: OrganisationSettings) { await updateLocalStore((store) => { store.organisation = settings; }); }
+export async function readQuoteDocumentTemplateSettings() { return (await readLocalStore()).quoteDocumentTemplate; }
+export async function saveQuoteDocumentTemplateSettings(settings: QuoteDocumentTemplateSettings) { await updateLocalStore((store) => { store.quoteDocumentTemplate = settings; }); }
 export async function readRolePermissions() { return (await readLocalStore()).rolePermissions; }
 export async function saveRolePermissions(permissions: RolePermissionOverrides) { await updateLocalStore((store) => { store.rolePermissions = permissions; }); }
 
@@ -313,6 +319,57 @@ export async function updateLocalTimeEntry(input: { entryId: string; userId: str
     entry.pausedAt = null;
     const person = store.people.find((item) => item.id === input.userId);
     addEvent(store, entry.projectId, `${person?.name ?? "Crew"} edited a time entry`, input.userId);
+    return entry;
+  });
+}
+
+/** Office attendance correction. Unlike the Field clock, this may be recorded
+ * for any crew member and is always a completed shift. */
+export async function createLocalAttendanceEntry(input: { projectId: string; userId: string; startedAt: string; endedAt: string; breakMinutes: number; notes?: string }) {
+  return updateLocalStore((store) => {
+    const person = store.people.find((item) => item.id === input.userId);
+    if (!person) throw new Error("Choose a valid employee");
+    const entry = {
+      id: `te-${randomUUID()}`,
+      projectId: input.projectId,
+      userId: input.userId,
+      startedAt: input.startedAt,
+      endedAt: input.endedAt,
+      breakMinutes: input.breakMinutes,
+      pausedAt: null,
+      costRateCentsPerHour: person.costRateCentsPerHour,
+      notes: input.notes?.trim() || null,
+    };
+    store.timeEntries.push(entry);
+    addEvent(store, input.projectId, `${person.name} attendance added`, input.userId);
+    return entry;
+  });
+}
+
+export async function updateLocalAttendanceEntry(input: { entryId: string; userId: string; startedAt: string; endedAt: string; breakMinutes: number; notes?: string }) {
+  return updateLocalStore((store) => {
+    const entry = store.timeEntries.find((item) => item.id === input.entryId);
+    const person = store.people.find((item) => item.id === input.userId);
+    if (!entry || !person) throw new Error("Time entry not found");
+    entry.userId = input.userId;
+    entry.startedAt = input.startedAt;
+    entry.endedAt = input.endedAt;
+    entry.breakMinutes = input.breakMinutes;
+    entry.pausedAt = null;
+    entry.costRateCentsPerHour = person.costRateCentsPerHour;
+    entry.notes = input.notes?.trim() || null;
+    addEvent(store, entry.projectId, `${person.name} attendance updated`, input.userId);
+    return entry;
+  });
+}
+
+export async function deleteLocalAttendanceEntry(entryId: string) {
+  return updateLocalStore((store) => {
+    const entry = store.timeEntries.find((item) => item.id === entryId);
+    if (!entry) throw new Error("Time entry not found");
+    const person = store.people.find((item) => item.id === entry.userId);
+    store.timeEntries = store.timeEntries.filter((item) => item.id !== entryId);
+    addEvent(store, entry.projectId, `${person?.name ?? "Crew"} attendance deleted`);
     return entry;
   });
 }

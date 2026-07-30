@@ -20,7 +20,7 @@ export default async function ProjectCostingPage({ params }: { params: Promise<{
   const labourOverBudget = costing.labourVarianceCents > 0;
   const canManage = can(session.role, "finance.manage", session.permissionOverrides);
   return <div className="space-y-4">
-    {canManage ? <ProjectCostingOptionsForm projectId={id} settings={labourSettings} options={costingOptions} currency={currency} /> : null}
+    {canManage ? <ProjectCostingOptionsForm projectId={id} settings={labourSettings} options={costingOptions} /> : null}
     {!costing.hasCostData ? <Card><EmptyState title="No costing data yet" description="Generate a materials quote, then add labour or subcontractor options to calculate job costs." /></Card> : <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <Stat label="Quote revenue" value={formatMoney(costing.totalRevenueCents, currency)} hint="Latest quote, excluding GST" />

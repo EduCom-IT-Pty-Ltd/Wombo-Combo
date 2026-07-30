@@ -10,5 +10,6 @@ export default async function ProjectSchedulePage({ params }: { params: Promise<
   const project = await getProject(session.org.id, id);
   if (!project) notFound();
   const [phases, people, leave] = await Promise.all([listSchedulePhases(session.org.id, { projectId: id }), listPeople(session.org.id), listLeave(session.org.id)]);
-  return <SchedulePhaseManager projectId={project.id} phases={phases} people={people} leave={leave} canManage={can(session.role, "schedule.manage", session.permissionOverrides)} />;
+  const canManage = can(session.role, "schedule.manage", session.permissionOverrides);
+  return <SchedulePhaseManager projectId={project.id} phases={phases} people={people} leave={leave} canManage={canManage} />;
 }
