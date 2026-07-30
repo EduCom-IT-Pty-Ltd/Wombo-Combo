@@ -6,8 +6,8 @@ import { TopBar } from "@/components/layout/topbar";
 import { StatusSettingsProvider } from "@/components/status-settings-provider";
 import { readStatusSettings } from "@/lib/data/local-store";
 import { PageTransition } from "@/components/layout/page-transition";
-import { getOpenTimeEntry, getProject } from "@/lib/data/repository";
-import { listPeople } from "@/lib/data/repository";
+import { getOpenTimeEntry, getProject, listCustomers, listPeople, listProjects } from "@/lib/data/repository";
+import { can } from "@/lib/domain/permissions";
 
 /**
  * The authenticated shell. Navigation is filtered by capability here rather than
@@ -15,7 +15,7 @@ import { listPeople } from "@/lib/data/repository";
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  const [statusSettings, openEntry, people] = await Promise.all([readStatusSettings(), getOpenTimeEntry(session.org.id, fieldUserId(session)), listPeople(session.org.id)]);
+  const [statusSettings, openEntry, people, projects, customers] = await Promise.all([readStatusSettings(), getOpenTimeEntry(session.org.id, fieldUserId(session)), listPeople(session.org.id), listProjects(session.org.id), can(session.role, "customer.view", session.permissionOverrides) ? listCustomers(session.org.id) : Promise.resolve([])]);
   const activeProject = openEntry ? await getProject(session.org.id, openEntry.projectId) : null;
   const items = navItemsFor(session.role, session.permissionOverrides);
 
@@ -38,6 +38,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           logoUrl={session.org.logoUrl}
           userId={session.user.id}
           demoPeople={session.isDemo ? people.map(({ id, name, role }) => ({ id, name, role })) : undefined}
+          searchProjects={projects.map(({ id, title, projectNumber, customerName, siteLabel }) => ({ id, title, projectNumber, customerName, siteLabel }))}
+          searchCustomers={customers.map(({ id, name, primaryContactName }) => ({ id, name, primaryContactName }))}
           activeShift={openEntry && activeProject ? { projectId: activeProject.id, projectTitle: activeProject.title, startedAt: openEntry.startedAt, paused: Boolean(openEntry.pausedAt) } : null}
         />
 

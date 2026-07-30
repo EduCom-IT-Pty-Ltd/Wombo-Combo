@@ -3,18 +3,9 @@ import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { entryHours } from "@/lib/domain/costing";
 import { formatMoney } from "@/lib/domain/money";
-import { getProject, listMaterials, listPeople, listQuotes, listTimeEntries, listVariations } from "@/lib/data/repository";
-import { Avatar, Badge, Card, CardHeader, EmptyState, Stat } from "@/components/ui";
+import { getProject, listPeople, listQuotes, listTimeEntries } from "@/lib/data/repository";
+import { Avatar, Card, CardHeader, EmptyState, Stat } from "@/components/ui";
 import { TimeAttendanceManager } from "@/components/projects/time-attendance-manager";
-import { formatDate } from "@/lib/utils";
-
-const VARIATION_TONES = {
-  draft: "slate",
-  submitted: "amber",
-  approved: "emerald",
-  rejected: "rose",
-  invoiced: "blue",
-} as const;
 
 export default async function ProjectFieldPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -22,23 +13,19 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
   const project = await getProject(session.org.id, id);
   if (!project) notFound();
 
-  const [entries, materials, variations, people, quotes] = await Promise.all([
+  const [entries, people, quotes] = await Promise.all([
     listTimeEntries(session.org.id, { projectId: id }),
-    listMaterials(session.org.id, id),
-    listVariations(session.org.id, id),
     listPeople(session.org.id),
     listQuotes(session.org.id, id),
   ]);
 
   const showMaterialCosts = can(session.role, "finance.costs.view", session.permissionOverrides);
   const showLabourCosts = can(session.role, "finance.labour.view", session.permissionOverrides);
-  const showRevenue = can(session.role, "finance.revenue.view", session.permissionOverrides);
   const canManageAttendance = can(session.role, "schedule.manage", session.permissionOverrides);
   const totalHours = entries.reduce(
     (s, e) => s + entryHours(new Date(e.startedAt), e.endedAt ? new Date(e.endedAt) : null, e.breakMinutes),
     0,
   );
-  const materialCost = materials.reduce((s, m) => s + m.quantity * m.unitCostCents, 0);
   const latestQuote = quotes[0] ?? null;
   const quotedMaterialCost = latestQuote?.subtotalCostCents ?? 0;
   const onSite = entries.filter((e) => !e.endedAt);
@@ -51,19 +38,14 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Hours logged" value={totalHours.toFixed(1)} hint={`${entries.length} entries`} />
         <Stat label="On site now" value={onSite.length} tone={onSite.length > 0 ? "good" : "default"} />
         <Stat label="Labour cost" value={showLabourCosts ? formatMoney(labourCost, session.org.currency, { compact: true }) : "—"} hint="Logged time × hourly rate" />
         <Stat
-          label="Materials"
-          value={showMaterialCosts ? formatMoney(quotedMaterialCost || materialCost, session.org.currency, { compact: true }) : latestQuote?.lines.length ?? materials.length}
-          hint={latestQuote ? `${latestQuote.lines.length} quoted lines · ${materials.length} used` : showMaterialCosts ? `${materials.length} lines used` : "lines recorded"}
-        />
-        <Stat
-          label="Variations"
-          value={variations.length}
-          hint={`${variations.filter((v) => v.status === "approved").length} approved`}
+          label="Quoted materials"
+          value={showMaterialCosts ? formatMoney(quotedMaterialCost, session.org.currency, { compact: true }) : latestQuote?.lines.length ?? 0}
+          hint={latestQuote ? `${latestQuote.lines.length} current quote lines` : "No generated quote"}
         />
       </div>
 
@@ -77,53 +59,27 @@ export default async function ProjectFieldPage({ params }: { params: Promise<{ i
 
         <div className="space-y-4">
           <Card>
-            <CardHeader title="Materials used" />
-            {materials.length ? (
+            <CardHeader title="Quoted materials" description="The latest generated quote for this project." />
+            {latestQuote?.lines.length ? (
               <ul className="divide-y divide-border-subtle">
-                {materials.map((m) => (
-                  <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                {latestQuote.lines.map((line) => (
+                  <li key={line.id ?? `${line.description}-${line.quantity}`} className="flex items-center justify-between gap-3 px-4 py-2.5">
                     <div className="min-w-0">
-                      <p className="truncate text-sm">{m.description}</p>
+                      <p className="truncate text-sm">{line.description}</p>
                       <p className="text-xs text-muted-foreground">
-                        {m.quantity} {m.unit} · {formatDate(m.recordedAt)}
+                        {line.quantity} {line.unit}
                       </p>
                     </div>
                     {showMaterialCosts ? (
                       <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-                        {formatMoney(Math.round(m.quantity * m.unitCostCents), session.org.currency)}
+                        {formatMoney(Math.round(line.quantity * line.unitCostCents), session.org.currency)}
                       </span>
                     ) : null}
                   </li>
                 ))}
               </ul>
             ) : (
-              <EmptyState title="No materials recorded" />
-            )}
-          </Card>
-
-          <Card>
-            <CardHeader title="Variations" description="Scope changes raised on site" />
-            {variations.length ? (
-              <ul className="divide-y divide-border-subtle">
-                {variations.map((v) => (
-                  <li key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm">{v.title}</p>
-                      <p className="font-mono text-xs text-muted-foreground">{v.reference}</p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <Badge tone={VARIATION_TONES[v.status as keyof typeof VARIATION_TONES]}>{v.status}</Badge>
-                      {showRevenue ? (
-                        <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-                          {formatMoney(v.quotedSellCents, session.org.currency)}
-                        </p>
-                      ) : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <EmptyState title="No variations" />
+              <EmptyState title="No generated quote" description="Create a material quote in the Quote tab to see its current materials here." />
             )}
           </Card>
         </div>
