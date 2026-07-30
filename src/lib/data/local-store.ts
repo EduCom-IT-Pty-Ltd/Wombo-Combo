@@ -8,6 +8,8 @@ import type {
   Customer,
   CatalogueMaterial,
   CustomerPriceList,
+  LabourSettings,
+  ProjectCostingOptions,
   ProductionTemplate,
   ProjectTemplate,
   SchedulePhase,
@@ -56,6 +58,8 @@ export type LocalStore = {
   workflowFieldValues: WorkflowFieldValue[];
   catalogueMaterials: CatalogueMaterial[];
   customerPriceLists: CustomerPriceList[];
+  labourSettings: LabourSettings;
+  projectCostingOptions: Record<string, ProjectCostingOptions>;
   productionTemplates: ProductionTemplate[];
   projectTemplates: ProjectTemplate[];
   organisation: OrganisationSettings;
@@ -92,6 +96,8 @@ function freshStore(): LocalStore {
     workflowFieldValues: seed.workflowFieldValues,
     catalogueMaterials: [],
     customerPriceLists: [],
+    labourSettings: { standardLabourEnabled: false, standardLabourCostCentsPerEmployee: 0, subcontractorMaterialRates: [] },
+    projectCostingOptions: {},
     productionTemplates: [],
     projectTemplates: [],
     organisation: DEFAULT_ORGANISATION,
@@ -113,16 +119,22 @@ export async function readLocalStore(): Promise<LocalStore> {
     const catalogueMaterials = (store.catalogueMaterials ?? []).map((material) => ({ ...material, variation: material.variation ?? null, standardPriceCentsPerM2: material.standardPriceCentsPerM2 ?? Math.round(material.costCentsPerM2 * 1.4) }));
     const productionTemplates = (store.productionTemplates ?? []).map((template) => ({
       ...template,
-      materials: (template.materials ?? []).map((item) => ({
-        ...item,
-        mainMaterialName: item.mainMaterialName ?? catalogueMaterials.find((material) => material.id === item.materialId)?.name ?? "",
-        allowVariationChoice: item.allowVariationChoice ?? false,
-      })),
+      materials: (template.materials ?? []).map((item) => {
+        const source = catalogueMaterials.find((material) => material.id === item.materialId);
+        const variations = source ? catalogueMaterials.filter((material) => material.name === source.name && material.variation) : [];
+        const needsVariation = Boolean(source && !source.variation && variations.length);
+        return {
+          ...item,
+          materialId: needsVariation ? variations[0].id : item.materialId,
+          mainMaterialName: item.mainMaterialName ?? source?.name ?? "",
+          allowVariationChoice: needsVariation || item.allowVariationChoice || false,
+        };
+      }),
     }));
     const statusFieldTemplates = (store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES)).map((template) => ({ ...template, required: template.required ?? false }));
     const people = (store.people ?? structuredClone(seed.people)).map((person) => ({ ...person, role: LEGACY_ROLE_MAP[person.role] ?? person.role }));
     const organisation = { ...DEFAULT_ORGANISATION, ...(store.organisation ?? {}) };
-    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], productionTemplates, projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
+    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], labourSettings: { standardLabourEnabled: store.labourSettings?.standardLabourEnabled ?? false, standardLabourCostCentsPerEmployee: store.labourSettings?.standardLabourCostCentsPerEmployee ?? 0, subcontractorMaterialRates: store.labourSettings?.subcontractorMaterialRates ?? [] }, projectCostingOptions: store.projectCostingOptions ?? {}, productionTemplates, projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
@@ -441,6 +453,14 @@ export async function deleteLocalPriceList(id: string) {
   await updateLocalStore((store) => { store.customerPriceLists = store.customerPriceLists.filter((item) => item.id !== id); for (const customer of store.customers) if (customer.priceListId === id) customer.priceListId = null; });
 }
 
+export async function updateLocalLabourSettings(input: LabourSettings) {
+  await updateLocalStore((store) => { store.labourSettings = input; });
+}
+
+export async function updateLocalProjectCostingOptions(projectId: string, input: ProjectCostingOptions) {
+  await updateLocalStore((store) => { store.projectCostingOptions[projectId] = input; addEvent(store, projectId, "Project labour and subcontractor costing updated"); });
+}
+
 export async function createLocalProductionTemplate(input: Omit<ProductionTemplate, "id">) {
   return updateLocalStore((store) => {
     const template = { id: `prod-${randomUUID()}`, ...input };
@@ -503,6 +523,7 @@ export async function createLocalMaterialQuote(args: { projectId: string; materi
     const lines = args.materialIds.map(({ materialId, quantity }) => {
       const material = store.catalogueMaterials.find((item) => item.id === materialId);
       if (!material) throw new Error("Material not found");
+      if (!material.variation && store.catalogueMaterials.some((item) => item.name === material.name && item.variation)) throw new Error(`Select a variation of ${material.name}`);
       const sell = priceList?.entries.find((entry) => entry.materialId === material.id)?.priceCentsPerM2 ?? material.standardPriceCentsPerM2;
       return { id: `ql-${randomUUID()}`, catalogueMaterialId: material.id, kind: "material" as const, description: material.variation ? `${material.name} — ${material.variation}` : material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
     });
@@ -525,6 +546,7 @@ export async function updateLocalMaterialQuote(args: { quoteId: string; material
     const lines = args.materialIds.map(({ materialId, quantity }) => {
       const material = store.catalogueMaterials.find((item) => item.id === materialId);
       if (!material) throw new Error("Material not found");
+      if (!material.variation && store.catalogueMaterials.some((item) => item.name === material.name && item.variation)) throw new Error(`Select a variation of ${material.name}`);
       const sell = priceList?.entries.find((entry) => entry.materialId === material.id)?.priceCentsPerM2 ?? material.standardPriceCentsPerM2;
       return { id: `ql-${randomUUID()}`, catalogueMaterialId: material.id, kind: "material" as const, description: material.variation ? `${material.name} — ${material.variation}` : material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
     });
@@ -738,6 +760,7 @@ export async function deleteLocalProject(id: string) {
     store.quotes = store.quotes.filter((item) => item.projectId !== id);
     store.workflowFieldValues = store.workflowFieldValues.filter((item) => item.projectId !== id);
     store.schedulePhases = store.schedulePhases.filter((item) => item.projectId !== id);
+    delete store.projectCostingOptions[id];
     if (wasActive) {
       const customer = store.customers.find((item) => item.id === project.customerId);
       if (customer) customer.activeProjects = Math.max(0, customer.activeProjects - 1);

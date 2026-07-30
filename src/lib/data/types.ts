@@ -71,6 +71,22 @@ export interface CustomerPriceList {
   entries: Array<{ materialId: string; priceCentsPerM2: number }>;
 }
 
+/** Organisation-wide labour and subcontractor cost settings for the local prototype. */
+export interface LabourSettings {
+  standardLabourEnabled: boolean;
+  /** Single budgeted cost per employee for an entire job, in cents. */
+  standardLabourCostCentsPerEmployee: number;
+  /** Rate paid to a subcontractor for each quoted m² of a catalogue material. */
+  subcontractorMaterialRates: Array<{ materialId: string; costCentsPerM2: number }>;
+}
+
+/** Costing choices made per project. */
+export interface ProjectCostingOptions {
+  standardLabourEnabled: boolean;
+  employeeCount: number;
+  includeSubcontractorMaterialCosts: boolean;
+}
+
 /** A reusable production model. Material quantities can be adjusted per quote. */
 export interface ProductionTemplate {
   id: string;

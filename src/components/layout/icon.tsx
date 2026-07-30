@@ -18,6 +18,7 @@ const ICONS = {
   folder: FolderKanban,
   calendar: CalendarDays,
   hardhat: HardHat,
+  labour: HardHat,
   users: Users,
   receipt: Receipt,
   materials: Boxes,

@@ -18,6 +18,7 @@ export type IconName =
   | "folder"
   | "calendar"
   | "hardhat"
+  | "labour"
   | "users"
   | "receipt"
   | "materials"
@@ -37,6 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/finance", label: "Finance", icon: "receipt", capability: "finance.profit.view" },
   { href: "/qa", label: "QA & Compliance", shortLabel: "QA", icon: "shield", capability: "qa.view" },
   { href: "/hr", label: "People", icon: "users", capability: "hr.view" },
+  { href: "/labour", label: "Labour", icon: "labour", capability: "labour.manage" },
   { href: "/admin", label: "Settings", icon: "settings", capability: "admin.manage" },
 ];
 

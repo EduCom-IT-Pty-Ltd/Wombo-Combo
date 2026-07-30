@@ -8,6 +8,7 @@ import { formatMoney } from "@/lib/domain/money";
 
 type QuoteMaterial = CatalogueMaterial & { quotePriceCentsPerM2: number; usesCustomerPrice: boolean };
 function materialLabel(material: CatalogueMaterial) { return material.variation ? `${material.name} — ${material.variation}` : material.name; }
+function canQuoteMaterial(material: QuoteMaterial, allMaterials: QuoteMaterial[]) { return !allMaterials.some((candidate) => candidate.name === material.name && candidate.variation); }
 
 export function MaterialQuoteBuilder({ projectId, materials, priceListName, productionTemplates }: { projectId: string; materials: QuoteMaterial[]; priceListName: string | null; productionTemplates: ProductionTemplate[] }) {
   const [quantities, setQuantities] = useState<Record<string, string>>({});
@@ -18,7 +19,7 @@ export function MaterialQuoteBuilder({ projectId, materials, priceListName, prod
   const [message, setMessage] = useState("");
   const selectedTemplates = productionTemplates.filter((template) => templateSelections[template.id]);
   const includedIds = new Set(Object.values(templateSelections).flat());
-  const quoteMaterials = materials.filter((material) => includedIds.has(material.id) && material.quotePriceCentsPerM2 > 0);
+  const quoteMaterials = materials.filter((material) => includedIds.has(material.id) && material.quotePriceCentsPerM2 > 0 && (material.variation || canQuoteMaterial(material, materials)));
   const lines = quoteMaterials.map((material) => ({ material, quantity: Number(quantities[material.id]) || 0, totalCents: Math.round((Number(quantities[material.id]) || 0) * material.quotePriceCentsPerM2) }));
   const subtotalCents = lines.reduce((total, line) => total + line.totalCents, 0);
 

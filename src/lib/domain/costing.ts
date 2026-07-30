@@ -6,6 +6,8 @@ export interface CostingInputs {
   /** Approved time entries, already converted to hours at the snapshotted rate. */
   labour: Array<{ hours: number; costRateCentsPerHour: number }>;
   materials: Array<{ quantity: number; unitCostCents: number }>;
+  budgetedLabourCostCents?: number;
+  subcontractorMaterialCostCents?: number;
   /** Only approved variations count towards revenue. */
   variations: Array<{ status: string; quotedSellCents: number; estimatedCostCents: number }>;
 }
@@ -14,6 +16,9 @@ export interface CostingResult {
   actualLabourHours: number;
   actualLabourCostCents: number;
   actualMaterialCostCents: number;
+  budgetedLabourCostCents: number;
+  labourVarianceCents: number;
+  subcontractorMaterialCostCents: number;
   variationSellCents: number;
   variationCostCents: number;
   totalRevenueCents: number;
@@ -42,13 +47,15 @@ export function calculateCosting(input: CostingInputs): CostingResult {
     (s, m) => s + Math.round(m.quantity * m.unitCostCents),
     0,
   );
+  const budgetedLabourCostCents = input.budgetedLabourCostCents ?? 0;
+  const subcontractorMaterialCostCents = input.subcontractorMaterialCostCents ?? 0;
 
   const approved = input.variations.filter((v) => v.status === "approved" || v.status === "invoiced");
   const variationSellCents = approved.reduce((s, v) => s + v.quotedSellCents, 0);
   const variationCostCents = approved.reduce((s, v) => s + v.estimatedCostCents, 0);
 
   const totalRevenueCents = input.quotedSellCents + variationSellCents;
-  const totalCostCents = actualLabourCostCents + actualMaterialCostCents + variationCostCents;
+  const totalCostCents = actualLabourCostCents + actualMaterialCostCents + subcontractorMaterialCostCents + variationCostCents;
   const grossProfitCents = totalRevenueCents - totalCostCents;
   const grossMarginPct = marginPctOf(totalCostCents, totalRevenueCents);
 
@@ -56,6 +63,9 @@ export function calculateCosting(input: CostingInputs): CostingResult {
     actualLabourHours,
     actualLabourCostCents,
     actualMaterialCostCents,
+    budgetedLabourCostCents,
+    labourVarianceCents: actualLabourCostCents - budgetedLabourCostCents,
+    subcontractorMaterialCostCents,
     variationSellCents,
     variationCostCents,
     totalRevenueCents,
@@ -64,7 +74,7 @@ export function calculateCosting(input: CostingInputs): CostingResult {
     grossMarginPct,
     costVarianceCents: totalCostCents - input.quotedCostCents,
     marginVariancePts: grossMarginPct - marginPctOf(input.quotedCostCents, input.quotedSellCents),
-    hasCostData: input.labour.length > 0 || input.materials.length > 0,
+    hasCostData: input.labour.length > 0 || input.materials.length > 0 || subcontractorMaterialCostCents > 0 || budgetedLabourCostCents > 0,
   };
 }
 

@@ -5,6 +5,8 @@ import type {
   Customer,
   CatalogueMaterial,
   CustomerPriceList,
+  LabourSettings,
+  ProjectCostingOptions,
   ProductionTemplate,
   ProjectTemplate,
   SchedulePhaseView,
@@ -24,7 +26,7 @@ import type {
   WorkflowField,
 } from "./types";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
-import { calculateCosting, type CostingResult } from "@/lib/domain/costing";
+import { calculateCosting, entryHours, type CostingResult } from "@/lib/domain/costing";
 import { EMPTY_CONTEXT, type TransitionContext } from "@/lib/domain/status";
 
 /**
@@ -65,6 +67,14 @@ export async function listCatalogueMaterials(_orgId: string): Promise<CatalogueM
 
 export async function listCustomerPriceLists(_orgId: string): Promise<CustomerPriceList[]> {
   return [...(await readLocalStore()).customerPriceLists].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function getLabourSettings(_orgId: string): Promise<LabourSettings> {
+  return (await readLocalStore()).labourSettings;
+}
+
+export async function getProjectCostingOptions(_orgId: string, projectId: string): Promise<ProjectCostingOptions> {
+  return (await readLocalStore()).projectCostingOptions[projectId] ?? { standardLabourEnabled: false, employeeCount: 0, includeSubcontractorMaterialCosts: false };
 }
 
 export async function listProductionTemplates(_orgId: string): Promise<ProductionTemplate[]> {
@@ -266,16 +276,26 @@ export async function buildTransitionContext(orgId: string, project: ProjectDeta
 }
 
 export async function getCosting(orgId: string, project: ProjectDetail): Promise<CostingResult> {
-  // The project costing screen intentionally follows the simplified quoting
-  // workflow: the newest quote supplies revenue and its material lines supply
-  // cost. Labour, field material-use records and variations are not included.
-  const quotes = await listQuotes(orgId, project.id);
+  const [quotes, entries, labourSettings, costingOptions] = await Promise.all([
+    listQuotes(orgId, project.id),
+    listTimeEntries(orgId, { projectId: project.id }),
+    getLabourSettings(orgId),
+    getProjectCostingOptions(orgId, project.id),
+  ]);
   const quote = quotes[0];
+  const subcontractorRates = new Map(labourSettings.subcontractorMaterialRates.map((rate) => [rate.materialId, rate.costCentsPerM2]));
+  const subcontractorMaterialCostCents = costingOptions.includeSubcontractorMaterialCosts ? (quote?.lines ?? []).reduce((sum, line) => sum + Math.round(line.quantity * (line.catalogueMaterialId ? subcontractorRates.get(line.catalogueMaterialId) ?? 0 : 0)), 0) : 0;
+  const budgetedLabourCostCents = labourSettings.standardLabourEnabled && costingOptions.standardLabourEnabled ? labourSettings.standardLabourCostCentsPerEmployee * costingOptions.employeeCount : 0;
   return calculateCosting({
     quotedSellCents: quote?.subtotalSellCents ?? 0,
     quotedCostCents: quote?.subtotalCostCents ?? 0,
-    labour: [],
+    labour: entries.map((entry) => ({
+      hours: entryHours(new Date(entry.startedAt), entry.endedAt ? new Date(entry.endedAt) : null, entry.breakMinutes),
+      costRateCentsPerHour: entry.costRateCentsPerHour,
+    })),
     materials: (quote?.lines ?? []).map((line) => ({ quantity: line.quantity, unitCostCents: line.unitCostCents })),
+    budgetedLabourCostCents,
+    subcontractorMaterialCostCents,
     variations: [],
   });
 }

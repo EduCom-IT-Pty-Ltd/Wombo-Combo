@@ -3,7 +3,6 @@ import Link from "next/link";
 import { ArrowLeft, MapPin } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
-import { formatMoney } from "@/lib/domain/money";
 import { getProject, isProjectArchived, listCustomers, listWorkflowFields, listWorkflowTasks } from "@/lib/data/repository";
 import { PROJECT_TABS } from "@/lib/nav";
 import { StatusBadge, StatusStepper } from "@/components/status-badge";
@@ -32,7 +31,6 @@ export default async function ProjectLayout({
   if (!project) notFound();
 
   const tabs = PROJECT_TABS.filter((t) => can(session.role, t.capability, session.permissionOverrides));
-  const showFinancials = can(session.role, "finance.revenue.view", session.permissionOverrides);
   const [statusSettings, customers, archived] = await Promise.all([
     readStatusSettings(),
     listCustomers(session.org.id),
@@ -82,15 +80,6 @@ export default async function ProjectLayout({
             </p>
           </div>
 
-          {showFinancials && project.contractValueCents > 0 ? (
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Contract value</p>
-              <p className="text-lg font-semibold tabular-nums">
-                {formatMoney(project.contractValueCents, session.org.currency)}
-              </p>
-              {can(session.role, "finance.profit.view", session.permissionOverrides) ? <p className="text-xs text-muted-foreground">{project.quotedMarginPct.toFixed(1)}% quoted margin</p> : null}
-            </div>
-          ) : null}
         </div>
 
         <StatusStepper status={project.status} projectId={project.id} tasksByStatus={tasksByStatus} fieldsByStatus={fieldsByStatus} canEdit={can(session.role, "project.edit", session.permissionOverrides)} />

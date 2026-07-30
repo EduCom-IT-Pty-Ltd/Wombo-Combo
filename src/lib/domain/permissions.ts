@@ -39,6 +39,10 @@ export const CAPABILITIES = [
   "finance.profit.view",
   "hr.view",
   "hr.manage",
+  // Company-wide budget and subcontractor rates are deliberately restricted
+  // to the Owner and Administrator. Project-level costing choices remain a
+  // finance permission.
+  "labour.manage",
   "admin.manage",
 ] as const;
 
