@@ -324,3 +324,19 @@ export async function listCatalogueMaterials(orgId: string): Promise<CatalogueMa
     standardPriceCentsPerM2: sellFromMargin(row.unitCostCents, Number(row.defaultMarginPct)),
   }));
 }
+
+/** Revenue account code invoices are coded to. Null until an admin picks one. */
+export async function getXeroAccountCode(orgId: string): Promise<string | null> {
+  const settings = (await readSettings(orgId)) as OrgSettings & { xeroRevenueAccountCode?: string };
+  return settings.xeroRevenueAccountCode ?? null;
+}
+
+export async function setXeroAccountCode(orgId: string, code: string): Promise<void> {
+  await db()
+    .update(organizations)
+    .set({
+      settings: sql`${organizations.settings} || ${JSON.stringify({ xeroRevenueAccountCode: code })}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(organizations.id, orgId));
+}
