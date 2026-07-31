@@ -32,3 +32,19 @@ export function db() {
 
 /** True when no database is configured and the app should serve demo data. */
 export const isDemoMode = !process.env.DATABASE_URL || process.env.DEMO_MODE === "true";
+
+/**
+ * Whether a database exists at all, regardless of `DEMO_MODE`.
+ *
+ * The two differ only during the migration. A domain that has been ported reads
+ * from Postgres as soon as there is a database to read from, and checks this;
+ * a domain still on the JSON store checks `isDemoMode`, which `DEMO_MODE="true"`
+ * holds open until its port lands.
+ *
+ * Without the distinction the migration is all-or-nothing: `DEMO_MODE` would
+ * have to stay on until the last function is converted, so nothing could be
+ * verified against real data until everything was.
+ *
+ * When the port is finished this collapses back into `isDemoMode` and both go.
+ */
+export const hasDatabase = Boolean(process.env.DATABASE_URL);

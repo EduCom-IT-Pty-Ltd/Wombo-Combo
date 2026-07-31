@@ -1,4 +1,6 @@
 import "server-only";
+import { hasDatabase } from "@/lib/db";
+import { listPeople as pgListPeople } from "./pg/org";
 import { readLocalStore, readStatusFieldTemplates, readStatusTaskTemplates } from "./local-store";
 import type {
   Assignment,
@@ -42,7 +44,14 @@ import { EMPTY_CONTEXT, type TransitionContext } from "@/lib/domain/status";
 // TODO(neon): swap each body for a Drizzle query once DATABASE_URL is set.
 // The demo store ignores orgId because it holds a single tenant.
 
-export async function listPeople(_orgId: string): Promise<Person[]> {
+/**
+ * PORTED. Reads from Postgres whenever a database exists, rather than waiting
+ * for `DEMO_MODE` to be cleared — see the note on `hasDatabase`. People must
+ * come from the same place the auth gate reads, or the list of who can sign in
+ * and the list the app displays drift apart.
+ */
+export async function listPeople(orgId: string): Promise<Person[]> {
+  if (hasDatabase) return pgListPeople(orgId);
   return (await readLocalStore()).people;
 }
 

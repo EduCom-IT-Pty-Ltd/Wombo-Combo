@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { ROLES, type Role } from "@/lib/db/schema/enums";
 import { type Capability, can, type RolePermissionOverrides } from "@/lib/domain/permissions";
 import { readLocalStore } from "@/lib/data/local-store";
+import { hasDatabase } from "@/lib/db";
+import type { Person } from "@/lib/data/types";
 import { bootstrapEmail, expectedOrgId, workosConfigured } from "./workos-config";
 
 /**
@@ -114,9 +116,6 @@ async function loadWorkosSession(): Promise<Session> {
 
   if (!isBootstrap) await assertOrganisationMember(user.id, organizationId);
 
-  const store = await readLocalStore();
-  const person = store.people.find((item) => item.email.trim().toLowerCase() === email);
-
   const identity = {
     workosUserId: user.id,
     email: user.email,
@@ -124,7 +123,15 @@ async function loadWorkosSession(): Promise<Session> {
     lastName: user.lastName ?? null,
     avatarUrl: user.profilePictureUrl ?? null,
   };
-  const org = { ...BASE_ORG, ...store.organisation };
+
+  const store = await readLocalStore();
+  // Role permission overrides are still administered through the JSON store;
+  // that slice of the migration has not landed yet.
+  const permissionOverrides = store.rolePermissions;
+
+  const { org, person } = hasDatabase
+    ? await resolveTenantFromDatabase(email)
+    : { org: { ...BASE_ORG, ...store.organisation }, person: store.people.find((item) => item.email.trim().toLowerCase() === email) ?? null };
 
   if (!person) {
     // The invite-only gate. Authenticating with WorkOS is not enough; someone
@@ -135,7 +142,7 @@ async function loadWorkosSession(): Promise<Session> {
       user: { id: `bootstrap:${user.id}`, ...identity },
       org,
       role: "owner",
-      permissionOverrides: store.rolePermissions,
+      permissionOverrides,
       isDemo: false,
     };
   }
@@ -147,9 +154,38 @@ async function loadWorkosSession(): Promise<Session> {
     // capability overrides are administered in-app (see admin -> permissions),
     // and WorkOS has no knowledge of them.
     role: normaliseRole(person.role, person.email),
-    permissionOverrides: store.rolePermissions,
+    permissionOverrides,
     isDemo: false,
   };
+}
+
+/**
+ * Resolve the tenant and the signed-in person from Postgres.
+ *
+ * `org.id` becomes the real `organizations.id`, which is what every repository
+ * call is scoped by — so this is the point at which the app starts operating on
+ * a genuine tenant rather than the fixed demo uuid.
+ *
+ * A missing organisation row throws rather than redirecting: it means
+ * `npm run sync:org` has not been run, which is a deployment mistake and should
+ * be loud. Turning it into "no access" would send an administrator hunting
+ * through WorkOS for a problem that is in the database.
+ */
+async function resolveTenantFromDatabase(email: string): Promise<{ org: SessionOrg; person: Person | null }> {
+  const { getOrganisationByWorkosId, getPersonByEmail } = await import("@/lib/data/pg/org");
+  const workosOrgId = expectedOrgId();
+  if (!workosOrgId) {
+    throw new Error("WORKOS_ORG_ID must be set when DATABASE_URL is, so the tenant can be resolved.");
+  }
+
+  const record = await getOrganisationByWorkosId(workosOrgId);
+  if (!record) {
+    throw new Error(
+      `No organisation in Postgres for WorkOS org ${workosOrgId}. Run: npm run sync:org -- --owner=<your email>`,
+    );
+  }
+
+  return { org: record, person: await getPersonByEmail(record.id, email) };
 }
 
 /**
