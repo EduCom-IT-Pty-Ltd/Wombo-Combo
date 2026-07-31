@@ -9,7 +9,8 @@ import { checkTransition, type ProjectStatus } from "@/lib/domain/status";
 import { runAutomations, type AutomationEffect, type AutomationTrigger } from "@/lib/domain/automation";
 import { buildTransitionContext, getProject } from "@/lib/data/repository";
 import { applyLocalAutomationEffect, completeWorkflowTasksThrough, persistLocalTransition, saveLocalWorkflowFieldValues, setLocalWorkflowTaskComplete } from "@/lib/data/local-store";
-import { isDemoMode } from "@/lib/db";
+import { hasDatabase, isDemoMode } from "@/lib/db";
+import * as pgWorkflow from "@/lib/data/pg/workflow";
 
 const transitionSchema = z.object({
   projectId: z.string().min(1),
@@ -79,9 +80,7 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
     };
   }
 
-  // TODO(neon): wrap the status write + event insert in a single statement, then
-  // dispatch automations after it commits.
-  await persistTransition({
+  const moved = await persistTransition({
     orgId: session.org.id,
     projectId,
     from: project.status,
@@ -90,9 +89,19 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
     overrideReason,
   });
 
+  // The write is conditional on the project still being in the status we
+  // validated against. If it is not, someone else moved it while this request
+  // was in flight — report that rather than claiming a move that did not happen.
+  if (!moved) {
+    return { ok: false, message: "Someone else changed this project's status. Reload and try again." };
+  }
+
+  // Automations run only after the transition has committed. A rule that reads
+  // the project must see the new status, and a rule that fails must not be able
+  // to leave the status unwritten.
   const trigger = triggerForStatus(to, projectId);
   if (trigger) {
-    await runAutomations(trigger, executeEffect);
+    await runAutomations(trigger, (effect, firedBy) => executeEffect(effect, firedBy, session.org.id));
   }
 
   revalidatePath(`/projects/${projectId}`, "layout");
@@ -139,19 +148,62 @@ async function persistTransition(args: {
   to: ProjectStatus;
   actorUserId: string;
   overrideReason?: string;
-}) {
-  if (isDemoMode) {
-    await persistLocalTransition(args);
-    return;
-  }
-  throw new Error("Database writes are not wired up yet — set DATABASE_URL and implement persistTransition()");
+}): Promise<boolean> {
+  if (hasDatabase) return pgWorkflow.persistTransition(args);
+  await persistLocalTransition(args);
+  return true;
 }
 
-/** Effect executor. Logs in demo mode; becomes real work once the DB is live. */
-async function executeEffect(effect: AutomationEffect, trigger: AutomationTrigger) {
-  if (isDemoMode) {
+/**
+ * Applies one automation effect.
+ *
+ * Effects that depend on unported slices are recorded on the timeline rather
+ * than thrown away or thrown on. Throwing would abort the remaining effects of
+ * a transition that has already committed; silence would leave no trace that
+ * something the workflow promised did not happen. An event says plainly what
+ * was skipped and why.
+ */
+async function executeEffect(effect: AutomationEffect, trigger: AutomationTrigger, orgId: string) {
+  if (!hasDatabase) {
     await applyLocalAutomationEffect(effect, trigger);
     return;
   }
-  throw new Error(`Automation effect "${effect.type}" is not implemented yet`);
+
+  const projectId = trigger.projectId;
+
+  switch (effect.type) {
+    case "create_task":
+      await pgWorkflow.createAutomationTask({
+        orgId,
+        projectId,
+        title: effect.title,
+        kind: effect.kind,
+        dueInDays: effect.dueInDays,
+        automationId: `${trigger.kind}:${effect.title}`,
+      });
+      return;
+
+    case "assign_project_number":
+      // Allocated at creation; nothing to do on a later trigger.
+      return;
+
+    case "create_document_folder":
+      await pgWorkflow.recordEvent({
+        orgId,
+        projectId,
+        type: "automation.pending",
+        summary: "SharePoint folder provisioning is not wired to project creation yet.",
+        payload: { effect: effect.type, trigger: trigger.kind },
+      });
+      return;
+
+    default:
+      await pgWorkflow.recordEvent({
+        orgId,
+        projectId,
+        type: "automation.pending",
+        summary: `Automation "${effect.type}" is not implemented against the database yet.`,
+        payload: { effect: effect.type, trigger: trigger.kind },
+      });
+  }
 }

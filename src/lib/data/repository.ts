@@ -3,6 +3,7 @@ import { hasDatabase } from "@/lib/db";
 import { listPeople as pgListPeople } from "./pg/org";
 import * as pgCustomers from "./pg/customers";
 import * as pgProjects from "./pg/projects";
+import * as pgWorkflow from "./pg/workflow";
 import { readLocalStore, readStatusFieldTemplates, readStatusTaskTemplates } from "./local-store";
 import type {
   Assignment,
@@ -267,7 +268,9 @@ export async function listDefects(_orgId: string, opts: { projectId?: string } =
   return (await readLocalStore()).defects.filter((d) => !opts.projectId || d.projectId === opts.projectId);
 }
 
-export async function listEvents(_orgId: string, projectId: string): Promise<ProjectEvent[]> {
+/** PORTED. */
+export async function listEvents(orgId: string, projectId: string): Promise<ProjectEvent[]> {
+  if (hasDatabase) return pgWorkflow.listEvents(orgId, projectId);
   return (await readLocalStore()).events
     .filter((e) => e.projectId === projectId)
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
