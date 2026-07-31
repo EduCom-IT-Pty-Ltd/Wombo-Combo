@@ -1,13 +1,13 @@
 "use server";
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
 import { QUOTE_DYNAMIC_FIELDS, type QuoteDocumentTemplateSettings } from "@/lib/data/types";
 import { readQuoteDocumentTemplateSettings, saveQuoteDocumentTemplateSettings } from "@/lib/data/local-store";
+import { hasDatabase } from "@/lib/db";
+import { storeAsset } from "@/lib/data/assets";
+import { getQuoteDocumentTemplateSettings, saveQuoteDocumentTemplateSettings as savePgQuoteTemplate } from "@/lib/data/pg/settings";
 
 export type QuoteTemplateActionState = { ok: boolean; message?: string };
 
@@ -19,26 +19,27 @@ const templateSchema = z.object({
 });
 
 export async function saveQuoteDocumentTemplate(_state: QuoteTemplateActionState, formData: FormData): Promise<QuoteTemplateActionState> {
-  await requireCapability("admin.manage");
+  const session = await requireCapability("admin.manage");
   let submitted: unknown;
   try { submitted = JSON.parse(String(formData.get("settings") ?? "")); } catch { return { ok: false, message: "Quote template settings could not be read." }; }
   const parsed = templateSchema.safeParse(submitted);
   if (!parsed.success) return { ok: false, message: "Keep all positions between 0 and 100%." };
 
-  const current = await readQuoteDocumentTemplateSettings();
-  let letterheadUrl = parsed.data.letterheadUrl ?? current.letterheadUrl;
+  const current = hasDatabase
+    ? await getQuoteDocumentTemplateSettings(session.org.id)
+    : await readQuoteDocumentTemplateSettings();
+  let letterheadUrl = parsed.data.letterheadUrl ?? current?.letterheadUrl ?? null;
+
   const letterhead = formData.get("letterhead");
   if (letterhead instanceof File && letterhead.size > 0) {
-    const extension = ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" } as Record<string, string>)[letterhead.type];
-    if (!extension) return { ok: false, message: "Letterhead must be a PNG, JPG or WebP image." };
-    if (letterhead.size > 8 * 1024 * 1024) return { ok: false, message: "Letterhead must be 8 MB or smaller." };
-    await mkdir(join(process.cwd(), "public", "uploads"), { recursive: true });
-    letterheadUrl = `/uploads/quote-letterhead-${randomUUID()}.${extension}`;
-    await writeFile(join(process.cwd(), "public", letterheadUrl), Buffer.from(await letterhead.arrayBuffer()));
+    const stored = await storeAsset("quote-letterhead", letterhead);
+    if (!stored.ok) return { ok: false, message: stored.message ?? "Letterhead could not be saved." };
+    letterheadUrl = stored.url!;
   }
 
   const settings: QuoteDocumentTemplateSettings = { ...parsed.data, letterheadUrl };
-  await saveQuoteDocumentTemplateSettings(settings);
+  if (hasDatabase) await savePgQuoteTemplate(session.org.id, settings);
+  else await saveQuoteDocumentTemplateSettings(settings);
   revalidatePath("/admin");
   revalidatePath("/projects", "layout");
   return { ok: true, message: "Quote letterhead template saved." };

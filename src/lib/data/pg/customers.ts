@@ -111,9 +111,8 @@ async function enrich(orgId: string, rows: (typeof customers.$inferSelect)[]): P
       siteCount: sitesBy.get(row.id) ?? 0,
       activeProjects: stats?.activeProjects ?? 0,
       lifetimeValueCents: stats?.lifetimeValueCents ?? 0,
-      // Not columns yet — these live in the JSON store yet to be ported.
-      priceListId: null,
-      defaultProjectTemplateId: null,
+      priceListId: row.priceListId,
+      defaultProjectTemplateId: row.defaultProjectTemplateId,
     };
   });
 }

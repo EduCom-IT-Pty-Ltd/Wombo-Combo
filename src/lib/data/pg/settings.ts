@@ -6,7 +6,7 @@ import { projects, tasks } from "@/lib/db/schema/projects";
 import { schedulePhases } from "@/lib/db/schema/scheduling";
 import { priceListItems } from "@/lib/db/schema/quoting";
 import { sellFromMargin } from "@/lib/domain/money";
-import { sites } from "@/lib/db/schema/crm";
+import { customers, sites } from "@/lib/db/schema/crm";
 import type {
   CatalogueMaterial,
   CustomerPriceList,
@@ -14,11 +14,12 @@ import type {
   ProductionTemplate,
   ProjectCostingOptions,
   ProjectTemplate,
+  OrganisationSettings,
   QuoteDocumentTemplateSettings,
   SchedulePhaseView,
 } from "../types";
 import type { RolePermissionOverrides } from "@/lib/domain/permissions";
-import type { StatusFieldTemplate, StatusTaskTemplate } from "@/lib/domain/status-settings";
+import type { StatusFieldTemplate, StatusSetting, StatusTaskTemplate } from "@/lib/domain/status-settings";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
 
 /**
@@ -339,4 +340,71 @@ export async function setXeroAccountCode(orgId: string, code: string): Promise<v
       updatedAt: new Date(),
     })
     .where(eq(organizations.id, orgId));
+}
+
+// --- Writes that previously only existed against the JSON store --------------
+
+/**
+ * Organisation profile. `logoUrl` is not a column — it lives in `settings`
+ * alongside the other presentation-only values.
+ */
+export async function saveOrganisation(orgId: string, value: OrganisationSettings): Promise<void> {
+  await db()
+    .update(organizations)
+    .set({
+      name: value.name,
+      slug: value.slug,
+      currency: value.currency,
+      timezone: value.timezone,
+      projectNumberPrefix: value.projectNumberPrefix,
+      settings: sql`${organizations.settings} || ${JSON.stringify({ logoUrl: value.logoUrl })}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(organizations.id, orgId));
+}
+
+export async function getStatusSettings(orgId: string): Promise<StatusSetting[] | null> {
+  const s = (await readSettings(orgId)) as OrgSettings & { statusSettings?: StatusSetting[] };
+  return s.statusSettings ?? null;
+}
+
+export async function saveStatusSettings(orgId: string, value: StatusSetting[]): Promise<void> {
+  await db()
+    .update(organizations)
+    .set({
+      settings: sql`${organizations.settings} || ${JSON.stringify({ statusSettings: value })}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(organizations.id, orgId));
+}
+
+export async function saveStatusTaskTemplates(orgId: string, value: StatusTaskTemplate[]): Promise<void> {
+  await db()
+    .update(organizations)
+    .set({
+      settings: sql`${organizations.settings} || ${JSON.stringify({ statusTaskTemplates: value })}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(organizations.id, orgId));
+}
+
+export async function saveStatusFieldTemplates(orgId: string, value: StatusFieldTemplate[]): Promise<void> {
+  await db()
+    .update(organizations)
+    .set({
+      settings: sql`${organizations.settings} || ${JSON.stringify({ statusFieldTemplates: value })}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(organizations.id, orgId));
+}
+
+export async function setCustomerDefaultProjectTemplate(
+  orgId: string,
+  customerId: string,
+  templateId: string | null,
+): Promise<void> {
+  await db()
+    .update(customers)
+    .set({ defaultProjectTemplateId: templateId, updatedAt: new Date() })
+    .where(and(eq(customers.orgId, orgId), eq(customers.id, customerId)));
 }

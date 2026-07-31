@@ -14,6 +14,9 @@ export const customers = pgTable(
     /** Xero ContactID once synced. */
     xeroContactId: text("xero_contact_id"),
     notes: text("notes"),
+    /** Defaults applied when a project is raised for this customer. */
+    priceListId: text("price_list_id"),
+    defaultProjectTemplateId: text("default_project_template_id"),
     active: boolean("active").notNull().default(true),
     ...timestamps,
   },

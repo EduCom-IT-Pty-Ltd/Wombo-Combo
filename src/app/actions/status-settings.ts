@@ -5,6 +5,8 @@ import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
 import { PROJECT_STATUSES } from "@/lib/db/schema/enums";
 import { saveStatusFieldTemplates, saveStatusSettings, saveStatusTaskTemplates } from "@/lib/data/local-store";
+import { hasDatabase } from "@/lib/db";
+import * as pgSettings from "@/lib/data/pg/settings";
 import type { StatusFieldTemplate, StatusSetting, StatusTaskTemplate } from "@/lib/domain/status-settings";
 
 const settingSchema = z.object({
@@ -21,7 +23,7 @@ const payloadSchema = z.object({ settings: z.array(settingSchema).min(2).max(PRO
 export interface SaveStatusSettingsState { status: "idle" | "success" | "error"; message?: string }
 
 export async function saveStatusSettingsAction(_previous: SaveStatusSettingsState, formData: FormData): Promise<SaveStatusSettingsState> {
-  await requireCapability("admin.manage");
+  const session = await requireCapability("admin.manage");
   const raw = formData.get("status-settings");
   if (typeof raw !== "string") return { status: "error", message: "Status settings could not be read." };
   let input: unknown;
@@ -53,9 +55,15 @@ export async function saveStatusSettingsAction(_previous: SaveStatusSettingsStat
     required: field.required,
     position: index + 1,
   })));
-  await saveStatusSettings(settings);
-  await saveStatusTaskTemplates(templates);
-  await saveStatusFieldTemplates(fields);
+  if (hasDatabase) {
+    await pgSettings.saveStatusSettings(session.org.id, settings);
+    await pgSettings.saveStatusTaskTemplates(session.org.id, templates);
+    await pgSettings.saveStatusFieldTemplates(session.org.id, fields);
+  } else {
+    await saveStatusSettings(settings);
+    await saveStatusTaskTemplates(templates);
+    await saveStatusFieldTemplates(fields);
+  }
   revalidatePath("/", "layout");
   return { status: "success", message: "Status flow saved." };
 }

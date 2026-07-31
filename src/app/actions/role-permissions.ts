@@ -5,6 +5,8 @@ import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
 import { CAPABILITIES, PERMISSION_AREAS, type Capability, type RolePermissionOverrides } from "@/lib/domain/permissions";
 import { saveRolePermissions } from "@/lib/data/local-store";
+import { hasDatabase } from "@/lib/db";
+import { saveRolePermissions as savePgRolePermissions } from "@/lib/data/pg/settings";
 
 const editableRoles = ["manager", "finance", "staff"] as const;
 const capabilitySchema = z.enum(CAPABILITIES);
@@ -17,7 +19,7 @@ export type RolePermissionsActionState = { ok: boolean; message?: string };
 
 /** Persists the configurable role matrix for the local test environment. */
 export async function saveRolePermissionsAction(_state: RolePermissionsActionState, formData: FormData): Promise<RolePermissionsActionState> {
-  await requireCapability("admin.manage");
+  const session = await requireCapability("admin.manage");
   const raw = formData.get("permissions");
   if (typeof raw !== "string") return { ok: false, message: "Permission settings were missing." };
   let decoded: unknown;
@@ -34,7 +36,8 @@ export async function saveRolePermissionsAction(_state: RolePermissionsActionSta
     }
     cleaned[role] = CAPABILITIES.filter((capability) => selected.has(capability));
   }
-  await saveRolePermissions(cleaned);
+  if (hasDatabase) await savePgRolePermissions(session.org.id, cleaned);
+  else await saveRolePermissions(cleaned);
   revalidatePath("/", "layout");
   revalidatePath("/admin");
   return { ok: true, message: "Role permissions saved." };

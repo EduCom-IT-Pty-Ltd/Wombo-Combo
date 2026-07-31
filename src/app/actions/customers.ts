@@ -30,7 +30,12 @@ export interface CreateCustomerState {
 export async function setCustomerDefaultProjectTemplate(customerId: string, projectTemplateId: string) {
   const session = await requireCapability("customer.manage");
   if (projectTemplateId && !(await listProjectTemplates(session.org.id)).some((template) => template.id === projectTemplateId)) return { ok: false, message: "That template is no longer available." };
-  await setLocalCustomerDefaultProjectTemplate(customerId, projectTemplateId || null);
+  if (hasDatabase) {
+    const { setCustomerDefaultProjectTemplate: setPg } = await import("@/lib/data/pg/settings");
+    await setPg(session.org.id, customerId, projectTemplateId || null);
+  } else {
+    await setLocalCustomerDefaultProjectTemplate(customerId, projectTemplateId || null);
+  }
   revalidatePath(`/customers/${customerId}`);
   revalidatePath("/projects/new");
   return { ok: true, message: "Default project template saved." };
