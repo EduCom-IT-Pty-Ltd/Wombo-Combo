@@ -1,0 +1,1 @@
+ALTER TABLE "time_entries" ADD COLUMN "paused_at" timestamp with time zone;

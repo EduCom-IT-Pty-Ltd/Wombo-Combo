@@ -29,11 +29,37 @@ npm run db:generate # after any change under src/lib/db/schema/
   writes the audit event, then fires automations. Do not set `projects.status` anywhere else.
 - `src/lib/domain/*` stays pure — no imports from `db`, `data`, or `next/*`.
 
+## Data layer
+
+Reads go through `src/lib/data/repository.ts`, which dispatches to
+`src/lib/data/pg/*` when `hasDatabase` is true and to the JSON store otherwise. The
+migration is complete: every repository function and write action runs against Postgres.
+
+Money is never summed in SQL — totals come from `src/lib/domain/*` so a list page and a
+detail page cannot disagree. `neon-http` has no interactive transactions, so anything
+needing atomicity is a single statement: project numbers use `INSERT ... ON CONFLICT DO
+UPDATE ... RETURNING`, quote versions compute `max(version) + 1` inline, and status
+transitions guard on `where status = <expected>` and report a conflict when the guard misses.
+
 ## Demo mode
 
-With no `DATABASE_URL`, `isDemoMode` is true and reads come from `src/lib/data/demo-data.ts`.
-Writes log to the console instead of persisting, and the role switcher in the top bar is
-active. Places that need real implementations are marked `TODO(neon)`.
+With no `DATABASE_URL`, `isDemoMode` is true and reads come from the JSON store seeded by
+`src/lib/data/demo-data.ts`. The role and user switchers in the top bar are active. Set
+`DEMO_MODE="true"` to force it on even with a database configured.
+
+## Auth
+
+WorkOS AuthKit, email + password, invite-only. Authentication is not authorisation: WorkOS
+proves identity, and a `memberships` row decides access. A user who authenticates without
+one is sent to `/no-access`. `WORKOS_BOOTSTRAP_EMAIL` is the recovery hatch and bypasses
+both the organisation and membership checks. Onboarding is: invite in WorkOS ->
+`npm run sync:org` -> they can sign in.
+
+## Integrations
+
+SharePoint via Microsoft Graph, app-only client credentials with `Sites.Selected` on one
+site. Folder identity is `driveItemId`, never a path — a rename in SharePoint changes the
+path but not the id. `npm run graph:check` exercises the whole chain.
 
 ## Mobile
 

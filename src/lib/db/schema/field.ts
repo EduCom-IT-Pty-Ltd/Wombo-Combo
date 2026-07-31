@@ -17,6 +17,12 @@ export const timeEntries = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     breakMinutes: integer("break_minutes").notNull().default(0),
+    /**
+     * Set while a shift is paused, cleared on resume with the elapsed pause
+     * added to `breakMinutes`. Nullable rather than a boolean so the resume can
+     * work out how long the pause lasted without a second column.
+     */
+    pausedAt: timestamp("paused_at", { withTimezone: true }),
     startLatitude: text("start_latitude"),
     startLongitude: text("start_longitude"),
     endLatitude: text("end_latitude"),

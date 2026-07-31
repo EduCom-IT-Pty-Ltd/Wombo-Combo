@@ -9,8 +9,10 @@ import { checkTransition, type ProjectStatus } from "@/lib/domain/status";
 import { runAutomations, type AutomationEffect, type AutomationTrigger } from "@/lib/domain/automation";
 import { buildTransitionContext, getProject } from "@/lib/data/repository";
 import { applyLocalAutomationEffect, completeWorkflowTasksThrough, persistLocalTransition, saveLocalWorkflowFieldValues, setLocalWorkflowTaskComplete } from "@/lib/data/local-store";
-import { hasDatabase, isDemoMode } from "@/lib/db";
+import { hasDatabase } from "@/lib/db";
 import * as pgWorkflow from "@/lib/data/pg/workflow";
+import * as pgSettings from "@/lib/data/pg/settings";
+import { listWorkflowTasks } from "@/lib/data/repository";
 
 const transitionSchema = z.object({
   projectId: z.string().min(1),
@@ -114,7 +116,31 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
 export async function setWorkflowTaskComplete(input: { projectId: string; templateId: string; complete: boolean; completedAt?: string }): Promise<ActionResult> {
   await requireCapability("project.edit");
   if (!input.projectId || !input.templateId || (input.completedAt && Number.isNaN(new Date(input.completedAt).getTime()))) return { ok: false, message: "Invalid workflow task" };
-  if (!isDemoMode) throw new Error("Workflow task updates are not implemented against the production database yet");
+  if (hasDatabase) {
+    const session = await requireCapability("project.edit");
+    const project = await getProject(session.org.id, input.projectId);
+    if (!project) return { ok: false, message: "Project not found" };
+
+    // The title comes from the template, not the client: a checklist row is
+    // identified by its template id, and letting the caller supply the text
+    // would let two people record different names for the same item.
+    const template = (await listWorkflowTasks(session.org.id, input.projectId, project.status)).find(
+      (task) => task.workflowTemplateId === input.templateId,
+    );
+    if (!template) return { ok: false, message: "That checklist item is no longer part of this stage." };
+
+    await pgSettings.setWorkflowTaskComplete(session.org.id, {
+      projectId: input.projectId,
+      templateId: input.templateId,
+      title: template.title,
+      status: project.status,
+      complete: input.complete,
+      completedAt: input.completedAt ? new Date(input.completedAt) : undefined,
+    });
+    revalidatePath(`/projects/${input.projectId}`, "layout");
+    return { ok: true, message: input.complete ? "Task completed" : "Task reopened" };
+  }
+
   await setLocalWorkflowTaskComplete(input);
   revalidatePath(`/projects/${input.projectId}`, "layout");
   return { ok: true, message: input.complete ? "Task completed" : "Task reopened" };
@@ -123,7 +149,13 @@ export async function setWorkflowTaskComplete(input: { projectId: string; templa
 export async function saveWorkflowFieldValues(input: { projectId: string; values: Array<{ templateId: string; value: string }> }): Promise<ActionResult> {
   await requireCapability("project.edit");
   if (!input.projectId || !Array.isArray(input.values) || input.values.some((value) => !value.templateId || value.value.length > 500)) return { ok: false, message: "Invalid project details" };
-  if (!isDemoMode) throw new Error("Workflow field updates are not implemented against the production database yet");
+  if (hasDatabase) {
+    const session = await requireCapability("project.edit");
+    await pgSettings.saveWorkflowFieldValues(session.org.id, input.projectId, input.values);
+    revalidatePath(`/projects/${input.projectId}`, "layout");
+    return { ok: true, message: "Project details saved" };
+  }
+
   await saveLocalWorkflowFieldValues(input.projectId, input.values);
   revalidatePath(`/projects/${input.projectId}`, "layout");
   return { ok: true, message: "Project details saved" };

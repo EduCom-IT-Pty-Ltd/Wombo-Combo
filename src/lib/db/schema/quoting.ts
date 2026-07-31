@@ -30,6 +30,9 @@ export const priceListItems = pgTable(
     ...orgScoped,
     code: text("code").notNull(),
     name: text("name").notNull(),
+    /** Selectable product variant, e.g. "Aero 1200" under "Enviroseal Wall Wrap". */
+    variation: text("variation"),
+    description: text("description"),
     kind: lineKindEnum("kind").notNull().default("material"),
     unit: text("unit").notNull().default("ea"),
     supplierId: uuid("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),

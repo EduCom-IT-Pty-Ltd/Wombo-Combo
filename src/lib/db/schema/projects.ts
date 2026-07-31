@@ -104,6 +104,13 @@ export const tasks = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     /** Set when created by the automation engine, so we never double-create. */
     createdByAutomation: text("created_by_automation"),
+    /**
+     * Set when the task came from a configurable per-status checklist. The pair
+     * identifies which template this row satisfies, so a checklist can render
+     * completed and outstanding items without a second table.
+     */
+    workflowStatus: projectStatusEnum("workflow_status"),
+    workflowTemplateId: text("workflow_template_id"),
     sortOrder: integer("sort_order").notNull().default(0),
     ...timestamps,
   },

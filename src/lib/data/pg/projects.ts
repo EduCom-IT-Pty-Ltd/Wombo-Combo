@@ -7,6 +7,7 @@ import { defects } from "@/lib/db/schema/qa";
 import { assignments } from "@/lib/db/schema/scheduling";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
 import type { ProjectDetail, ProjectSummary, Site } from "../types";
+import { quotes } from "@/lib/db/schema/quoting";
 import { getCustomer } from "./customers";
 
 /**
@@ -150,7 +151,7 @@ async function enrich(orgId: string, rows: (typeof projects.$inferSelect)[]): Pr
   const customerIds = [...new Set(rows.map((row) => row.customerId))];
   const siteIds = rows.map((row) => row.siteId).filter((id): id is string => Boolean(id));
 
-  const [customerRows, siteRows, openTasks, openDefects, assignmentRows] = await Promise.all([
+  const [customerRows, siteRows, openTasks, openDefects, assignmentRows, acceptedQuotes] = await Promise.all([
     db()
       .select({ id: customers.id, name: customers.name })
       .from(customers)
@@ -177,12 +178,20 @@ async function enrich(orgId: string, rows: (typeof projects.$inferSelect)[]): Pr
       .select({ projectId: assignments.projectId, userId: assignments.userId })
       .from(assignments)
       .where(and(eq(assignments.orgId, orgId), inArray(assignments.projectId, ids))),
+    // Margin lives on the accepted quote, not the project. Fetched for the whole
+    // page in one query rather than joined, since most projects have none.
+    db()
+      .select({ projectId: quotes.projectId, marginPct: quotes.marginPct })
+      .from(quotes)
+      .where(and(eq(quotes.orgId, orgId), inArray(quotes.projectId, ids), eq(quotes.status, "accepted"))),
   ]);
 
   const customerName = new Map(customerRows.map((row) => [row.id, row.name]));
   const siteById = new Map(siteRows.map((row) => [row.id, row]));
   const tasksBy = new Map(openTasks.map((row) => [row.projectId, row.count]));
   const defectsBy = new Map(openDefects.map((row) => [row.projectId, row.count]));
+
+  const marginBy = new Map(acceptedQuotes.map((row) => [row.projectId, Number(row.marginPct)]));
 
   const installersBy = new Map<string, string[]>();
   for (const row of assignmentRows) {
@@ -204,8 +213,7 @@ async function enrich(orgId: string, rows: (typeof projects.$inferSelect)[]): Pr
       siteId: row.siteId,
       siteLabel: site ? [site.name, [site.suburb, site.state].filter(Boolean).join(" ")].filter(Boolean).join(" · ") : null,
       contractValueCents: row.contractValueCents,
-      // Margin comes from the accepted quote, which is not ported yet.
-      quotedMarginPct: 0,
+      quotedMarginPct: marginBy.get(row.id) ?? 0,
       projectManagerId: row.projectManagerId,
       scheduledStartAt: iso(row.scheduledStartAt),
       scheduledEndAt: iso(row.scheduledEndAt),

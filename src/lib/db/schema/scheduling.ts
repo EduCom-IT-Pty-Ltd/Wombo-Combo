@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { date, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { orgScoped, timestamps } from "./_shared";
 import { assignmentStatusEnum, leaveStatusEnum, leaveTypeEnum } from "./enums";
 import { projects } from "./projects";
@@ -68,4 +68,31 @@ export const leaveRequests = pgTable(
     ...timestamps,
   },
   (t) => [index("leave_requests_org_user_window_idx").on(t.orgId, t.userId, t.startsAt, t.endsAt)],
+);
+
+/**
+ * Call-Ups: a named piece of work assigned to one person on one day.
+ *
+ * Distinct from `milestones`, which is a target date with no assignee, and from
+ * `assignments`, which books a person across a time range. A Call-Up is the
+ * day-level unit the field calendar is built from.
+ */
+export const schedulePhases = pgTable(
+  "schedule_phases",
+  {
+    ...orgScoped,
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    userId: uuid("user_id").notNull(),
+    /** Date only — a Call-Up is a day's work, not a time range. */
+    date: date("date").notNull(),
+    /** Set when created by the QA inspection scheduler. */
+    inspectionId: uuid("inspection_id"),
+    ...timestamps,
+  },
+  (t) => [
+    index("schedule_phases_org_project_idx").on(t.orgId, t.projectId),
+    index("schedule_phases_org_user_date_idx").on(t.orgId, t.userId, t.date),
+  ],
 );

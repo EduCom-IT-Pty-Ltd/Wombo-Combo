@@ -8,6 +8,34 @@
       "when": 1785235353313,
       "tag": "0000_purple_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785480420810,
+      "tag": "0001_living_galactus",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785480585740,
+      "tag": "0002_windy_kylun",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785480678998,
+      "tag": "0003_pale_the_liberteens",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785480859737,
+      "tag": "0004_uneven_the_executioner",
+      "breakpoints": true
     }
   ]
 }
