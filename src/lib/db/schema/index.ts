@@ -8,3 +8,4 @@ export * from "./field";
 export * from "./documents";
 export * from "./qa";
 export * from "./finance";
+export * from "./integrations";

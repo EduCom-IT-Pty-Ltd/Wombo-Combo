@@ -4,11 +4,16 @@ import { formatMoney, formatPercent } from "@/lib/domain/money";
 import { getCosting, getDashboardMetrics, getProject, listProjects } from "@/lib/data/repository";
 import { Badge, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
-import { formatDate } from "@/lib/utils";
+import { XeroConnectionPanel } from "@/components/finance/xero-connection";
 
 export const metadata = { title: "Finance" };
 
-export default async function FinancePage() {
+export default async function FinancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ xero?: string; xeroError?: string }>;
+}) {
+  const { xero, xeroError } = await searchParams;
   const session = await getSession();
   const currency = session.org.currency;
 
@@ -177,10 +182,9 @@ export default async function FinancePage() {
         ) : (
           <EmptyState title="No completed jobs yet" />
         )}
-        <p className="border-t border-border-subtle px-4 py-3 text-xs text-muted-foreground">
-          Xero integration is not connected. Once wired, jobs at Ready for Invoice push automatically and are marked
-          closed when payment is confirmed. Last checked {formatDate(new Date())}.
-        </p>
+        <XeroConnectionPanel
+          notice={xeroError ? { message: xeroError, ok: false } : xero ? { message: xero, ok: true } : undefined}
+        />
       </Card>
     </div>
   );
