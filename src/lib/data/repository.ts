@@ -1,6 +1,7 @@
 import "server-only";
 import { hasDatabase } from "@/lib/db";
 import { listPeople as pgListPeople } from "./pg/org";
+import * as pgCustomers from "./pg/customers";
 import { readLocalStore, readStatusFieldTemplates, readStatusTaskTemplates } from "./local-store";
 import type {
   Assignment,
@@ -59,15 +60,21 @@ export async function getPerson(orgId: string, id: string): Promise<Person | nul
   return (await listPeople(orgId)).find((p) => p.id === id) ?? null;
 }
 
-export async function listCustomers(_orgId: string): Promise<Customer[]> {
+/** PORTED. */
+export async function listCustomers(orgId: string): Promise<Customer[]> {
+  if (hasDatabase) return pgCustomers.listCustomers(orgId);
   return [...(await readLocalStore()).customers].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function listArchivedCustomers(_orgId: string): Promise<Customer[]> {
+/** PORTED. Archived is `active = false`, not a separate table. */
+export async function listArchivedCustomers(orgId: string): Promise<Customer[]> {
+  if (hasDatabase) return pgCustomers.listArchivedCustomers(orgId);
   return [...(await readLocalStore()).archivedCustomers].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function isCustomerArchived(_orgId: string, id: string): Promise<boolean> {
+/** PORTED. */
+export async function isCustomerArchived(orgId: string, id: string): Promise<boolean> {
+  if (hasDatabase) return pgCustomers.isCustomerArchived(orgId, id);
   return (await readLocalStore()).archivedCustomers.some((customer) => customer.id === id);
 }
 
@@ -99,7 +106,9 @@ export async function listProjectTemplates(_orgId: string): Promise<ProjectTempl
   return [...(await readLocalStore()).projectTemplates].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function getCustomer(_orgId: string, id: string): Promise<Customer | null> {
+/** PORTED. */
+export async function getCustomer(orgId: string, id: string): Promise<Customer | null> {
+  if (hasDatabase) return pgCustomers.getCustomer(orgId, id);
   const store = await readLocalStore();
   return store.customers.find((customer) => customer.id === id) ?? store.archivedCustomers.find((customer) => customer.id === id) ?? null;
 }

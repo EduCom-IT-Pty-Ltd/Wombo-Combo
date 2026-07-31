@@ -5,6 +5,9 @@ import { workosConfigured } from "@/lib/auth/workos-config";
 /**
  * Gates the whole app behind a WorkOS session.
  *
+ * Named `proxy.ts`, not `middleware.ts`: Next 16 deprecated the middleware file
+ * convention in favour of this one. Same default export, same `config`.
+ *
  * `middlewareAuth.enabled` means an unauthenticated request is redirected to
  * AuthKit rather than being allowed through for the page to sort out — so no
  * server component ever renders for a signed-out user.
