@@ -105,15 +105,16 @@ async function loadWorkosSession(): Promise<Session> {
   const { withAuth } = await import("@workos-inc/authkit-nextjs");
   const { user, organizationId } = await withAuth({ ensureSignedIn: true });
 
-  // Single-tenant deployment: refuse a user from any other organisation. When
-  // the token carries no organisation at all we allow it — WorkOS omits the
-  // claim for users with exactly one membership, and failing closed there would
-  // lock out every legitimate user.
-  const expected = expectedOrgId();
-  if (expected && organizationId && organizationId !== expected) redirect("/no-access?reason=organisation");
+  const email = user.email.trim().toLowerCase();
+  // The escape hatch deliberately sits in front of the organisation check as
+  // well as the people check. Both are recoverable states you could lock
+  // yourself out of — a revoked membership no less than a deleted person record
+  // — and a recovery route that the lockout can disable is not one.
+  const isBootstrap = Boolean(bootstrapEmail()) && email === bootstrapEmail();
+
+  if (!isBootstrap) await assertOrganisationMember(user.id, organizationId);
 
   const store = await readLocalStore();
-  const email = user.email.trim().toLowerCase();
   const person = store.people.find((item) => item.email.trim().toLowerCase() === email);
 
   const identity = {
@@ -129,7 +130,7 @@ async function loadWorkosSession(): Promise<Session> {
     // The invite-only gate. Authenticating with WorkOS is not enough; someone
     // has to exist in this organisation's people list — unless they are the
     // bootstrap administrator, who has to get in before anyone can be added.
-    if (email !== bootstrapEmail()) redirect("/no-access?reason=membership");
+    if (!isBootstrap) redirect("/no-access?reason=membership");
     return {
       user: { id: `bootstrap:${user.id}`, ...identity },
       org,
@@ -149,6 +150,41 @@ async function loadWorkosSession(): Promise<Session> {
     permissionOverrides: store.rolePermissions,
     isDemo: false,
   };
+}
+
+/**
+ * This deployment serves exactly one organisation, so membership of it is a
+ * condition of entry rather than a way of picking a tenant.
+ *
+ * Two paths, because the organisation claim is not always on the access token —
+ * a user created through "Create user" rather than invited into an organisation
+ * has no membership to put there. Trusting the claim alone would let exactly
+ * that user in, which is the case this is meant to stop, so its absence falls
+ * through to asking WorkOS directly instead of being treated as permission.
+ *
+ * Fails closed: an error from the WorkOS API propagates rather than being
+ * swallowed into a pass, since a membership we could not confirm is not one we
+ * should honour.
+ */
+async function assertOrganisationMember(userId: string, organizationIdFromToken: string | undefined): Promise<void> {
+  const expected = expectedOrgId();
+  if (!expected) return;
+
+  if (organizationIdFromToken) {
+    if (organizationIdFromToken !== expected) redirect("/no-access?reason=organisation");
+    return;
+  }
+
+  const { getWorkOS } = await import("@workos-inc/authkit-nextjs");
+  const memberships = await getWorkOS().userManagement.listOrganizationMemberships({
+    userId,
+    organizationId: expected,
+    // `pending` is an invitation not yet accepted and `inactive` is a revoked
+    // membership. Neither is access.
+    statuses: ["active"],
+    limit: 1,
+  });
+  if (memberships.data.length === 0) redirect("/no-access?reason=organisation");
 }
 
 /**

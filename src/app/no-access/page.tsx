@@ -20,9 +20,12 @@ export default async function NoAccessPage({
 }) {
   const { reason } = await searchParams;
 
+  // Both cases are deliberately vague. Someone who reached a login screen they
+  // were not invited to learns only that they are not on the list — not whether
+  // the address exists, nor which of the two checks turned them away.
   const detail =
     reason === "organisation"
-      ? "Your account belongs to a different organisation."
+      ? "Your account isn't a member of this organisation."
       : "Your account isn't set up for this workspace yet.";
 
   return (
