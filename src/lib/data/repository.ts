@@ -2,6 +2,7 @@ import "server-only";
 import { hasDatabase } from "@/lib/db";
 import { listPeople as pgListPeople } from "./pg/org";
 import * as pgCustomers from "./pg/customers";
+import * as pgProjects from "./pg/projects";
 import { readLocalStore, readStatusFieldTemplates, readStatusTaskTemplates } from "./local-store";
 import type {
   Assignment,
@@ -120,7 +121,9 @@ export interface ProjectFilters {
   assignedTo?: string;
 }
 
-export async function listProjects(_orgId: string, filters: ProjectFilters = {}): Promise<ProjectSummary[]> {
+/** PORTED. Filtering happens in SQL rather than after loading every row. */
+export async function listProjects(orgId: string, filters: ProjectFilters = {}): Promise<ProjectSummary[]> {
+  if (hasDatabase) return pgProjects.listProjects(orgId, filters);
   let rows: ProjectSummary[] = (await readLocalStore()).projects;
 
   if (filters.status?.length) {
@@ -144,15 +147,21 @@ export async function listProjects(_orgId: string, filters: ProjectFilters = {})
   return [...rows].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function listArchivedProjects(_orgId: string): Promise<ProjectSummary[]> {
+/** PORTED. Archived is derived from status, not a separate flag. */
+export async function listArchivedProjects(orgId: string): Promise<ProjectSummary[]> {
+  if (hasDatabase) return pgProjects.listArchivedProjects(orgId);
   return [...(await readLocalStore()).archivedProjects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function isProjectArchived(_orgId: string, id: string): Promise<boolean> {
+/** PORTED. */
+export async function isProjectArchived(orgId: string, id: string): Promise<boolean> {
+  if (hasDatabase) return pgProjects.isProjectArchived(orgId, id);
   return (await readLocalStore()).archivedProjects.some((project) => project.id === id);
 }
 
-export async function getProject(_orgId: string, id: string): Promise<ProjectDetail | null> {
+/** PORTED. */
+export async function getProject(orgId: string, id: string): Promise<ProjectDetail | null> {
+  if (hasDatabase) return pgProjects.getProject(orgId, id);
   const store = await readLocalStore();
   return store.projects.find((p) => p.id === id) ?? store.archivedProjects.find((p) => p.id === id) ?? null;
 }
