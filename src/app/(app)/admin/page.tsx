@@ -1,5 +1,5 @@
-import { getSession } from "@/lib/auth/session";
 import { AUTOMATION_RULES } from "@/lib/domain/automation";
+import { isDemoMode } from "@/lib/db";
 import { Badge, Card, CardHeader, PageHeader } from "@/components/ui";
 import { StatusFlowSettings } from "@/components/admin/status-flow-settings";
 import { readOrganisationSettings, readQuoteDocumentTemplateSettings, readRolePermissions, readStatusFieldTemplates, readStatusSettings, readStatusTaskTemplates } from "@/lib/data/local-store";
@@ -10,7 +10,6 @@ import { QuoteLetterheadDesigner } from "@/components/admin/quote-letterhead-des
 export const metadata = { title: "Admin" };
 
 export default async function AdminPage() {
-  const session = await getSession();
   const [statusSettings, statusTaskTemplates, statusFieldTemplates, organisation, rolePermissions, quoteTemplate] = await Promise.all([readStatusSettings(), readStatusTaskTemplates(), readStatusFieldTemplates(), readOrganisationSettings(), readRolePermissions(), readQuoteDocumentTemplateSettings()]);
 
   return (
@@ -19,7 +18,11 @@ export default async function AdminPage() {
 
       <StatusFlowSettings settings={statusSettings} templates={statusTaskTemplates} fields={statusFieldTemplates} />
 
-      <OrganisationSettingsForm settings={organisation} isDemo={session.isDemo} />
+      {/* Keyed to `isDemoMode` (is there a database?) rather than `session.isDemo`
+          (is the user really signed in?). Once WorkOS is configured but
+          DATABASE_URL is not, those diverge — and it is persistence, not auth,
+          that decides whether this warning is true. */}
+      <OrganisationSettingsForm settings={organisation} isDemo={isDemoMode} />
 
       <QuoteLetterheadDesigner settings={quoteTemplate} />
 

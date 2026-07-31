@@ -1,23 +1,26 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
-import type { Role } from "@/lib/db/schema/enums";
+import { redirect } from "next/navigation";
+import { ROLES, type Role } from "@/lib/db/schema/enums";
 import { type Capability, can, type RolePermissionOverrides } from "@/lib/domain/permissions";
 import { readLocalStore } from "@/lib/data/local-store";
+import { bootstrapEmail, expectedOrgId, workosConfigured } from "./workos-config";
 
 /**
  * Auth adapter.
  *
- * The app only ever talks to `getSession()` / `requireCapability()`. Swapping in
- * WorkOS AuthKit means replacing the body of `loadSession()` — no call sites
- * change. Until then a dev session is served so the UI is fully explorable, and
- * the role can be switched with the `wc_demo_role` cookie (see the role switcher
- * in the top bar).
+ * The app only ever talks to `getSession()` / `requireCapability()`, so which of
+ * the two backings is in play below is invisible to every call site.
  *
- * WorkOS wiring, when you're ready:
- *   1. npm i @workos-inc/authkit-nextjs
- *   2. add middleware.ts -> `export { authkitMiddleware as middleware }`
- *   3. in loadSession(): `const { user, organizationId, role } = await withAuth()`
- *   4. map organizationId -> organizations.workosOrgId to resolve the tenant
+ * With `WORKOS_API_KEY` and `WORKOS_CLIENT_ID` set, sessions come from WorkOS
+ * AuthKit. Without them the app serves a demo session so `npm run dev` works
+ * against demo data with no configuration, and the role can be switched from the
+ * top bar via the `wc_demo_role` cookie.
+ *
+ * Authentication is not authorisation here. WorkOS proves *who* someone is; the
+ * `people` list decides whether they get in at all and with what role. A user who
+ * authenticates successfully but has no matching person record is turned away —
+ * which is what makes this invite-only rather than merely login-gated.
  */
 
 export interface SessionUser {
@@ -48,7 +51,15 @@ export interface Session {
   isDemo: boolean;
 }
 
-export const DEMO_ORG: SessionOrg = {
+/**
+ * Defaults for the single organisation this deployment serves. `store.organisation`
+ * is spread over the top, so anything the admin screen has edited wins and only
+ * the id is genuinely fixed here.
+ *
+ * TODO(neon): resolve the org by `organizations.workosOrgId` instead, once the
+ * repository reads from Postgres and more than one tenant is possible.
+ */
+const BASE_ORG: SessionOrg = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "Northline Interiors",
   slug: "northline",
@@ -80,6 +91,87 @@ export function fieldUserId(session: Session): string {
 }
 
 async function loadSession(): Promise<Session> {
+  return workosConfigured() ? loadWorkosSession() : loadDemoSession();
+}
+
+/**
+ * A real session. `withAuth({ ensureSignedIn: true })` is belt-and-braces —
+ * `middleware.ts` already redirects signed-out traffic, so reaching here without
+ * a session means the middleware matcher missed a path.
+ */
+async function loadWorkosSession(): Promise<Session> {
+  // Imported lazily so demo mode never loads a module that expects WorkOS
+  // environment variables to exist.
+  const { withAuth } = await import("@workos-inc/authkit-nextjs");
+  const { user, organizationId } = await withAuth({ ensureSignedIn: true });
+
+  // Single-tenant deployment: refuse a user from any other organisation. When
+  // the token carries no organisation at all we allow it — WorkOS omits the
+  // claim for users with exactly one membership, and failing closed there would
+  // lock out every legitimate user.
+  const expected = expectedOrgId();
+  if (expected && organizationId && organizationId !== expected) redirect("/no-access?reason=organisation");
+
+  const store = await readLocalStore();
+  const email = user.email.trim().toLowerCase();
+  const person = store.people.find((item) => item.email.trim().toLowerCase() === email);
+
+  const identity = {
+    workosUserId: user.id,
+    email: user.email,
+    firstName: user.firstName ?? null,
+    lastName: user.lastName ?? null,
+    avatarUrl: user.profilePictureUrl ?? null,
+  };
+  const org = { ...BASE_ORG, ...store.organisation };
+
+  if (!person) {
+    // The invite-only gate. Authenticating with WorkOS is not enough; someone
+    // has to exist in this organisation's people list — unless they are the
+    // bootstrap administrator, who has to get in before anyone can be added.
+    if (email !== bootstrapEmail()) redirect("/no-access?reason=membership");
+    return {
+      user: { id: `bootstrap:${user.id}`, ...identity },
+      org,
+      role: "owner",
+      permissionOverrides: store.rolePermissions,
+      isDemo: false,
+    };
+  }
+
+  return {
+    user: { id: person.id, ...identity },
+    org,
+    // Deliberately the person's role, not the WorkOS role: roles and their
+    // capability overrides are administered in-app (see admin -> permissions),
+    // and WorkOS has no knowledge of them.
+    role: normaliseRole(person.role, person.email),
+    permissionOverrides: store.rolePermissions,
+    isDemo: false,
+  };
+}
+
+/**
+ * Guards against role values that predate the current five-role model — the
+ * stored people list still carries `project_manager`, `estimator`, `scheduler`,
+ * `installer` and `qa_inspector`.
+ *
+ * This matters because `capabilitiesFor` returns `[]` for an unrecognised role,
+ * so the failure mode is not an error but an empty application: no navigation,
+ * and every server action throwing `ForbiddenError`. Falling back to `staff`
+ * keeps the person usable at the lowest privilege and makes the cause visible
+ * in the server log instead of looking like a rendering bug.
+ */
+function normaliseRole(role: Role, email: string): Role {
+  if ((ROLES as readonly string[]).includes(role)) return role;
+  console.warn(
+    `[auth] ${email} has role "${role}", which is not one of ${ROLES.join(", ")}. ` +
+      `Falling back to "staff" — reassign this person under Settings.`,
+  );
+  return "staff";
+}
+
+async function loadDemoSession(): Promise<Session> {
   const jar = await cookies();
   const store = await readLocalStore();
   const requestedUserId = jar.get(DEMO_USER_COOKIE)?.value;
@@ -101,7 +193,7 @@ async function loadSession(): Promise<Session> {
       lastName: nameParts.slice(1).join(" ") || null,
       avatarUrl: null,
     },
-    org: { ...DEMO_ORG, ...store.organisation },
+    org: { ...BASE_ORG, ...store.organisation },
     role,
     permissionOverrides: store.rolePermissions,
     isDemo: true,

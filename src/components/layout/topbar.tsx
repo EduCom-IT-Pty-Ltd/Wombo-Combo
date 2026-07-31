@@ -5,6 +5,7 @@ import { Avatar } from "@/components/ui";
 import { RoleSwitcher } from "./role-switcher";
 import { UserSwitcher } from "./user-switcher";
 import { ThemeToggle } from "./theme";
+import { SignOutButton } from "./sign-out-button";
 import { ActiveShiftLink } from "@/components/field/active-shift-link";
 import { GlobalSearch, type GlobalSearchCustomer, type GlobalSearchProject } from "./global-search";
 
@@ -59,6 +60,7 @@ export function TopBar({
             <p className="text-[11px] text-muted-foreground">{ROLE_LABELS[role]}</p>
           </div>
         </div>
+        {isDemo ? null : <SignOutButton />}
       </div>
     </header>
   );
