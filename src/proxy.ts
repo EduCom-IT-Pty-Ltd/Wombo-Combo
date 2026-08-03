@@ -23,9 +23,10 @@ export default workosConfigured()
   ? authkitProxy({
       middlewareAuth: {
         enabled: true,
-        // `/callback` completes the login handshake and `/no-access` explains a
-        // failed one. Both must be reachable without a session or they deadlock.
-        unauthenticatedPaths: ["/callback", "/no-access"],
+        // `/sign-in` starts the handshake, `/callback` completes it, and
+        // `/no-access` explains a failed one. All three must be reachable
+        // without a session or they deadlock.
+        unauthenticatedPaths: ["/sign-in", "/callback", "/no-access"],
       },
     })
   : passthrough;
