@@ -18,16 +18,28 @@ export const organizations = pgTable("organizations", {
 });
 
 /** Mirrors the WorkOS user directory; WorkOS remains the source of truth. */
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  workosUserId: text("workos_user_id").unique(),
-  email: text("email").notNull(),
-  firstName: text("first_name"),
-  lastName: text("last_name"),
-  avatarUrl: text("avatar_url"),
-  phone: text("phone"),
-  ...timestamps,
-});
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workosUserId: text("workos_user_id").unique(),
+    /** Stored lowercased. See the unique index below for why. */
+    email: text("email").notNull(),
+    firstName: text("first_name"),
+    lastName: text("last_name"),
+    avatarUrl: text("avatar_url"),
+    phone: text("phone"),
+    ...timestamps,
+  },
+  (t) => [
+    // Email, not `workos_user_id`, is the identity this application matches on:
+    // the same person has a different WorkOS id in Staging and Production, and
+    // `getPersonByEmail` is what the invite-only gate consults. Making it unique
+    // is what lets an invite be an upsert rather than a check-then-insert, which
+    // `neon-http` could not make atomic — it has no interactive transactions.
+    uniqueIndex("users_email_idx").on(t.email),
+  ],
+);
 
 export const memberships = pgTable(
   "memberships",
@@ -40,6 +52,11 @@ export const memberships = pgTable(
     isSchedulable: boolean("is_schedulable").notNull().default(false),
     /** Cost rate used for job costing, in cents per hour. */
     costRateCents: text("cost_rate_cents"),
+    /** Hex colour this person is drawn in on the schedule. Null falls back to a
+     *  hash of their id, so an unset colour is still stable and distinct. */
+    color: text("color"),
+    /** False revokes access without deleting the row, so every project, time
+     *  entry and QA sign-off that references this person stays attributable. */
     active: boolean("active").notNull().default(true),
     ...timestamps,
   },
