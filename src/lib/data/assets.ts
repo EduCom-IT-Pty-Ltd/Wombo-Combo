@@ -62,8 +62,17 @@ export async function storeAsset(prefix: string, file: File): Promise<AssetResul
     return { ok: true, url: blob.url };
   }
 
-  // Local development only. This branch cannot run on Vercel — the guard above
-  // is what keeps it from being reached there.
+  // Refuse rather than attempt a filesystem write that cannot succeed. On
+  // Vercel this branch would throw EROFS and surface as a 500 page; saying so
+  // plainly is more use than a crash, and the rest of the form still saves.
+  if (process.env.VERCEL) {
+    return {
+      ok: false,
+      message: "Image uploads need Blob storage, which is not enabled on this deployment. Other changes were saved.",
+    };
+  }
+
+  // Local development only.
   await mkdir(join(process.cwd(), "public", "uploads"), { recursive: true });
   const url = `/uploads/${name}`;
   await writeFile(join(process.cwd(), "public", url), Buffer.from(await file.arrayBuffer()));

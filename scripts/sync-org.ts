@@ -4,6 +4,7 @@
  *   npm run sync:org                              # sync
  *   npm run sync:org -- --dry-run                 # show what would change
  *   npm run sync:org -- --owner=you@example.com   # who becomes owner
+ *   npm run sync:org -- --relink                  # rebind to a new WorkOS org
  *
  * `--owner` applies only when creating a membership, so it cannot demote or
  * promote anyone on a later run. Falls back to WORKOS_BOOTSTRAP_EMAIL.
@@ -39,6 +40,7 @@ async function workos<T>(path: string): Promise<T> {
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
+  const relink = process.argv.includes("--relink");
 
   const workosOrgId = process.env.WORKOS_ORG_ID;
   const ownerEmail = (
@@ -67,10 +69,39 @@ async function main() {
     .where(eq(organizations.workosOrgId, workosOrgId))
     .limit(1);
 
+  // Moving from the WorkOS Staging environment to Production changes the
+  // organisation id, because they are separate directories. Creating a second
+  // row would leave every existing project, customer and quote behind the old
+  // one, invisible to the app — so this refuses to guess and asks for --relink.
+  const [soleOrg] = existingOrg
+    ? []
+    : await db().select().from(organizations).limit(2);
+
   let orgId: string;
   if (existingOrg) {
     orgId = existingOrg.id;
     console.log(`  exists in Postgres (${orgId})`);
+  } else if (soleOrg && !relink) {
+    console.error(`\nThere is already an organisation in Postgres — "${soleOrg.name}" (${soleOrg.id}) —`);
+    console.error(`bound to WorkOS org ${soleOrg.workosOrgId}, not ${workosOrgId}.`);
+    console.error("\nThat usually means you have switched WorkOS environment (Staging -> Production).");
+    console.error("Creating a second organisation would orphan every existing project and customer.");
+    console.error("\nTo rebind the existing organisation to the new WorkOS org, re-run with:");
+    console.error("  npm run sync:org -- --relink --owner=<your email>");
+    process.exit(1);
+  } else if (soleOrg && relink) {
+    orgId = soleOrg.id;
+    if (dryRun) {
+      console.log(`  would RELINK ${soleOrg.name} (${orgId}) from ${soleOrg.workosOrgId} to ${workosOrgId}`);
+    } else {
+      await db().update(organizations).set({ workosOrgId, updatedAt: new Date() }).where(eq(organizations.id, orgId));
+      console.log(`  RELINKED ${soleOrg.name} (${orgId}) to ${workosOrgId}`);
+      // The old environment's users do not exist in the new one, so their
+      // memberships would silently grant access to nobody. Cleared here and
+      // rebuilt from the new environment below.
+      await db().delete(memberships).where(eq(memberships.orgId, orgId));
+      console.log("  cleared memberships from the previous environment");
+    }
   } else if (dryRun) {
     orgId = "<would be created>";
     console.log("  would CREATE");
