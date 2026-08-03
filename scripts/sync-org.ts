@@ -96,11 +96,10 @@ async function main() {
     } else {
       await db().update(organizations).set({ workosOrgId, updatedAt: new Date() }).where(eq(organizations.id, orgId));
       console.log(`  RELINKED ${soleOrg.name} (${orgId}) to ${workosOrgId}`);
-      // The old environment's users do not exist in the new one, so their
-      // memberships would silently grant access to nobody. Cleared here and
-      // rebuilt from the new environment below.
-      await db().delete(memberships).where(eq(memberships.orgId, orgId));
-      console.log("  cleared memberships from the previous environment");
+      // Memberships are deliberately left alone. Access is matched on email,
+      // not WorkOS user id, so the same people keep the same roles across an
+      // environment switch — and their existing rows are what every project,
+      // time entry and quote already references.
     }
   } else if (dryRun) {
     orgId = "<would be created>";
@@ -139,11 +138,14 @@ async function main() {
     const user = await workos<WorkosUser>(`/user_management/users/${membership.user_id}`);
     const email = user.email.trim().toLowerCase();
 
-    const [existingUser] = await db()
-      .select()
-      .from(users)
-      .where(eq(users.workosUserId, user.id))
-      .limit(1);
+    // Look up by WorkOS id first, then by email. The email fallback is what
+    // makes an environment switch survivable: the same person has a different
+    // WorkOS user id in Production, and without it every user would be
+    // duplicated — two rows, one email, both with memberships.
+    const [existingUser] =
+      (await db().select().from(users).where(eq(users.workosUserId, user.id)).limit(1)).concat(
+        await db().select().from(users).where(eq(users.email, user.email)).limit(1),
+      );
 
     if (dryRun) {
       console.log(`  ${existingUser ? "exists" : "would CREATE"}  ${user.email}`);
@@ -154,7 +156,15 @@ async function main() {
     if (existingUser) {
       await db()
         .update(users)
-        .set({ email: user.email, firstName: user.first_name, lastName: user.last_name, updatedAt: new Date() })
+        // `workosUserId` is rewritten so a match found by email adopts the new
+        // environment's id and matches directly next time.
+        .set({
+          workosUserId: user.id,
+          email: user.email,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          updatedAt: new Date(),
+        })
         .where(eq(users.id, existingUser.id));
       userId = existingUser.id;
     } else {
