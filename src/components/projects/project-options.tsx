@@ -10,9 +10,38 @@ import type { ProjectDetail } from "@/lib/data/types";
 const initial: RecordActionState = { ok: false };
 const inputClass = "h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-foreground";
 
-export function ProjectOptions({ project, customers, archived = false }: { project: ProjectDetail; customers: Array<{ id: string; name: string }>; archived?: boolean }) {
-  const [menuOpen, setMenuOpen] = useState(false); const [editing, setEditing] = useState(false); const [pending, startTransition] = useTransition(); const router = useRouter();
-  return <div className="relative"><Button type="button" size="sm" variant="ghost" aria-label="Project options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal className="size-5" /></Button>{menuOpen ? <div className="absolute right-0 z-30 mt-1 w-40 rounded-lg border border-border-strong bg-surface p-1 shadow-xl"><button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" onClick={() => { setEditing(true); setMenuOpen(false); }}>Edit project</button>{archived ? <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" disabled={pending} onClick={() => startTransition(async () => { await restoreProjectRecord(project.id); router.push(`/projects/${project.id}`); router.refresh(); })}>Restore</button> : <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" disabled={pending} onClick={() => { if (window.confirm(`Archive ${project.title}? It will move to the Archived projects view.`)) startTransition(async () => { await archiveProjectRecord(project.id); router.push("/projects?group=archived"); router.refresh(); }); }}>Archive</button>}<button className="w-full rounded-md px-3 py-2 text-left text-sm text-[var(--tone-rose-fg)] hover:bg-surface-muted" disabled={pending} onClick={() => { if (window.confirm(`Delete ${project.title} permanently? Its local tasks, quotes, activity, and documents will also be removed.`)) startTransition(async () => { await deleteProjectRecord(project.id); router.push("/projects"); router.refresh(); }); }}>Delete permanently</button></div> : null}{editing ? <ProjectEditor project={project} customers={customers} onClose={() => setEditing(false)} /> : null}</div>;
+export function ProjectOptions({ project, customers, archived = false, canArchive = false, canDelete = false }: { project: ProjectDetail; customers: Array<{ id: string; name: string }>; archived?: boolean; canArchive?: boolean; canDelete?: boolean }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  // Navigate only once the action reports success. Routing first would land on a
+  // list that still contains the project when the write failed, which reads as
+  // the archive silently not working.
+  const run = (action: () => Promise<RecordActionState>, onSuccess: () => void) => startTransition(async () => {
+    const result = await action();
+    if (!result.ok) { setError(result.message ?? "That did not work."); return; }
+    setError(null);
+    setMenuOpen(false);
+    onSuccess();
+    router.refresh();
+  });
+
+  return <div className="relative">
+    <Button type="button" size="sm" variant="ghost" aria-label="Project options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal className="size-5" /></Button>
+    {menuOpen ? <div className="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-border-strong bg-surface p-1 shadow-xl">
+      <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" onClick={() => { setEditing(true); setMenuOpen(false); }}>Edit project</button>
+      {canArchive ? (archived
+        ? <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" disabled={pending} onClick={() => run(() => restoreProjectRecord(project.id), () => router.push(`/projects/${project.id}`))}>Restore</button>
+        : <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" disabled={pending} onClick={() => { if (window.confirm(`Archive ${project.title}? It moves to Archived projects and drops out of the active list. Nothing is deleted and you can restore it at any time.`)) run(() => archiveProjectRecord(project.id), () => router.push("/projects?group=archived")); }}>Archive</button>
+      ) : null}
+      {canDelete ? <button className="w-full rounded-md px-3 py-2 text-left text-sm text-[var(--tone-rose-fg)] hover:bg-surface-muted" disabled={pending} onClick={() => { if (window.prompt(`Deleting ${project.title} is permanent. Its quotes, tasks, time entries, QA records and its SharePoint folder are all destroyed, and there is no undo.\n\nType the Project ID ${project.projectNumber} to confirm.`)?.trim().toUpperCase() === project.projectNumber.toUpperCase()) run(() => deleteProjectRecord(project.id), () => router.push("/projects")); }}>Delete permanently</button> : null}
+      {error ? <p className="px-3 py-2 text-xs text-[var(--tone-rose-fg)]">{error}</p> : null}
+    </div> : null}
+    {editing ? <ProjectEditor project={project} customers={customers} onClose={() => setEditing(false)} /> : null}
+  </div>;
 }
 
 function ProjectEditor({ project, customers, onClose }: { project: ProjectDetail; customers: Array<{ id: string; name: string }>; onClose: () => void }) {

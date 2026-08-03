@@ -67,7 +67,7 @@ export default async function ProjectLayout({
                 </span>
               ) : null}
             </div>
-            <div className="mt-1 flex items-center gap-1"><h1 className="text-lg font-semibold tracking-tight sm:text-xl">{project.title}</h1>{can(session.role, "project.edit", session.permissionOverrides) ? <ProjectOptions project={project} customers={customers.map((customer) => ({ id: customer.id, name: customer.name }))} archived={archived} /> : null}</div>
+            <div className="mt-1 flex items-center gap-1"><h1 className="text-lg font-semibold tracking-tight sm:text-xl">{project.title}</h1>{can(session.role, "project.edit", session.permissionOverrides) ? <ProjectOptions project={project} customers={customers.map((customer) => ({ id: customer.id, name: customer.name }))} archived={archived} canArchive={can(session.role, "project.archive", session.permissionOverrides)} canDelete={can(session.role, "project.delete", session.permissionOverrides)} /> : null}</div>
             <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
               <Link href={`/customers/${project.customerId}`} className="hover:text-foreground">
                 {project.customerName}

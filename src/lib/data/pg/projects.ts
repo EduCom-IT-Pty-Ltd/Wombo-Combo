@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { customers, sites } from "@/lib/db/schema/crm";
 import { projectNumberSequences, projects, tasks } from "@/lib/db/schema/projects";
@@ -31,7 +31,11 @@ export interface ProjectFilters {
 }
 
 export async function listProjects(orgId: string, filters: ProjectFilters = {}): Promise<ProjectSummary[]> {
-  const conditions = [eq(projects.orgId, orgId)];
+  // Hand-archived projects are excluded from every active view here rather than
+  // at each call site, so archiving a job removes it from the list, the
+  // dashboard and the search without anyone having to remember to filter.
+  // Finished projects still come through: they show under their own status.
+  const conditions = [eq(projects.orgId, orgId), isNull(projects.archivedAt)];
   if (filters.status?.length) conditions.push(inArray(projects.status, filters.status));
   if (filters.customerId) conditions.push(eq(projects.customerId, filters.customerId));
 
@@ -70,26 +74,95 @@ export async function listProjects(orgId: string, filters: ProjectFilters = {}):
 }
 
 /**
- * "Archived" has no column. A project is archived once it has finished, which
- * keeps the concept derived from status rather than a second flag that could
- * disagree with it.
+ * Two ways in. A project is archived once it has finished, which keeps the
+ * common case derived from status rather than needing anyone to tidy up; or
+ * because someone archived it by hand, which is what `archived_at` records.
+ *
+ * The hand-archived case exists because a job can stall at any status — the
+ * customer goes quiet, the site is postponed — and parking it is not a status
+ * change, since it says nothing about where the work actually got to.
  */
 export async function listArchivedProjects(orgId: string): Promise<ProjectSummary[]> {
   const rows = await db()
     .select()
     .from(projects)
-    .where(and(eq(projects.orgId, orgId), inArray(projects.status, FINISHED_PROJECT_STATUSES)))
+    .where(
+      and(
+        eq(projects.orgId, orgId),
+        or(isNotNull(projects.archivedAt), inArray(projects.status, FINISHED_PROJECT_STATUSES))!,
+      ),
+    )
     .orderBy(desc(projects.updatedAt));
   return enrich(orgId, rows);
 }
 
 export async function isProjectArchived(orgId: string, id: string): Promise<boolean> {
   const [row] = await db()
-    .select({ status: projects.status })
+    .select({ status: projects.status, archivedAt: projects.archivedAt })
     .from(projects)
     .where(and(eq(projects.orgId, orgId), eq(projects.id, id)))
     .limit(1);
-  return row ? FINISHED_PROJECT_STATUSES.includes(row.status) : false;
+  return row ? Boolean(row.archivedAt) || FINISHED_PROJECT_STATUSES.includes(row.status) : false;
+}
+
+/**
+ * Park a project. Deliberately not a status transition: `transitionProject` owns
+ * `projects.status`, and archiving must not pretend to know whether the work was
+ * finished, lost or merely postponed.
+ *
+ * Returns false when nothing matched, so a stale id from another tenant reports
+ * a miss rather than silently succeeding.
+ */
+export async function archiveProject(orgId: string, id: string): Promise<boolean> {
+  const rows = await db()
+    .update(projects)
+    .set({ archivedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(projects.orgId, orgId), eq(projects.id, id), isNull(projects.archivedAt)))
+    .returning({ id: projects.id });
+  return rows.length > 0;
+}
+
+/** Unpark it. The status was never touched, so there is nothing to restore but the flag. */
+export async function restoreProject(orgId: string, id: string): Promise<boolean> {
+  const rows = await db()
+    .update(projects)
+    .set({ archivedAt: null, updatedAt: new Date() })
+    .where(and(eq(projects.orgId, orgId), eq(projects.id, id)))
+    .returning({ id: projects.id });
+  return rows.length > 0;
+}
+
+/** What a deleted project leaves behind outside Postgres. */
+export interface DeletedProject {
+  projectNumber: string;
+  title: string;
+  sharepointDriveId: string | null;
+  sharepointFolderItemId: string | null;
+}
+
+/**
+ * Delete a project and everything hanging off it.
+ *
+ * A single statement: every child table references `projects.id` with
+ * `on delete cascade`, so tasks, quotes, events, assignments, time entries,
+ * inspections and documents go with it. That matters more than usual here —
+ * `neon-http` has no interactive transaction, so a hand-rolled cascade could
+ * strand half a project with no way to roll back.
+ *
+ * The SharePoint identifiers are returned rather than acted on, because this
+ * module talks to Postgres and nothing else. The caller deletes the folder.
+ */
+export async function deleteProject(orgId: string, id: string): Promise<DeletedProject | null> {
+  const [row] = await db()
+    .delete(projects)
+    .where(and(eq(projects.orgId, orgId), eq(projects.id, id)))
+    .returning({
+      projectNumber: projects.projectNumber,
+      title: projects.title,
+      sharepointDriveId: projects.sharepointDriveId,
+      sharepointFolderItemId: projects.sharepointFolderItemId,
+    });
+  return row ?? null;
 }
 
 export async function getProject(orgId: string, id: string): Promise<ProjectDetail | null> {

@@ -16,6 +16,10 @@ export const CAPABILITIES = [
   "project.edit",
   "project.transition",
   "project.transition.override", // bypass a soft guard with a recorded reason
+  // Archiving and deleting are restricted to the Owner and Administrator, and
+  // unlike the capabilities above they cannot be delegated — see RESTRICTED.
+  "project.archive",
+  "project.delete",
   "customer.view",
   "customer.manage",
   "quote.view",
@@ -50,6 +54,21 @@ export type Capability = (typeof CAPABILITIES)[number];
 export type RolePermissionOverrides = Partial<Record<Role, Capability[]>>;
 
 const ALL: Capability[] = [...CAPABILITIES];
+
+/**
+ * Capabilities the Owner and Administrator hold exclusively and cannot hand out.
+ *
+ * Leaving a capability out of `ROLE_CAPABILITIES` and `PERMISSION_AREAS` hides
+ * it from the Settings screen but does not actually prevent it being granted —
+ * `saveRolePermissionsAction` validates against the whole of `CAPABILITIES`, so
+ * a hand-made payload could still set one. These are stripped from any override
+ * on the way out instead, which is the only place that cannot be bypassed.
+ *
+ * Deleting a project destroys its SharePoint folder, and archiving hides work
+ * from everyone else's list. Both are decisions about the business rather than
+ * about a job, which is why they stop with the people who own it.
+ */
+const RESTRICTED: Capability[] = ["project.archive", "project.delete", "labour.manage"];
 
 const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
   owner: ALL,
@@ -101,7 +120,8 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
 export function capabilitiesFor(role: Role, overrides?: RolePermissionOverrides): Capability[] {
   // Owner and Administrator are deliberately never customisable.
   if (role === "owner" || role === "admin") return ALL;
-  return overrides?.[role] ?? ROLE_CAPABILITIES[role] ?? [];
+  const granted = overrides?.[role] ?? ROLE_CAPABILITIES[role] ?? [];
+  return granted.filter((capability) => !RESTRICTED.includes(capability));
 }
 
 export function can(role: Role, capability: Capability, overrides?: RolePermissionOverrides): boolean {

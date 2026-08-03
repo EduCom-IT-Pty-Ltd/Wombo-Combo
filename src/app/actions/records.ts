@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
+import { hasDatabase } from "@/lib/db";
+import { archiveProject, deleteProject, restoreProject } from "@/lib/data/pg/projects";
+import { graphConfigured } from "@/lib/integrations/graph/client";
+import { deleteItem } from "@/lib/integrations/sharepoint/folders";
 import {
   archiveLocalCustomer,
   archiveLocalProject,
@@ -44,9 +48,70 @@ export async function updateCustomerRecord(_state: RecordActionState, formData: 
   return { ok: true, message: "Customer details saved." };
 }
 
-export async function archiveProjectRecord(id: string) { await requireCapability("project.edit"); await archiveLocalProject(id); revalidatePath("/projects"); }
-export async function restoreProjectRecord(id: string) { await requireCapability("project.edit"); await restoreLocalProject(id); revalidatePath("/projects"); }
-export async function deleteProjectRecord(id: string) { await requireCapability("project.edit"); await deleteLocalProject(id); revalidatePath("/projects"); }
+function refreshProjects() { revalidatePath("/projects"); revalidatePath("/", "layout"); }
+
+/**
+ * Park a project without touching its status. Owner and Administrator only —
+ * `project.archive` is in RESTRICTED, so no override can hand it to anyone else.
+ */
+export async function archiveProjectRecord(id: string): Promise<RecordActionState> {
+  const session = await requireCapability("project.archive");
+  if (hasDatabase) {
+    if (!await archiveProject(session.org.id, id)) return { ok: false, message: "That project could not be archived." };
+  } else {
+    await archiveLocalProject(id);
+  }
+  refreshProjects();
+  return { ok: true, message: "Project archived." };
+}
+
+export async function restoreProjectRecord(id: string): Promise<RecordActionState> {
+  const session = await requireCapability("project.archive");
+  if (hasDatabase) {
+    if (!await restoreProject(session.org.id, id)) return { ok: false, message: "That project could not be restored." };
+  } else {
+    await restoreLocalProject(id);
+  }
+  refreshProjects();
+  return { ok: true, message: "Project restored." };
+}
+
+/**
+ * Delete a project outright, including its SharePoint folder.
+ *
+ * Postgres first: the row delete cascades to every child table in one statement,
+ * and it is the half that decides whether the project still exists to the app.
+ * The folder goes second and its failure is reported rather than thrown — the
+ * project is already gone, so the only useful outcome is telling someone which
+ * folder is now orphaned in SharePoint and needs deleting by hand.
+ *
+ * There is no undo. `project.delete` is Owner and Administrator only.
+ */
+export async function deleteProjectRecord(id: string): Promise<RecordActionState> {
+  const session = await requireCapability("project.delete");
+
+  if (!hasDatabase) {
+    await deleteLocalProject(id);
+    refreshProjects();
+    return { ok: true, message: "Project deleted." };
+  }
+
+  const deleted = await deleteProject(session.org.id, id);
+  refreshProjects();
+  if (!deleted) return { ok: false, message: "That project could not be found." };
+
+  if (!graphConfigured() || !deleted.sharepointDriveId || !deleted.sharepointFolderItemId) {
+    return { ok: true, message: `${deleted.projectNumber} deleted.` };
+  }
+
+  try {
+    await deleteItem(deleted.sharepointDriveId, deleted.sharepointFolderItemId);
+    return { ok: true, message: `${deleted.projectNumber} deleted, including its SharePoint folder.` };
+  } catch (error) {
+    console.error("[records] SharePoint folder delete failed", error);
+    return { ok: false, message: `${deleted.projectNumber} was deleted, but its SharePoint folder could not be removed. Delete it by hand in SharePoint.` };
+  }
+}
 export async function archiveCustomerRecord(id: string) { await requireCapability("customer.manage"); await archiveLocalCustomer(id); revalidatePath("/customers"); }
 export async function restoreCustomerRecord(id: string) { await requireCapability("customer.manage"); await restoreLocalCustomer(id); revalidatePath("/customers"); }
 export async function deleteCustomerRecord(id: string) { await requireCapability("customer.manage"); await deleteLocalCustomer(id); revalidatePath("/customers"); }

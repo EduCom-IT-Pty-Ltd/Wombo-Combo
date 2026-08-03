@@ -46,6 +46,15 @@ export const projects = pgTable(
     holdReason: text("hold_reason"),
 
     /**
+     * Set when someone archives the project by hand, which is separate from a
+     * project being archived by virtue of having finished. A job can be parked
+     * at any status — a customer goes quiet, a site is postponed — and that is
+     * not a status change, because it says nothing about where the work got to.
+     * Null means not archived; restoring clears it and the status is untouched.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+
+    /**
      * The project's folder in SharePoint. Keyed by driveItemId, never path — a
      * rename or move in SharePoint changes the path but not the id.
      */
