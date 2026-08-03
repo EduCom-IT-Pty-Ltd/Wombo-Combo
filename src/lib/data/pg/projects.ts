@@ -297,3 +297,46 @@ export async function createProject(
   if (!created) throw new Error("Project was inserted but could not be read back.");
   return created;
 }
+
+/**
+ * The global search index: one query, no aggregates.
+ *
+ * `listProjects` runs six extra queries per call to build open-task and defect
+ * counts, assigned installers and accepted-quote margins. The search box in the
+ * top bar needs none of that, and it renders on every page — so paying for the
+ * full enrich there multiplied the cost of the entire application by seven.
+ */
+export async function listProjectsForSearch(
+  orgId: string,
+  limit = 500,
+): Promise<Array<{ id: string; title: string; projectNumber: string; customerName: string; siteLabel: string | null }>> {
+  const rows = await db()
+    .select({
+      id: projects.id,
+      title: projects.title,
+      projectNumber: projects.projectNumber,
+      customerName: customers.name,
+      siteName: sites.name,
+      siteSuburb: sites.suburb,
+      siteState: sites.state,
+    })
+    .from(projects)
+    .innerJoin(customers, eq(customers.id, projects.customerId))
+    .leftJoin(sites, eq(sites.id, projects.siteId))
+    .where(eq(projects.orgId, orgId))
+    .orderBy(desc(projects.updatedAt))
+    // Bounded so the top bar cannot become slower as the business grows. Once
+    // this is reached, search needs to move server-side rather than the cap
+    // being raised.
+    .limit(limit);
+
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    projectNumber: row.projectNumber,
+    customerName: row.customerName,
+    siteLabel: row.siteName
+      ? [row.siteName, [row.siteSuburb, row.siteState].filter(Boolean).join(" ")].filter(Boolean).join(" · ")
+      : null,
+  }));
+}

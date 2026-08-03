@@ -7,7 +7,7 @@ import * as pgWorkflow from "./pg/workflow";
 import * as pgQuotes from "./pg/quotes";
 import * as pgField from "./pg/field";
 import * as pgSettings from "./pg/settings";
-import { readLocalStore, readStatusFieldTemplates, readStatusTaskTemplates } from "./local-store";
+import { readLocalStore, readStatusFieldTemplates, readStatusSettings as readLocalStatusSettings, readStatusTaskTemplates } from "./local-store";
 import type {
   Assignment,
   Customer,
@@ -473,4 +473,39 @@ export async function getDashboardMetrics(orgId: string): Promise<DashboardMetri
       .reduce((s, p) => s + p.contractValueCents, 0),
     openDefects: defects.filter((d) => !d.resolvedAt).length,
   };
+}
+
+
+/**
+ * Search index for the top bar. Deliberately not `listProjects` /
+ * `listCustomers`: those run six and three extra aggregate queries respectively,
+ * and the top bar renders on every page, so using them multiplied the cost of
+ * the whole application.
+ */
+export async function listSearchIndex(orgId: string, includeCustomers: boolean) {
+  if (!hasDatabase) {
+    const store = await readLocalStore();
+    return {
+      projects: store.projects.map(({ id, title, projectNumber, customerName, siteLabel }) => ({ id, title, projectNumber, customerName, siteLabel })),
+      customers: includeCustomers ? store.customers.map(({ id, name, primaryContactName }) => ({ id, name, primaryContactName })) : [],
+    };
+  }
+  const [projects, customers] = await Promise.all([
+    pgProjects.listProjectsForSearch(orgId),
+    includeCustomers ? pgCustomers.listCustomersForSearch(orgId) : Promise.resolve([]),
+  ]);
+  return { projects, customers };
+}
+
+/**
+ * PORTED. The layout previously imported `readStatusSettings` from the JSON
+ * store directly, so a status flow edited in Settings was saved to Postgres and
+ * then never read back.
+ */
+export async function getStatusSettings(orgId: string) {
+  if (hasDatabase) {
+    const saved = await pgSettings.getStatusSettings(orgId);
+    if (saved) return saved;
+  }
+  return readLocalStatusSettings();
 }

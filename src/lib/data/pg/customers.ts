@@ -165,3 +165,31 @@ export async function createCustomer(
   if (!created) throw new Error("Customer was inserted but could not be read back.");
   return created;
 }
+
+/** Search index for the top bar: one query, none of the list-page aggregates. */
+export async function listCustomersForSearch(
+  orgId: string,
+  limit = 500,
+): Promise<Array<{ id: string; name: string; primaryContactName: string | null }>> {
+  const rows = await db()
+    .select({
+      id: customers.id,
+      name: customers.name,
+      firstName: contacts.firstName,
+      lastName: contacts.lastName,
+    })
+    .from(customers)
+    .leftJoin(
+      contacts,
+      and(eq(contacts.customerId, customers.id), eq(contacts.isPrimary, true)),
+    )
+    .where(and(eq(customers.orgId, orgId), eq(customers.active, true)))
+    .orderBy(asc(customers.name))
+    .limit(limit);
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    primaryContactName: row.firstName ? [row.firstName, row.lastName].filter(Boolean).join(" ") : null,
+  }));
+}

@@ -4,9 +4,8 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { TopBar } from "@/components/layout/topbar";
 import { StatusSettingsProvider } from "@/components/status-settings-provider";
-import { readStatusSettings } from "@/lib/data/local-store";
 import { PageTransition } from "@/components/layout/page-transition";
-import { getOpenTimeEntry, getProject, listCustomers, listPeople, listProjects } from "@/lib/data/repository";
+import { getOpenTimeEntry, getProject, getStatusSettings, listPeople, listSearchIndex } from "@/lib/data/repository";
 import { can } from "@/lib/domain/permissions";
 
 /**
@@ -15,7 +14,14 @@ import { can } from "@/lib/domain/permissions";
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  const [statusSettings, openEntry, people, projects, customers] = await Promise.all([readStatusSettings(), getOpenTimeEntry(session.org.id, fieldUserId(session)), listPeople(session.org.id), listProjects(session.org.id), can(session.role, "customer.view", session.permissionOverrides) ? listCustomers(session.org.id) : Promise.resolve([])]);
+  // `people` is only used to populate the demo user switcher, so a real session
+  // does not pay for the query at all.
+  const [statusSettings, openEntry, people, search] = await Promise.all([
+    getStatusSettings(session.org.id),
+    getOpenTimeEntry(session.org.id, fieldUserId(session)),
+    session.isDemo ? listPeople(session.org.id) : Promise.resolve([]),
+    listSearchIndex(session.org.id, can(session.role, "customer.view", session.permissionOverrides)),
+  ]);
   const activeProject = openEntry ? await getProject(session.org.id, openEntry.projectId) : null;
   const items = navItemsFor(session.role, session.permissionOverrides);
 
@@ -38,8 +44,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           logoUrl={session.org.logoUrl}
           userId={session.user.id}
           demoPeople={session.isDemo ? people.map(({ id, name, role }) => ({ id, name, role })) : undefined}
-          searchProjects={projects.map(({ id, title, projectNumber, customerName, siteLabel }) => ({ id, title, projectNumber, customerName, siteLabel }))}
-          searchCustomers={customers.map(({ id, name, primaryContactName }) => ({ id, name, primaryContactName }))}
+          searchProjects={search.projects}
+          searchCustomers={search.customers}
           activeShift={openEntry && activeProject ? { projectId: activeProject.id, projectTitle: activeProject.title, startedAt: openEntry.startedAt, paused: Boolean(openEntry.pausedAt) } : null}
         />
 

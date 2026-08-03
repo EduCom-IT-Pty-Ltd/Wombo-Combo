@@ -5,6 +5,7 @@ import { requireCapability } from "@/lib/auth/session";
 import { hasDatabase, isDemoMode } from "@/lib/db";
 import { createProject as createPgProject } from "@/lib/data/pg/projects";
 import { createSite as createPgSite } from "@/lib/data/pg/projects";
+import { provisionProjectSharePoint } from "@/lib/integrations/sharepoint/provision-project";
 import { runAutomations, type AutomationEffect } from "@/lib/domain/automation";
 import { applyLocalAutomationEffect, createLocalProject } from "@/lib/data/local-store";
 import { listProjectTemplates } from "@/lib/data/repository";
@@ -70,6 +71,11 @@ export async function createProjectRequest(
       requestedStartOn: parsed.data.requestedStartOn ? new Date(parsed.data.requestedStartOn) : null,
       projectNumberPrefix: session.org.projectNumberPrefix,
     });
+
+    // Awaited rather than fired and forgotten: on serverless the function can be
+    // frozen the moment the response is returned, so a detached promise is not
+    // guaranteed to run. It cannot throw, so it cannot fail the creation.
+    await provisionProjectSharePoint(session.org.id, project.id);
 
     revalidatePath("/projects");
     return { status: "success", projectId: project.id, message: `Created ${project.projectNumber}.` };

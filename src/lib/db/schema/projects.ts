@@ -45,6 +45,13 @@ export const projects = pgTable(
     heldFromStatus: projectStatusEnum("held_from_status"),
     holdReason: text("hold_reason"),
 
+    /**
+     * The project's folder in SharePoint. Keyed by driveItemId, never path — a
+     * rename or move in SharePoint changes the path but not the id.
+     */
+    sharepointDriveId: text("sharepoint_drive_id"),
+    sharepointFolderItemId: text("sharepoint_folder_item_id"),
+    sharepointFolderUrl: text("sharepoint_folder_url"),
     /** Free-form extension point: custom fields per org without migrations. */
     customFields: jsonb("custom_fields").$type<Record<string, unknown>>().notNull().default({}),
     ...timestamps,
