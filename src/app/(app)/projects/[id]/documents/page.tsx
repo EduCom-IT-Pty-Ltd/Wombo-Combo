@@ -4,6 +4,8 @@ import { can } from "@/lib/domain/permissions";
 import { listDocuments, listPeople } from "@/lib/data/repository";
 import { Badge, Button, Card, CardHeader, EmptyState } from "@/components/ui";
 import { formatBytes, formatDate } from "@/lib/utils";
+import { getSharePointFolder } from "@/app/actions/sharepoint";
+import { SharePointFolderCard } from "@/components/projects/sharepoint-folder-card";
 
 const KIND_LABELS: Record<string, string> = {
   drawing: "Drawing",
@@ -20,9 +22,10 @@ const KIND_LABELS: Record<string, string> = {
 export default async function ProjectDocumentsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSession();
-  const [documents, people] = await Promise.all([
+  const [documents, people, folder] = await Promise.all([
     listDocuments(session.org.id, id),
     listPeople(session.org.id),
+    getSharePointFolder(id),
   ]);
 
   const grouped = documents.reduce<Record<string, typeof documents>>((acc, doc) => {
@@ -31,52 +34,58 @@ export default async function ProjectDocumentsPage({ params }: { params: Promise
   }, {});
 
   return (
-    <Card>
-      <CardHeader
-        title="Documents"
-        description="Drawings, SWMS, permits and certificates"
-        action={
-          can(session.role, "document.upload", session.permissionOverrides) ? (
-            <Button size="sm" variant="secondary">
-              Upload
-            </Button>
-          ) : null
-        }
+    <div className="space-y-4">
+      <SharePointFolderCard
+        projectId={id}
+        folderUrl={folder.url}
+        canRetry={can(session.role, "project.edit", session.permissionOverrides)}
       />
-      {documents.length === 0 ? (
-        <EmptyState title="No documents" description="Upload drawings, SWMS and permits so the crew can access them on site." />
-      ) : (
-        <div className="divide-y divide-border-subtle">
-          {Object.entries(grouped).map(([kind, docs]) => (
-            <section key={kind}>
-              <h3 className="bg-surface-muted px-4 py-1.5 text-xs font-medium text-muted-foreground">
-                {KIND_LABELS[kind] ?? kind}
-              </h3>
-              <ul className="divide-y divide-border-subtle">
-                {docs.map((doc) => {
-                  const uploader = people.find((p) => p.id === doc.uploadedById);
-                  return (
-                    <li key={doc.id} className="flex items-center gap-3 px-4 py-3">
-                      <FileText className="size-5 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        {doc.url ? (
-                          <a
-                            href={doc.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex min-h-11 items-center gap-1.5 text-sm underline-offset-2 hover:underline"
-                          >
-                            <span className="truncate">{doc.name}</span>
-                            <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
-                          </a>
-                        ) : (
-                          <p className="truncate text-sm">{doc.name}</p>
-                        )}
-                        {doc.note ? <p className="text-xs text-muted-foreground">{doc.note}</p> : null}
-                        <p className="text-xs text-muted-foreground">
-                          v{doc.version} · {formatBytes(doc.sizeBytes)} · {uploader?.name ?? "Unknown"} ·{" "}
-                          {formatDate(doc.uploadedAt)}
-                        </p>
+      <Card>
+        <CardHeader
+          title="Documents"
+          description="Drawings, SWMS, permits and certificates"
+          action={
+            can(session.role, "document.upload", session.permissionOverrides) ? (
+              <Button size="sm" variant="secondary">
+                Upload
+              </Button>
+            ) : null
+          }
+        />
+        {documents.length === 0 ? (
+          <EmptyState title="No documents" description="Upload drawings, SWMS and permits so the crew can access them on site." />
+        ) : (
+          <div className="divide-y divide-border-subtle">
+            {Object.entries(grouped).map(([kind, docs]) => (
+              <section key={kind}>
+                <h3 className="bg-surface-muted px-4 py-1.5 text-xs font-medium text-muted-foreground">
+                  {KIND_LABELS[kind] ?? kind}
+                </h3>
+                <ul className="divide-y divide-border-subtle">
+                  {docs.map((doc) => {
+                    const uploader = people.find((p) => p.id === doc.uploadedById);
+                    return (
+                      <li key={doc.id} className="flex items-center gap-3 px-4 py-3">
+                        <FileText className="size-5 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          {doc.url ? (
+                            <a
+                              href={doc.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex min-h-11 items-center gap-1.5 text-sm underline-offset-2 hover:underline"
+                            >
+                              <span className="truncate">{doc.name}</span>
+                              <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
+                            </a>
+                          ) : (
+                            <p className="truncate text-sm">{doc.name}</p>
+                          )}
+                          {doc.note ? <p className="text-xs text-muted-foreground">{doc.note}</p> : null}
+                          <p className="text-xs text-muted-foreground">
+                            v{doc.version} · {formatBytes(doc.sizeBytes)} · {uploader?.name ?? "Unknown"} ·{" "}
+                            {formatDate(doc.uploadedAt)}
+                          </p>
                       </div>
                       {doc.requiresAcknowledgement ? (
                         <Badge tone="amber">
@@ -91,6 +100,7 @@ export default async function ProjectDocumentsPage({ params }: { params: Promise
           ))}
         </div>
       )}
-    </Card>
+      </Card>
+    </div>
   );
 }
