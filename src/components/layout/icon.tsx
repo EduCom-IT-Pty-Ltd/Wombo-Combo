@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   CalendarDays,
   FolderKanban,
   HardHat,
@@ -25,6 +26,7 @@ const ICONS = {
   production: Factory,
   shield: ShieldCheck,
   settings: Settings,
+  book: BookOpen,
   more: MoreHorizontal,
 } as const satisfies Record<IconName, unknown>;
 

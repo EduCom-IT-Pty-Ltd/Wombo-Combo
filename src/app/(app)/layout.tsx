@@ -5,6 +5,7 @@ import { BottomNav } from "@/components/layout/bottom-nav";
 import { TopBar } from "@/components/layout/topbar";
 import { StatusSettingsProvider } from "@/components/status-settings-provider";
 import { PageTransition } from "@/components/layout/page-transition";
+import { SiteFooter } from "@/components/layout/site-footer";
 import { getOpenTimeEntry, getProject, getStatusSettings, listPeople, listSearchIndex } from "@/lib/data/repository";
 import { can } from "@/lib/domain/permissions";
 
@@ -49,10 +50,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           activeShift={openEntry && activeProject ? { projectId: activeProject.id, projectTitle: activeProject.title, startedAt: openEntry.startedAt, paused: Boolean(openEntry.pausedAt) } : null}
         />
 
-        {/* pb-20 clears the mobile bottom nav; lg drops it. */}
-        <main className="flex-1 px-4 pt-4 pb-24 sm:px-6 lg:px-8 lg:pb-8">
+        <main className="flex-1 px-4 pt-4 pb-8 sm:px-6 lg:px-8">
           <PageTransition><div className="mx-auto w-full max-w-6xl">{children}</div></PageTransition>
         </main>
+
+        {/* The footer carries the clearance the fixed mobile bottom nav needs;
+            lg drops both the nav and the padding. */}
+        <SiteFooter withGuides className="pb-24 lg:pb-8" />
       </div>
 
       <BottomNav items={items} />

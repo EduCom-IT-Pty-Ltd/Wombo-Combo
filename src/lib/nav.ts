@@ -7,8 +7,8 @@ export interface NavItem {
   /** Shorter label for the mobile bottom bar. */
   shortLabel?: string;
   icon: IconName;
-  /** Hidden unless the member holds this capability. */
-  capability: Capability;
+  /** Hidden unless the member holds this capability. Always shown when absent. */
+  capability?: Capability;
   /** Order in the mobile bottom bar; omitted items live under "More". */
   mobileOrder?: number;
 }
@@ -25,6 +25,7 @@ export type IconName =
   | "production"
   | "shield"
   | "settings"
+  | "book"
   | "more";
 
 export const NAV_ITEMS: NavItem[] = [
@@ -40,6 +41,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/hr", label: "People", icon: "users", capability: "hr.view" },
   { href: "/labour", label: "Labour", icon: "labour", capability: "labour.manage" },
   { href: "/admin", label: "Settings", icon: "settings", capability: "admin.manage" },
+  // No capability: help is for everyone, including a role somebody has stripped
+  // back to almost nothing.
+  { href: "/docs", label: "Guides", icon: "book" },
 ];
 
 export type SettingsIconName = "building" | "workflow" | "shield" | "automation";
@@ -111,6 +115,6 @@ export const PROJECT_TABS: ProjectTab[] = [
  * redirects them to `/field` anyway and everything else is office work.
  */
 export function navItemsFor(role: Role, overrides?: RolePermissionOverrides): NavItem[] {
-  const items = NAV_ITEMS.filter((item) => can(role, item.capability, overrides));
+  const items = NAV_ITEMS.filter((item) => !item.capability || can(role, item.capability, overrides));
   return isFieldOnly(role, overrides) ? items.filter((item) => item.href !== "/") : items;
 }
