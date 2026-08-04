@@ -2,6 +2,7 @@ import { index, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "
 import { orgScoped, timestamps } from "./_shared";
 import { invoiceStatusEnum } from "./enums";
 import { projects } from "./projects";
+import { quotes } from "./quoting";
 
 /**
  * Snapshot of final costing, written when the project enters `final_costing`
@@ -60,6 +61,11 @@ export const invoiceExports = pgTable(
   {
     ...orgScoped,
     projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    /**
+     * The quote this was billed from. Nullable and `set null` on delete: the
+     * record of what was invoiced has to outlive the quote it came from.
+     */
+    quoteId: uuid("quote_id").references(() => quotes.id, { onDelete: "set null" }),
     status: invoiceStatusEnum("status").notNull().default("pending_export"),
     amountCents: integer("amount_cents").notNull().default(0),
     /** Serialised line items as sent, so a Xero-side edit is still traceable. */

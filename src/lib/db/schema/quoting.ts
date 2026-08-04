@@ -41,6 +41,32 @@ export const priceListItems = pgTable(
     costCurrency: text("cost_currency").notNull().default("AUD"),
     /** Default margin applied when the item is pulled into a quote, as a percent. */
     defaultMarginPct: numeric("default_margin_pct", { precision: 6, scale: 3 }).notNull().default("30"),
+    /**
+     * Sell price, when it is a number in its own right rather than a margin on
+     * cost. Null falls back to deriving it from `defaultMarginPct`.
+     *
+     * Xero items need this: a sales price there has no arithmetic relationship
+     * to the purchase price, and plenty of them have a sell price and no cost at
+     * all. Margin cannot express that — on a zero cost it is either zero or
+     * infinite — so the price has to be stored rather than derived.
+     */
+    unitSellCents: integer("unit_sell_cents"),
+    /**
+     * The Xero item this row mirrors. Its presence is what makes it safe to send
+     * `ItemCode` on a quote or invoice line: Xero rejects a code it does not
+     * know, so a locally-invented SKU must not be sent as one.
+     */
+    xeroItemId: text("xero_item_id"),
+    /**
+     * The revenue account this item is coded to in Xero, so a line billed from
+     * it lands where the bookkeeper puts it rather than in one catch-all.
+     *
+     * Null is common — an item is allowed to have no sales account — and those
+     * lines fall back to the organisation's configured revenue account. Sending
+     * no account at all is not an option: Xero rejects an invoice line that has
+     * neither its own account nor one on the item.
+     */
+    xeroSalesAccountCode: text("xero_sales_account_code"),
     active: boolean("active").notNull().default(true),
     ...timestamps,
   },
@@ -96,6 +122,22 @@ export const quotes = pgTable(
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     declineReason: text("decline_reason"),
     pdfDocumentId: uuid("pdf_document_id"),
+
+    /**
+     * The quote's counterpart in Xero, once it has been pushed there.
+     *
+     * Held on the quote rather than in a side table because it is one-to-one and
+     * because every question worth asking — has this been sent, what number did
+     * the customer see, did the last push fail — is asked while looking at the
+     * quote.
+     */
+    xeroQuoteId: text("xero_quote_id"),
+    xeroQuoteNumber: text("xero_quote_number"),
+    /** Xero's own status: DRAFT, SENT, ACCEPTED, INVOICED, DECLINED, DELETED. */
+    xeroQuoteStatus: text("xero_quote_status"),
+    xeroSyncedAt: timestamp("xero_synced_at", { withTimezone: true }),
+    /** Set when a push fails, cleared on the next success. */
+    xeroLastError: text("xero_last_error"),
     ...timestamps,
   },
   (t) => [
@@ -110,6 +152,8 @@ export const quoteLines = pgTable(
     ...orgScoped,
     quoteId: uuid("quote_id").notNull().references(() => quotes.id, { onDelete: "cascade" }),
     kind: lineKindEnum("kind").notNull().default("material"),
+    // `price_list_item_id` is what carries a line back to its catalogue material,
+    // and through that to the Xero item code the line should be billed under.
     priceListItemId: uuid("price_list_item_id").references(() => priceListItems.id, { onDelete: "set null" }),
     supplierId: uuid("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
     description: text("description").notNull(),

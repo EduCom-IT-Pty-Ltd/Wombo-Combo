@@ -59,10 +59,16 @@ export interface CatalogueMaterial {
   name: string;
   /** Optional selectable product variant, e.g. “Aero 1200”. */
   variation: string | null;
+  /** Doubles as the Xero item code on rows that came from Xero. */
   sku: string;
   description: string | null;
   costCentsPerM2: number;
   standardPriceCentsPerM2: number;
+  /**
+   * Set when this row mirrors a Xero item. Only then may `sku` be sent to Xero
+   * as an `ItemCode` — Xero rejects a code it does not recognise.
+   */
+  xeroItemId?: string | null;
 }
 
 export interface CustomerPriceList {
@@ -202,6 +208,11 @@ export interface QuoteSummary {
   validUntil: string | null;
   sentAt: string | null;
   preparedById: string | null;
+  /** Set once the quote has been pushed to Xero. */
+  xeroQuoteId?: string | null;
+  xeroQuoteNumber?: string | null;
+  xeroQuoteStatus?: string | null;
+  xeroLastError?: string | null;
   lines: QuoteLineInput[];
 }
 

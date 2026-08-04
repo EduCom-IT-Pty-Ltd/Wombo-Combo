@@ -4,11 +4,14 @@ import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addMaterial, addPriceList, deleteMaterial, deletePriceList, importMaterials, type MaterialActionState, updateMaterial, updatePriceList } from "@/app/actions/materials";
 import { Button, Card, CardHeader } from "@/components/ui";
+import { XeroSyncButton } from "@/components/materials/xero-sync-button";
+import { CSV_HEADINGS } from "@/lib/domain/catalogue-csv";
 import type { CatalogueMaterial, CustomerPriceList } from "@/lib/data/types";
 
 const initial: MaterialActionState = { ok: false };
 const input = "h-10 w-full rounded-lg border border-border-strong bg-surface px-2 text-sm text-foreground";
-const csvHeadings = ["name", "variation", "sku", "description", "cost_per_m2", "standard_price_per_m2"];
+// The same list the importer reads back, so an export can always be re-imported.
+const csvHeadings = CSV_HEADINGS;
 
 function materialLabel(material: CatalogueMaterial) { return material.variation ? `${material.name} — ${material.variation}` : material.name; }
 function csvValue(value: string | number | null) { const text = value == null ? "" : String(value); return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text; }
@@ -32,6 +35,7 @@ export function MaterialsManager({ materials, priceLists }: { materials: Catalog
     <Card>
       <CardHeader title="Material catalogue" description="Group variations under a main product, with internal cost and standard customer price per square metre." />
       <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3">
+        <XeroSyncButton />
         <Button type="button" size="sm" variant="secondary" onClick={exportCsv}>{materials.length ? "Export CSV" : "Download CSV template"}</Button>
         <a href="#import-materials" className="text-xs font-semibold text-primary hover:underline">CSV format</a>
         <span className="text-xs text-muted-foreground">Imports update matching SKUs and add new ones.</span>
@@ -40,7 +44,7 @@ export function MaterialsManager({ materials, priceLists }: { materials: Catalog
         <label className="sr-only" htmlFor="materials-csv">Materials CSV</label>
         <input id="materials-csv" name="file" type="file" accept=".csv,text/csv" required className="min-w-0 flex-1 text-sm" />
         <Button type="submit" size="sm" variant="secondary" disabled={importPending}>{importPending ? "Importing…" : "Import CSV"}</Button>
-        {importState.message ? <p className="w-full text-xs text-muted-foreground">{importState.message}</p> : <p className="w-full text-xs text-muted-foreground">Headings: {csvHeadings.join(", ")}</p>}
+        {importState.message ? <p className="w-full text-xs text-muted-foreground">{importState.message}</p> : <p className="w-full text-xs text-muted-foreground">Headings: {csvHeadings.join(", ")}. A Xero item export also imports as-is.</p>}
       </form>
       <form action={materialAction} className="grid gap-2 border-b border-border-subtle p-4 sm:grid-cols-2">
         <input name="name" required placeholder="Main material name" className={input} />

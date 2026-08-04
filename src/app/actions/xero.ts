@@ -85,6 +85,78 @@ export async function exportInvoiceToXero(projectId: string): Promise<{ ok: bool
   return { ok: result.ok, message: result.message };
 }
 
+/**
+ * Push a project quote to Xero as a draft quote.
+ *
+ * `quote.send` rather than `finance.manage`: this is the estimator's own step,
+ * and it creates a customer-facing document rather than touching the ledger.
+ * Approving and emailing it still happens in Xero.
+ */
+export async function exportQuoteToXero(quoteId: string): Promise<{ ok: boolean; message: string }> {
+  const session = await requireCapability("quote.send");
+  if (!xeroConfigured()) return { ok: false, message: "Xero is not configured." };
+  if (!(await getConnection(session.org.id))) return { ok: false, message: "Connect Xero first, from Finance." };
+
+  const { exportProjectQuote } = await import("@/lib/integrations/xero/sync");
+  const settings = await getXeroSettings(session.org.id);
+  const result = await exportProjectQuote(session.org.id, quoteId, {
+    revenueAccountCode: settings.revenueAccountCode,
+  });
+
+  revalidatePath("/projects", "layout");
+  return { ok: result.ok, message: result.message };
+}
+
+/** Bill a specific quote, rather than whichever one the project has accepted. */
+export async function exportQuoteInvoiceToXero(
+  projectId: string,
+  quoteId: string,
+): Promise<{ ok: boolean; message: string }> {
+  const session = await requireCapability("finance.manage");
+  if (!xeroConfigured()) return { ok: false, message: "Xero is not configured." };
+  if (!(await getConnection(session.org.id))) return { ok: false, message: "Connect Xero first, from Finance." };
+
+  const { exportProjectInvoice } = await import("@/lib/integrations/xero/sync");
+  const settings = await getXeroSettings(session.org.id);
+  const result = await exportProjectInvoice(session.org.id, projectId, {
+    revenueAccountCode: settings.revenueAccountCode,
+    quoteId,
+  });
+
+  revalidatePath("/finance");
+  revalidatePath(`/projects/${projectId}`, "layout");
+  return { ok: result.ok, message: result.message };
+}
+
+/**
+ * Mirror Xero's inventory items into the material catalogue.
+ *
+ * One way only. Xero is where the bookkeeper maintains prices, and a catalogue
+ * that can write back is a catalogue that can put a typo into the accounting
+ * system.
+ */
+export async function syncMaterialsFromXero(): Promise<{ ok: boolean; message: string }> {
+  const session = await requireCapability("quote.edit");
+  if (!xeroConfigured()) return { ok: false, message: "Xero is not configured." };
+  if (!(await getConnection(session.org.id))) return { ok: false, message: "Connect Xero first, from Finance." };
+
+  try {
+    const { syncItemsFromXero } = await import("@/lib/integrations/xero/items");
+    const { created, updated, unpriced, total } = await syncItemsFromXero(session.org.id);
+    revalidatePath("/materials");
+    revalidatePath("/production-templates");
+    revalidatePath("/projects", "layout");
+    return {
+      ok: true,
+      message: `${total} item${total === 1 ? "" : "s"} from Xero: ${created} added, ${updated} updated.${
+        unpriced ? ` ${unpriced} have no sell price and cannot be quoted yet.` : ""
+      }`,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not read items from Xero." };
+  }
+}
+
 /** Refreshes payment status so the `closed` guard can see settled invoices. */
 export async function refreshXeroPayments(): Promise<{ ok: boolean; message: string }> {
   const session = await requireCapability("finance.manage");

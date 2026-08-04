@@ -32,8 +32,15 @@ npm run db:generate # after any change under src/lib/db/schema/
 ## Data layer
 
 Reads go through `src/lib/data/repository.ts`, which dispatches to
-`src/lib/data/pg/*` when `hasDatabase` is true and to the JSON store otherwise. The
-migration is complete: every repository function and write action runs against Postgres.
+`src/lib/data/pg/*` when `hasDatabase` is true and to the JSON store otherwise. Every
+repository read is ported.
+
+**Writes are not all ported, and a write that is not is silently lost.** Reads come
+from Postgres as soon as `DATABASE_URL` is set, so an action that still writes only to
+the JSON store saves without error and the screen never shows the change. Each action
+dispatches on `hasDatabase` itself. Still JSON-only, and broken against a database:
+`attendance.ts`, `labour.ts`, `project-templates.ts`, `qa-schedule.ts`,
+`schedule-phases.ts`. Check before trusting a save.
 
 Money is never summed in SQL — totals come from `src/lib/domain/*` so a list page and a
 detail page cannot disagree. `neon-http` has no interactive transactions, so anything
@@ -60,6 +67,13 @@ both the organisation and membership checks. Onboarding is: invite in WorkOS ->
 SharePoint via Microsoft Graph, app-only client credentials with `Sites.Selected` on one
 site. Folder identity is `driveItemId`, never a path — a rename in SharePoint changes the
 path but not the id. `npm run graph:check` exercises the whole chain.
+
+Xero via OAuth 2.0 Web App flow, granular scopes (`accounting.invoices` covers Quotes,
+Invoices *and* Items). The material catalogue is mirrored **from** Xero's items — one way,
+never written back — so quote and invoice lines can carry an `ItemCode` Xero already knows
+and land in that item's own revenue account. Only rows with a `xero_item_id` may send a
+code; an unrecognised one fails the whole document. Everything we create in Xero is a
+DRAFT, approved and sent by a human there.
 
 ## Mobile
 

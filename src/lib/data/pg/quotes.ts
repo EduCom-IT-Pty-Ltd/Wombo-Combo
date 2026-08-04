@@ -72,6 +72,9 @@ async function withLines(orgId: string, rows: (typeof quotes.$inferSelect)[]): P
     const list = linesBy.get(line.quoteId) ?? [];
     list.push({
       id: line.id,
+      // What ties the line back to its catalogue material, and through that to
+      // the Xero item it should be billed under.
+      catalogueMaterialId: line.priceListItemId ?? undefined,
       kind: line.kind,
       description: line.description,
       quantity: Number(line.quantity),
@@ -102,6 +105,10 @@ async function withLines(orgId: string, rows: (typeof quotes.$inferSelect)[]): P
     validUntil: row.validUntil?.toISOString() ?? null,
     sentAt: row.sentAt?.toISOString() ?? null,
     preparedById: row.preparedByUserId,
+    xeroQuoteId: row.xeroQuoteId,
+    xeroQuoteNumber: row.xeroQuoteNumber,
+    xeroQuoteStatus: row.xeroQuoteStatus,
+    xeroLastError: row.xeroLastError,
     lines: linesBy.get(row.id) ?? [],
   }));
 }
@@ -200,6 +207,7 @@ export async function saveQuote(
         totals.lines.map((line, index) => ({
           orgId,
           quoteId: quote.id,
+          priceListItemId: line.catalogueMaterialId ?? null,
           kind: line.kind,
           description: line.description,
           quantity: String(line.quantity),
@@ -220,6 +228,83 @@ export async function saveQuote(
   const created = await getQuote(orgId, quote.id);
   if (!created) throw new Error("Quote was inserted but could not be read back.");
   return created;
+}
+
+/**
+ * Replace the lines of a quote that has not been issued yet.
+ *
+ * Distinct from `saveQuote`, which supersedes and creates version N+1. That is
+ * the right move for a quote the customer has seen; for a draft still being
+ * built it would litter the project with a version per keystroke-batch. The
+ * status guard is what keeps the two apart — an issued quote is never edited
+ * out from under whoever received it.
+ */
+export async function replaceQuoteLines(
+  orgId: string,
+  quoteId: string,
+  lines: QuoteLineInput[],
+): Promise<QuoteSummary | null> {
+  const [existing] = await db()
+    .select({ id: quotes.id, status: quotes.status, taxRatePct: quotes.taxRatePct })
+    .from(quotes)
+    .where(and(eq(quotes.orgId, orgId), eq(quotes.id, quoteId)))
+    .limit(1);
+  if (!existing) return null;
+  if (!SUPERSEDABLE_STATUSES.includes(existing.status)) return null;
+
+  const taxRatePct = Number(existing.taxRatePct);
+  const totals = calculateQuote(lines, taxRatePct);
+
+  await db().delete(quoteLines).where(and(eq(quoteLines.orgId, orgId), eq(quoteLines.quoteId, quoteId)));
+
+  if (totals.lines.length > 0) {
+    await db()
+      .insert(quoteLines)
+      .values(
+        totals.lines.map((line, index) => ({
+          orgId,
+          quoteId,
+          priceListItemId: line.catalogueMaterialId ?? null,
+          kind: line.kind,
+          description: line.description,
+          quantity: String(line.quantity),
+          unit: line.unit,
+          unitCostCents: line.unitCostCents,
+          costCurrency: line.costCurrency,
+          fxRate: String(line.fxRate),
+          marginPct: String(line.marginPct),
+          unitSellCents: line.unitSellCents,
+          isOverride: line.isOverride,
+          lineCostCents: line.lineCostCents,
+          lineSellCents: line.lineSellCents,
+          sortOrder: index,
+        })),
+      );
+  }
+
+  await db()
+    .update(quotes)
+    .set({
+      subtotalCostCents: totals.subtotalCostCents,
+      subtotalSellCents: totals.subtotalSellCents,
+      taxCents: totals.taxCents,
+      totalCents: totals.totalCents,
+      marginCents: totals.marginCents,
+      marginPct: String(totals.marginPct),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(quotes.orgId, orgId), eq(quotes.id, quoteId)));
+
+  return getQuote(orgId, quoteId);
+}
+
+/** Removes a quote and its lines. Rejected once the quote has been issued. */
+export async function deleteQuote(orgId: string, quoteId: string): Promise<QuoteSummary | null> {
+  const quote = await getQuote(orgId, quoteId);
+  if (!quote || !SUPERSEDABLE_STATUSES.includes(quote.status)) return null;
+  // Lines go with it: `quote_lines.quote_id` cascades.
+  await db().delete(quotes).where(and(eq(quotes.orgId, orgId), eq(quotes.id, quoteId)));
+  return quote;
 }
 
 /**

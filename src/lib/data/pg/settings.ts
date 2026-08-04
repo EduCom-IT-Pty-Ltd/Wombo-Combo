@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { once } from "../request-scope";
@@ -6,7 +7,7 @@ import { organizations } from "@/lib/db/schema/org";
 import { projects, tasks } from "@/lib/db/schema/projects";
 import { schedulePhases } from "@/lib/db/schema/scheduling";
 import { priceListItems } from "@/lib/db/schema/quoting";
-import { sellFromMargin } from "@/lib/domain/money";
+import { marginPctOf, sellFromMargin } from "@/lib/domain/money";
 import { customers, sites } from "@/lib/db/schema/crm";
 import type {
   CatalogueMaterial,
@@ -346,15 +347,204 @@ export async function listCatalogueMaterials(orgId: string): Promise<CatalogueMa
     .where(and(eq(priceListItems.orgId, orgId), eq(priceListItems.active, true)))
     .orderBy(asc(priceListItems.name));
 
-  return rows.map((row) => ({
+  return rows.map(toCatalogueMaterial);
+}
+
+function toCatalogueMaterial(row: typeof priceListItems.$inferSelect): CatalogueMaterial {
+  return {
     id: row.id,
     name: row.name,
     variation: row.variation,
     sku: row.code,
     description: row.description,
     costCentsPerM2: row.unitCostCents,
-    standardPriceCentsPerM2: sellFromMargin(row.unitCostCents, Number(row.defaultMarginPct)),
-  }));
+    // A stored sell price wins over a derived one. Only rows that predate the
+    // column, or that were entered as "cost plus a margin", fall through.
+    standardPriceCentsPerM2: row.unitSellCents ?? sellFromMargin(row.unitCostCents, Number(row.defaultMarginPct)),
+    xeroItemId: row.xeroItemId,
+  };
+}
+
+export type CatalogueMaterialInput = Omit<CatalogueMaterial, "id"> & {
+  /** Xero's revenue account for this item. Only the item sync knows it. */
+  xeroSalesAccountCode?: string | null;
+};
+
+/**
+ * Catalogue rows are keyed by `code` within an org, and the code is blank on
+ * parent rows that exist only to group variations. Those cannot go through the
+ * unique index, so they get a generated placeholder — visible nowhere, but it
+ * keeps a second unnamed parent from colliding with the first.
+ */
+function codeFor(input: CatalogueMaterialInput): string {
+  return input.sku.trim() || `internal-${randomUUID()}`;
+}
+
+/**
+ * Margin is stored alongside the explicit sell price so the two never disagree:
+ * the catalogue screen shows a margin derived from the same pair of numbers the
+ * quote builder prices from.
+ */
+function marginFor(input: CatalogueMaterialInput): string {
+  return String(marginPctOf(input.costCentsPerM2, input.standardPriceCentsPerM2));
+}
+
+function materialValues(orgId: string, input: CatalogueMaterialInput) {
+  return {
+    orgId,
+    code: codeFor(input),
+    name: input.name,
+    variation: input.variation,
+    description: input.description,
+    kind: "material" as const,
+    unit: "m²",
+    unitCostCents: input.costCentsPerM2,
+    unitSellCents: input.standardPriceCentsPerM2,
+    defaultMarginPct: marginFor(input),
+    xeroItemId: input.xeroItemId ?? null,
+    xeroSalesAccountCode: input.xeroSalesAccountCode ?? null,
+    active: true,
+  };
+}
+
+export async function createCatalogueMaterial(
+  orgId: string,
+  input: CatalogueMaterialInput,
+): Promise<CatalogueMaterial> {
+  const [row] = await db().insert(priceListItems).values(materialValues(orgId, input)).returning();
+  return toCatalogueMaterial(row);
+}
+
+export async function updateCatalogueMaterial(
+  orgId: string,
+  id: string,
+  input: CatalogueMaterialInput,
+): Promise<void> {
+  const { orgId: _orgId, ...values } = materialValues(orgId, input);
+  await db()
+    .update(priceListItems)
+    .set({ ...values, updatedAt: new Date() })
+    .where(and(eq(priceListItems.orgId, orgId), eq(priceListItems.id, id)));
+}
+
+/**
+ * Hard delete rather than `active = false`.
+ *
+ * Quote lines reference the row with `on delete set null` and carry their own
+ * copy of the description and price, so a deleted material cannot rewrite the
+ * history of a quote that used it. Leaving soft-deleted rows behind would only
+ * mean the unique index on `code` blocks re-adding the same SKU later.
+ */
+export async function deleteCatalogueMaterial(orgId: string, id: string): Promise<void> {
+  await db().delete(priceListItems).where(and(eq(priceListItems.orgId, orgId), eq(priceListItems.id, id)));
+
+  // Price lists live in the settings blob, so nothing cascades — the entry for a
+  // material that no longer exists has to be dropped by hand or it prices a
+  // ghost.
+  const lists = await listCustomerPriceLists(orgId);
+  if (lists.some((list) => list.entries.some((entry) => entry.materialId === id))) {
+    await saveCustomerPriceLists(
+      orgId,
+      lists.map((list) => ({ ...list, entries: list.entries.filter((entry) => entry.materialId !== id) })),
+    );
+  }
+
+  const templates = await listProductionTemplates(orgId);
+  if (templates.some((template) => template.materials.some((entry) => entry.materialId === id))) {
+    await saveProductionTemplates(
+      orgId,
+      templates.map((template) => ({
+        ...template,
+        materials: template.materials.filter((entry) => entry.materialId !== id),
+      })),
+    );
+  }
+}
+
+/**
+ * Bulk upsert, matching on code.
+ *
+ * One statement per row rather than a single multi-row insert: `on conflict do
+ * update` cannot see the other rows in its own batch, so a file containing the
+ * same code twice would fail the whole statement rather than have the second
+ * win. Catalogues are hundreds of rows, not millions, and correctness is worth
+ * more here than one round trip.
+ */
+export async function importCatalogueMaterials(
+  orgId: string,
+  inputs: CatalogueMaterialInput[],
+): Promise<{ created: number; updated: number }> {
+  let created = 0;
+  let updated = 0;
+
+  for (const input of inputs) {
+    const values = materialValues(orgId, input);
+    const [row] = await db()
+      .insert(priceListItems)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [priceListItems.orgId, priceListItems.code],
+        set: {
+          name: values.name,
+          variation: values.variation,
+          description: values.description,
+          unitCostCents: values.unitCostCents,
+          unitSellCents: values.unitSellCents,
+          defaultMarginPct: values.defaultMarginPct,
+          xeroItemId: values.xeroItemId,
+          xeroSalesAccountCode: values.xeroSalesAccountCode,
+          active: true,
+          updatedAt: new Date(),
+        },
+      })
+      // `xmax = 0` is true only for a row this statement inserted, which is the
+      // one way Postgres will tell an upsert which branch it took.
+      .returning({ inserted: sql<boolean>`(xmax = 0)` });
+
+    if (row?.inserted) created += 1;
+    else updated += 1;
+  }
+
+  return { created, updated };
+}
+
+export interface XeroItemRef {
+  code: string;
+  salesAccountCode: string | null;
+}
+
+/**
+ * How a set of catalogue materials should be billed in Xero, keyed by material id.
+ *
+ * Only rows carrying a `xero_item_id` are returned. A code Xero does not know
+ * fails the whole invoice, so "we are not sure" has to mean "send no code" —
+ * the line still bills, it just falls back to the default revenue account.
+ */
+export async function getXeroItemRefs(orgId: string, materialIds: string[]): Promise<Map<string, XeroItemRef>> {
+  if (materialIds.length === 0) return new Map();
+  const rows = await db()
+    .select({
+      id: priceListItems.id,
+      code: priceListItems.code,
+      salesAccountCode: priceListItems.xeroSalesAccountCode,
+    })
+    .from(priceListItems)
+    .where(
+      and(
+        eq(priceListItems.orgId, orgId),
+        inArray(priceListItems.id, materialIds),
+        isNotNull(priceListItems.xeroItemId),
+      ),
+    );
+  return new Map(rows.map((row) => [row.id, { code: row.code, salesAccountCode: row.salesAccountCode }]));
+}
+
+export async function saveCustomerPriceLists(orgId: string, value: CustomerPriceList[]): Promise<void> {
+  await writeSetting(orgId, "priceLists", value);
+}
+
+export async function saveProductionTemplates(orgId: string, value: ProductionTemplate[]): Promise<void> {
+  await writeSetting(orgId, "productionTemplates", value);
 }
 
 /** Revenue account code invoices are coded to. Null until an admin picks one. */

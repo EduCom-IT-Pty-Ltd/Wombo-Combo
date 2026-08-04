@@ -1,0 +1,1 @@
+ALTER TABLE "price_list_items" ADD COLUMN "xero_sales_account_code" text;
