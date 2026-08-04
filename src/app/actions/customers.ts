@@ -56,10 +56,21 @@ export async function createCustomer(_previous: CreateCustomerState, formData: F
   }
   if (hasDatabase) {
     const customer = await createPgCustomer(session.org.id, parsed.data);
+    // Xero owns the customer list, so a customer raised here has to exist there
+    // too — otherwise the first quote for them has nothing to bill against. The
+    // push is reported rather than thrown: the customer is already saved, and
+    // failing the form would lose the typing over a Xero outage. The next sync
+    // or the first quote export links it up.
+    const { pushCustomerToXero } = await import("@/lib/integrations/xero/contacts");
+    const pushed = await pushCustomerToXero(session.org.id, customer.id);
     // The list and the detail page both cache; without this the new customer is
     // written and then not visible on the page you land on.
     revalidatePath("/customers");
-    return { status: "success", customerId: customer.id, message: `${customer.name} was created.` };
+    return {
+      status: "success",
+      customerId: customer.id,
+      message: pushed.ok ? `${customer.name} was created in the portal and in Xero.` : `${customer.name} was created. ${pushed.message}`,
+    };
   }
 
   const customer = await createLocalCustomer(parsed.data);

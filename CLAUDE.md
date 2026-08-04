@@ -72,7 +72,18 @@ Invoices *and* Items). The material catalogue is mirrored **from** Xero's items 
 never written back — so quote and invoice lines can carry an `ItemCode` Xero already knows
 and land in that item's own revenue account. Only rows with a `xero_item_id` may send a
 code; an unrecognised one fails the whole document. Everything we create in Xero is a
-DRAFT, approved and sent by a human there.
+DRAFT, approved and sent by a human there. There is no quote PDF: a quote's only
+customer-facing form is the draft Xero produces.
+
+**Xero is the source of truth for customers**, and unlike materials that sync is two-way —
+see `src/lib/integrations/xero/contacts.ts`. `syncContactsFromXero` pulls, matching on
+`xero_contact_id` then on name, adding and updating only; a customer with no Xero contact
+is left alone, because it may have live projects and gets linked by `ensureXeroContact` on
+its first export. Creating, editing or archiving a customer here pushes the same change up.
+Keep every write path pushing: reads come back from Xero on the next sync, so a change that
+only lands locally is silently reverted and looks like the save not working. That is also
+why `contactPayload` sends empty strings rather than omitting keys — Xero reads an absent
+field as "leave it alone", which would make clearing an email impossible.
 
 **`syncItemsFromXero` is the only thing that writes a material.** There is no create,
 edit or CSV-import path, and adding one would be a bug: `materialValues` blanks

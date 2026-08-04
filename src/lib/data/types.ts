@@ -93,37 +93,6 @@ export interface ProjectCostingOptions {
   includeSubcontractorMaterialCosts: boolean;
 }
 
-export const QUOTE_DYNAMIC_FIELDS = [
-  "quote_reference",
-  "quote_date",
-  "project_name",
-  "project_number",
-  "customer_name",
-  "customer_contact",
-  "site_address",
-  "quote_total",
-] as const;
-
-export type QuoteDynamicField = (typeof QUOTE_DYNAMIC_FIELDS)[number];
-export type QuoteTemplateFieldType = QuoteDynamicField | "plain_text";
-export interface QuoteTemplateField {
-  id: string;
-  field: QuoteTemplateFieldType;
-  /** Used only when `field` is plain_text. */
-  text?: string;
-  x: number;
-  y: number;
-  width: number;
-}
-
-/** A local visual template for the customer-facing quote PDF. Positions are
- * percentages of an A4 portrait page, keeping the browser preview and PDF in sync. */
-export interface QuoteDocumentTemplateSettings {
-  letterheadUrl: string | null;
-  fields: QuoteTemplateField[];
-  table: { x: number; y: number; width: number };
-}
-
 /** A reusable production model. Material quantities can be adjusted per quote. */
 export interface ProductionTemplate {
   id: string;

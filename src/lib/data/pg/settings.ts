@@ -17,7 +17,6 @@ import type {
   ProjectCostingOptions,
   ProjectTemplate,
   OrganisationSettings,
-  QuoteDocumentTemplateSettings,
   SchedulePhaseView,
 } from "../types";
 import type { RolePermissionOverrides } from "@/lib/domain/permissions";
@@ -28,10 +27,10 @@ import type { ProjectStatus } from "@/lib/db/schema/enums";
  * Organisation configuration, stored in `organizations.settings`.
  *
  * These are administered settings rather than transactional records: labour
- * rates, price lists, checklist templates, the quote letterhead layout. Giving
- * each its own table would mean a migration every time the admin screen grows a
- * field, which is exactly what that jsonb column exists to avoid — see the
- * comment on the schema.
+ * rates, price lists, checklist templates, role overrides. Giving each its own
+ * table would mean a migration every time the admin screen grows a field, which
+ * is exactly what that jsonb column exists to avoid — see the comment on the
+ * schema.
  *
  * Reads and writes address one key at a time, so two admin screens saving
  * different settings concurrently do not overwrite each other's key. The write
@@ -41,7 +40,6 @@ import type { ProjectStatus } from "@/lib/db/schema/enums";
 
 interface OrgSettings {
   labour?: LabourSettings;
-  quoteTemplate?: QuoteDocumentTemplateSettings;
   priceLists?: CustomerPriceList[];
   productionTemplates?: ProductionTemplate[];
   projectTemplates?: ProjectTemplate[];
@@ -107,17 +105,6 @@ export async function getLabourSettings(orgId: string): Promise<LabourSettings> 
 
 export async function saveLabourSettings(orgId: string, value: LabourSettings): Promise<void> {
   await writeSetting(orgId, "labour", value);
-}
-
-export async function getQuoteDocumentTemplateSettings(orgId: string): Promise<QuoteDocumentTemplateSettings | null> {
-  return (await readSettings(orgId)).quoteTemplate ?? null;
-}
-
-export async function saveQuoteDocumentTemplateSettings(
-  orgId: string,
-  value: QuoteDocumentTemplateSettings,
-): Promise<void> {
-  await writeSetting(orgId, "quoteTemplate", value);
 }
 
 export async function listCustomerPriceLists(orgId: string): Promise<CustomerPriceList[]> {

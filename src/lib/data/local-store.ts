@@ -11,7 +11,6 @@ import type {
   CustomerPriceList,
   LabourSettings,
   ProjectCostingOptions,
-  QuoteDocumentTemplateSettings,
   ProductionTemplate,
   ProjectTemplate,
   SchedulePhase,
@@ -62,7 +61,6 @@ export type LocalStore = {
   customerPriceLists: CustomerPriceList[];
   labourSettings: LabourSettings;
   projectCostingOptions: Record<string, ProjectCostingOptions>;
-  quoteDocumentTemplate: QuoteDocumentTemplateSettings;
   productionTemplates: ProductionTemplate[];
   projectTemplates: ProjectTemplate[];
   organisation: OrganisationSettings;
@@ -101,7 +99,6 @@ function freshStore(): LocalStore {
     customerPriceLists: [],
     labourSettings: { standardLabourEnabled: false, standardLabourCostCentsPerEmployee: 0, subcontractorMaterialRates: [] },
     projectCostingOptions: {},
-    quoteDocumentTemplate: { letterheadUrl: null, fields: [], table: { x: 10, y: 38, width: 80 } },
     productionTemplates: [],
     projectTemplates: [],
     organisation: DEFAULT_ORGANISATION,
@@ -154,8 +151,7 @@ async function loadStore(): Promise<LocalStore> {
     const statusFieldTemplates = (store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES)).map((template) => ({ ...template, required: template.required ?? false }));
     const people = (store.people ?? structuredClone(seed.people)).map((person) => ({ ...person, role: LEGACY_ROLE_MAP[person.role] ?? person.role }));
     const organisation = { ...DEFAULT_ORGANISATION, ...(store.organisation ?? {}) };
-    const quoteDocumentTemplate = { ...freshStore().quoteDocumentTemplate, ...(store.quoteDocumentTemplate ?? {}), table: { ...freshStore().quoteDocumentTemplate.table, ...(store.quoteDocumentTemplate?.table ?? {}) }, fields: store.quoteDocumentTemplate?.fields ?? [] };
-    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], labourSettings: { standardLabourEnabled: store.labourSettings?.standardLabourEnabled ?? false, standardLabourCostCentsPerEmployee: store.labourSettings?.standardLabourCostCentsPerEmployee ?? 0, subcontractorMaterialRates: store.labourSettings?.subcontractorMaterialRates ?? [] }, projectCostingOptions: store.projectCostingOptions ?? {}, quoteDocumentTemplate, productionTemplates, projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
+    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], labourSettings: { standardLabourEnabled: store.labourSettings?.standardLabourEnabled ?? false, standardLabourCostCentsPerEmployee: store.labourSettings?.standardLabourCostCentsPerEmployee ?? 0, subcontractorMaterialRates: store.labourSettings?.subcontractorMaterialRates ?? [] }, projectCostingOptions: store.projectCostingOptions ?? {}, productionTemplates, projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
@@ -164,8 +160,6 @@ async function loadStore(): Promise<LocalStore> {
 
 export async function readOrganisationSettings() { return (await readLocalStore()).organisation; }
 export async function saveOrganisationSettings(settings: OrganisationSettings) { await updateLocalStore((store) => { store.organisation = settings; }); }
-export async function readQuoteDocumentTemplateSettings() { return (await readLocalStore()).quoteDocumentTemplate; }
-export async function saveQuoteDocumentTemplateSettings(settings: QuoteDocumentTemplateSettings) { await updateLocalStore((store) => { store.quoteDocumentTemplate = settings; }); }
 export async function readRolePermissions() { return (await readLocalStore()).rolePermissions; }
 export async function saveRolePermissions(permissions: RolePermissionOverrides) { await updateLocalStore((store) => { store.rolePermissions = permissions; }); }
 

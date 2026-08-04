@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "customers_org_xero_contact_idx" ON "customers" USING btree ("org_id","xero_contact_id");

@@ -1,4 +1,4 @@
-import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { orgScoped, timestamps } from "./_shared";
 
 export const customers = pgTable(
@@ -11,7 +11,7 @@ export const customers = pgTable(
     abn: text("abn"),
     billingAddress: text("billing_address"),
     paymentTermsDays: text("payment_terms_days"),
-    /** Xero ContactID once synced. */
+    /** Xero ContactID once synced. Xero is the source of truth for customers. */
     xeroContactId: text("xero_contact_id"),
     notes: text("notes"),
     /** Defaults applied when a project is raised for this customer. */
@@ -20,7 +20,14 @@ export const customers = pgTable(
     active: boolean("active").notNull().default(true),
     ...timestamps,
   },
-  (t) => [index("customers_org_name_idx").on(t.orgId, t.name)],
+  (t) => [
+    index("customers_org_name_idx").on(t.orgId, t.name),
+    // What makes the Xero import a single upsert rather than a read-then-write
+    // per contact, and the reason two customers can never point at the same Xero
+    // contact. Unlinked rows are unaffected: Postgres treats nulls as distinct,
+    // so any number of customers may sit here with no contact id.
+    uniqueIndex("customers_org_xero_contact_idx").on(t.orgId, t.xeroContactId),
+  ],
 );
 
 export const contacts = pgTable(

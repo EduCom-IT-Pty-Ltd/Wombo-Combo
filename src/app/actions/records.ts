@@ -51,8 +51,22 @@ export async function updateCustomerRecord(_state: RecordActionState, formData: 
     if (hasDatabase) await updatePgCustomer(session.org.id, parsed.data);
     else await updateLocalCustomer(parsed.data);
   } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not update customer." }; }
+  // Xero is the source of truth, so an edit that only landed here would be
+  // silently reverted by the next sync — which reads as the save not working.
+  const pushed = hasDatabase ? await pushCustomer(session.org.id, parsed.data.id) : { ok: true, message: undefined };
   revalidatePath(`/customers/${parsed.data.id}`); revalidatePath("/customers"); revalidatePath("/projects", "layout");
-  return { ok: true, message: "Customer details saved." };
+  return pushed.ok ? { ok: true, message: "Customer details saved to the portal and Xero." } : { ok: false, message: pushed.message };
+}
+
+/** Dynamic so the Xero client stays out of the module graph of every other action here. */
+async function pushCustomer(orgId: string, customerId: string): Promise<{ ok: boolean; message?: string }> {
+  const { pushCustomerToXero } = await import("@/lib/integrations/xero/contacts");
+  return pushCustomerToXero(orgId, customerId);
+}
+
+async function pushArchived(orgId: string, customerId: string, archived: boolean): Promise<{ ok: boolean; message?: string }> {
+  const { setXeroContactArchived } = await import("@/lib/integrations/xero/contacts");
+  return setXeroContactArchived(orgId, customerId, archived);
 }
 
 function refreshProjects() { revalidatePath("/projects"); revalidatePath("/", "layout"); }
@@ -121,13 +135,20 @@ export async function deleteProjectRecord(id: string): Promise<RecordActionState
 }
 function refreshCustomers() { revalidatePath("/customers"); revalidatePath("/projects", "layout"); }
 
+/**
+ * Archiving mirrors into Xero, because the sync reads `ContactStatus` back. Left
+ * one-sided, the next sync would find the contact still active there and
+ * un-archive it here, which looks exactly like the button not working.
+ */
 export async function archiveCustomerRecord(id: string): Promise<RecordActionState> {
   const session = await requireCapability("customer.manage");
   if (hasDatabase) {
     if (!await setCustomerActive(session.org.id, id, false)) return { ok: false, message: "That customer could not be archived." };
-  } else {
-    await archiveLocalCustomer(id);
+    const pushed = await pushArchived(session.org.id, id, true);
+    refreshCustomers();
+    return pushed.ok ? { ok: true, message: "Customer archived here and in Xero." } : { ok: false, message: pushed.message };
   }
+  await archiveLocalCustomer(id);
   refreshCustomers();
   return { ok: true, message: "Customer archived." };
 }
@@ -136,9 +157,11 @@ export async function restoreCustomerRecord(id: string): Promise<RecordActionSta
   const session = await requireCapability("customer.manage");
   if (hasDatabase) {
     if (!await setCustomerActive(session.org.id, id, true)) return { ok: false, message: "That customer could not be restored." };
-  } else {
-    await restoreLocalCustomer(id);
+    const pushed = await pushArchived(session.org.id, id, false);
+    refreshCustomers();
+    return pushed.ok ? { ok: true, message: "Customer restored here and in Xero." } : { ok: false, message: pushed.message };
   }
+  await restoreLocalCustomer(id);
   refreshCustomers();
   return { ok: true, message: "Customer restored." };
 }

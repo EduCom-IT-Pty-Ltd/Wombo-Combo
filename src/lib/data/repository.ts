@@ -17,7 +17,6 @@ import type {
   LabourSettings,
   OrganisationSettings,
   ProjectCostingOptions,
-  QuoteDocumentTemplateSettings,
   ProductionTemplate,
   ProjectTemplate,
   SchedulePhaseView,
@@ -153,17 +152,6 @@ export async function getProjectCostingOptions(orgId: string, projectId: string)
   return once(`costingOptions:${orgId}:${projectId}`, async () => {
     if (hasDatabase) return pgSettings.getProjectCostingOptions(orgId, projectId);
     return (await readLocalStore()).projectCostingOptions[projectId] ?? { standardLabourEnabled: false, employeeCount: 0, includeSubcontractorMaterialCosts: false };
-  });
-}
-
-/** PORTED. Falls back to the packaged default until an admin saves one. */
-export async function getQuoteDocumentTemplateSettings(orgId: string): Promise<QuoteDocumentTemplateSettings> {
-  return once(`quoteDocumentTemplate:${orgId}`, async () => {
-    if (hasDatabase) {
-      const saved = await pgSettings.getQuoteDocumentTemplateSettings(orgId);
-      if (saved) return saved;
-    }
-    return (await readLocalStore()).quoteDocumentTemplate;
   });
 }
 

@@ -85,6 +85,13 @@
       "when": 1785814601756,
       "tag": "0011_abandoned_steve_rogers",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785827442878,
+      "tag": "0012_vengeful_expediter",
+      "breakpoints": true
     }
   ]
 }

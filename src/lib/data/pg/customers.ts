@@ -288,6 +288,205 @@ export async function deleteCustomer(orgId: string, id: string): Promise<boolean
   return rows.length > 0;
 }
 
+export interface XeroCustomerImport {
+  xeroContactId: string;
+  name: string;
+  abn: string | null;
+  billingAddress: string | null;
+  /** Null when Xero's terms are month-relative and do not express a day count. */
+  paymentTermsDays: number | null;
+  active: boolean;
+  /** Null when Xero holds no person, which must not blank out one held here. */
+  contact: { firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
+}
+
+/** Kept well inside Postgres' parameter ceiling with eight columns per row. */
+const IMPORT_CHUNK = 200;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let index = 0; index < items.length; index += size) out.push(items.slice(index, index + size));
+  return out;
+}
+
+/** Case and spacing are how the same company gets typed twice, so neither counts. */
+function normaliseName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Mirror Xero's contacts into the customer table.
+ *
+ * Adds and updates; never deletes. A customer here with no Xero contact is left
+ * alone — it predates the integration or was created while Xero was down, it may
+ * have live projects hanging off it, and `ensureXeroContact` links it the first
+ * time something is exported for it.
+ *
+ * Two passes, because a first sync has to recognise customers that already exist
+ * on both sides. The first claims unlinked rows whose name matches a contact,
+ * which is what stops the initial run from duplicating the entire list. The
+ * second is one upsert keyed on `xero_contact_id`, so a steady-state sync of
+ * several hundred contacts is a handful of statements rather than one per row —
+ * `neon-http` charges a round trip for each, and a per-row loop is how a sync
+ * button ends up outliving the request timeout.
+ */
+export async function importXeroCustomers(
+  orgId: string,
+  raw: XeroCustomerImport[],
+): Promise<{ created: number; updated: number; archived: number }> {
+  // Postgres refuses an ON CONFLICT that would touch the same row twice in one
+  // statement, so a contact appearing on two pages must not reach the insert
+  // twice. Last wins, which for paged reads is the fresher copy.
+  const inputs = [...new Map(raw.map((input) => [input.xeroContactId, input])).values()];
+  if (inputs.length === 0) return { created: 0, updated: 0, archived: 0 };
+
+  const existing = await db()
+    .select({
+      id: customers.id,
+      name: customers.name,
+      xeroContactId: customers.xeroContactId,
+      active: customers.active,
+    })
+    .from(customers)
+    .where(eq(customers.orgId, orgId));
+
+  const linkedIds = new Set(existing.map((row) => row.xeroContactId).filter(Boolean) as string[]);
+  const activeBy = new Map(existing.filter((row) => row.xeroContactId).map((row) => [row.xeroContactId!, row.active]));
+
+  // Only unlinked rows are candidates, and only where the name is unambiguous —
+  // two customers called "Smith Building" cannot be told apart by name, and
+  // guessing would attach a Xero contact to the wrong company's job history.
+  const unlinkedByName = new Map<string, string | null>();
+  for (const row of existing) {
+    if (row.xeroContactId) continue;
+    const key = normaliseName(row.name);
+    unlinkedByName.set(key, unlinkedByName.has(key) ? null : row.id);
+  }
+
+  let created = 0;
+  let updated = 0;
+  let archived = 0;
+
+  for (const input of inputs) {
+    if (linkedIds.has(input.xeroContactId)) continue;
+    const match = unlinkedByName.get(normaliseName(input.name));
+    if (!match) continue;
+    await db()
+      .update(customers)
+      .set({ xeroContactId: input.xeroContactId, updatedAt: new Date() })
+      .where(and(eq(customers.orgId, orgId), eq(customers.id, match)));
+    // Claimed, so a second contact with the same name falls through to an insert
+    // rather than stealing the row back.
+    unlinkedByName.set(normaliseName(input.name), null);
+    linkedIds.add(input.xeroContactId);
+    activeBy.set(input.xeroContactId, true);
+  }
+
+  for (const batch of chunk(inputs, IMPORT_CHUNK)) {
+    const rows = await db()
+      .insert(customers)
+      .values(
+        batch.map((input) => ({
+          orgId,
+          name: input.name,
+          abn: input.abn,
+          billingAddress: input.billingAddress,
+          paymentTermsDays: input.paymentTermsDays == null ? null : String(input.paymentTermsDays),
+          xeroContactId: input.xeroContactId,
+          active: input.active,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [customers.orgId, customers.xeroContactId],
+        set: {
+          name: sql`excluded.name`,
+          abn: sql`excluded.abn`,
+          billingAddress: sql`excluded.billing_address`,
+          // Xero not expressing a day count must not reset the row to nothing,
+          // so a null from the import keeps whatever is already there.
+          paymentTermsDays: sql`coalesce(excluded.payment_terms_days, ${customers.paymentTermsDays})`,
+          active: sql`excluded.active`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning({ id: customers.id, xeroContactId: customers.xeroContactId, inserted: sql<boolean>`(xmax = 0)` });
+
+    for (const row of rows) {
+      if (row.inserted) created += 1;
+      else updated += 1;
+    }
+  }
+
+  for (const input of inputs) {
+    if (!input.active && activeBy.get(input.xeroContactId) === true) archived += 1;
+  }
+
+  await importPrimaryContacts(orgId, inputs);
+
+  return { created, updated, archived };
+}
+
+/**
+ * The primary contact for each imported customer.
+ *
+ * Its own table and no unique key to upsert on, so this reads what is there and
+ * writes only what differs. That is not just tidiness: after the first sync
+ * almost nothing changes, and skipping the unchanged rows is what keeps a
+ * routine sync down to a couple of statements.
+ */
+async function importPrimaryContacts(orgId: string, inputs: XeroCustomerImport[]): Promise<void> {
+  const withContacts = inputs.filter((input) => input.contact);
+  if (withContacts.length === 0) return;
+
+  const xeroIds = withContacts.map((input) => input.xeroContactId);
+  const linked = new Map<string, string>();
+  for (const batch of chunk(xeroIds, IMPORT_CHUNK)) {
+    const rows = await db()
+      .select({ id: customers.id, xeroContactId: customers.xeroContactId })
+      .from(customers)
+      .where(and(eq(customers.orgId, orgId), inArray(customers.xeroContactId, batch)));
+    for (const row of rows) if (row.xeroContactId) linked.set(row.xeroContactId, row.id);
+  }
+
+  const customerIds = [...linked.values()];
+  const existing = new Map<string, typeof contacts.$inferSelect>();
+  for (const batch of chunk(customerIds, IMPORT_CHUNK)) {
+    const rows = await db()
+      .select()
+      .from(contacts)
+      .where(and(eq(contacts.orgId, orgId), inArray(contacts.customerId, batch), eq(contacts.isPrimary, true)));
+    for (const row of rows) existing.set(row.customerId, row);
+  }
+
+  const inserts: (typeof contacts.$inferInsert)[] = [];
+  for (const input of withContacts) {
+    const customerId = linked.get(input.xeroContactId);
+    if (!customerId) continue;
+    const values = {
+      firstName: input.contact!.firstName,
+      lastName: input.contact!.lastName,
+      email: input.contact!.email,
+      phone: input.contact!.phone,
+    };
+    const current = existing.get(customerId);
+    if (!current) {
+      inserts.push({ orgId, customerId, isPrimary: true, ...values });
+      continue;
+    }
+    const unchanged =
+      current.firstName === values.firstName &&
+      (current.lastName ?? null) === values.lastName &&
+      (current.email ?? null) === values.email &&
+      (current.phone ?? null) === values.phone;
+    if (unchanged) continue;
+    await db().update(contacts).set({ ...values, updatedAt: new Date() }).where(eq(contacts.id, current.id));
+  }
+
+  for (const batch of chunk(inserts, IMPORT_CHUNK)) {
+    await db().insert(contacts).values(batch);
+  }
+}
+
 /** Search index for the top bar: one query, none of the list-page aggregates. */
 export async function listCustomersForSearch(
   orgId: string,

@@ -13,7 +13,7 @@ export function NewCustomerForm({ priceLists, projectTemplates }: { priceLists: 
   return (
     <form action={action}>
       <Card>
-        <CardHeader title="Customer details" description="Saved to this computer while the app is in local test mode." />
+        <CardHeader title="Customer details" description="Created in Xero as well, so quotes and invoices for this customer land on the right contact." />
         <div className="grid gap-4 px-4 py-4 sm:grid-cols-2">
           <Text name="name" label="Customer name" required error={state.errors?.name} />
           <Text name="accountType" label="Account type" placeholder="Direct client, head contractor…" />

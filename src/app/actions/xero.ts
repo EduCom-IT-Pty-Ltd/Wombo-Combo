@@ -157,6 +157,39 @@ export async function syncMaterialsFromXero(): Promise<{ ok: boolean; message: s
   }
 }
 
+/**
+ * Mirror Xero's contacts into the customer list.
+ *
+ * `customer.manage` rather than `finance.*`: this maintains the customer list,
+ * which is the estimator's and the office's job, not the bookkeeper's.
+ *
+ * Manual, like the material sync, and for the same reason — a name or terms
+ * changing underneath someone mid-quote is worse than a list that is a day old,
+ * and the result says exactly what moved.
+ */
+export async function syncCustomersFromXero(): Promise<{ ok: boolean; message: string }> {
+  const session = await requireCapability("customer.manage");
+  if (!xeroConfigured()) return { ok: false, message: "Xero is not configured." };
+  if (!(await getConnection(session.org.id))) return { ok: false, message: "Connect Xero first, from Finance." };
+
+  try {
+    const { syncContactsFromXero } = await import("@/lib/integrations/xero/contacts");
+    const { created, updated, archived, total } = await syncContactsFromXero(session.org.id);
+    revalidatePath("/customers");
+    // The list alone is not enough — a renamed customer's own page caches too.
+    revalidatePath("/customers/[id]", "page");
+    revalidatePath("/projects", "layout");
+    return {
+      ok: true,
+      message: `${total} contact${total === 1 ? "" : "s"} from Xero: ${created} added, ${updated} updated.${
+        archived ? ` ${archived} archived in Xero and now archived here.` : ""
+      }`,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not read contacts from Xero." };
+  }
+}
+
 /** Refreshes payment status so the `closed` guard can see settled invoices. */
 export async function refreshXeroPayments(): Promise<{ ok: boolean; message: string }> {
   const session = await requireCapability("finance.manage");

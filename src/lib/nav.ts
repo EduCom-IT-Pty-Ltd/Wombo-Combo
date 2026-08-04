@@ -42,7 +42,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/admin", label: "Settings", icon: "settings", capability: "admin.manage" },
 ];
 
-export type SettingsIconName = "building" | "workflow" | "document" | "shield" | "automation";
+export type SettingsIconName = "building" | "workflow" | "shield" | "automation";
 
 /**
  * Settings is a section, not a page — each entry is its own route under
@@ -68,12 +68,6 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     label: "Project workflow",
     description: "The stages a project moves through, plus the checklist and details each stage needs.",
     icon: "workflow",
-  },
-  {
-    segment: "quote-template",
-    label: "Quote document",
-    description: "Upload an A4 letterhead and position the details that appear on every quote PDF.",
-    icon: "document",
   },
   {
     segment: "permissions",

@@ -1,20 +1,19 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { customers } from "@/lib/db/schema/crm";
 import { invoiceExports } from "@/lib/db/schema/finance";
 import { organizations } from "@/lib/db/schema/org";
 import { projects } from "@/lib/db/schema/projects";
 import { quotes } from "@/lib/db/schema/quoting";
 import { xeroFetch } from "./client";
+import { ensureXeroContact } from "./contacts";
 import { getQuote, listQuotes } from "@/lib/data/pg/quotes";
-import { getCustomer } from "@/lib/data/pg/customers";
 import { getXeroItemRefs } from "@/lib/data/pg/settings";
 import { priceLine } from "@/lib/domain/quote";
 import type { QuoteSummary } from "@/lib/data/types";
 
 /**
- * Contact sync, quote export and invoice export.
+ * Quote export and invoice export. Contacts live in `./contacts`.
  *
  * We do not issue quotes or invoices — Xero does. Everything created here is a
  * **draft**, so nothing reaches a customer until someone approves it in Xero.
@@ -79,65 +78,6 @@ async function toXeroLineItems(
       ...(item ? { ItemCode: item.code } : {}),
     };
   });
-}
-
-export interface XeroContact {
-  ContactID: string;
-  Name: string;
-}
-
-/**
- * Find or create the Xero contact for a customer, and remember its id.
- *
- * Matching is by stored `xeroContactId` first and name second. Name matching is
- * a fallback for customers that already exist in Xero from before this
- * integration — without it every one of them would be duplicated on first
- * export, which is tedious to unpick in an accounting system.
- */
-export async function ensureXeroContact(orgId: string, customerId: string): Promise<string> {
-  const [row] = await db()
-    .select({ id: customers.id, name: customers.name, xeroContactId: customers.xeroContactId })
-    .from(customers)
-    .where(and(eq(customers.orgId, orgId), eq(customers.id, customerId)))
-    .limit(1);
-  if (!row) throw new Error(`Customer ${customerId} not found.`);
-  if (row.xeroContactId) return row.xeroContactId;
-
-  const search = await xeroFetch<{ Contacts?: XeroContact[] }>(
-    orgId,
-    `/api.xro/2.0/Contacts?where=${encodeURIComponent(`Name=="${row.name.replace(/"/g, '\\"')}"`)}`,
-  );
-
-  let contactId = search.Contacts?.[0]?.ContactID;
-
-  if (!contactId) {
-    const customer = await getCustomer(orgId, customerId);
-    const created = await xeroFetch<{ Contacts: XeroContact[] }>(orgId, "/api.xro/2.0/Contacts", {
-      method: "POST",
-      body: JSON.stringify({
-        Contacts: [
-          {
-            Name: row.name,
-            EmailAddress: customer?.primaryContactEmail ?? undefined,
-            FirstName: customer?.primaryContactName?.split(/\s+/)[0] ?? undefined,
-            LastName: customer?.primaryContactName?.split(/\s+/).slice(1).join(" ") || undefined,
-            // Xero's own terms, so its ageing reports match ours.
-            PaymentTerms: customer
-              ? { Sales: { Day: customer.paymentTermsDays, Type: "DAYSAFTERBILLDATE" } }
-              : undefined,
-          },
-        ],
-      }),
-    });
-    contactId = created.Contacts[0].ContactID;
-  }
-
-  await db()
-    .update(customers)
-    .set({ xeroContactId: contactId, updatedAt: new Date() })
-    .where(and(eq(customers.orgId, orgId), eq(customers.id, customerId)));
-
-  return contactId;
 }
 
 export interface ExportResult {

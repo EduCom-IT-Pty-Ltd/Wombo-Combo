@@ -4,6 +4,7 @@ import { can } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
 import { listArchivedCustomers, listCustomers } from "@/lib/data/repository";
 import { ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
+import { CustomerXeroSyncButton } from "@/components/customers/xero-sync-button";
 
 export const metadata = { title: "Customers" };
 
@@ -18,8 +19,13 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     <div className="space-y-4">
       <PageHeader
         title="Customers"
-        description={`${customers.length} ${archived ? "archived " : ""}accounts`}
-        action={can(session.role, "customer.manage", session.permissionOverrides) ? <ButtonLink href="/customers/new" variant="primary" size="sm">Add customer</ButtonLink> : null}
+        description={`${customers.length} ${archived ? "archived " : ""}accounts, kept in step with Xero`}
+        action={can(session.role, "customer.manage", session.permissionOverrides) ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <CustomerXeroSyncButton />
+            <ButtonLink href="/customers/new" variant="primary" size="sm">Add customer</ButtonLink>
+          </div>
+        ) : null}
       />
 
       <div className="flex gap-2"><Link href="/customers" className={`rounded-full px-4 py-2 text-sm font-bold ${!archived ? "bg-primary text-primary-foreground" : "bg-surface-muted text-muted-foreground"}`}>Active</Link><Link href="/customers?archived=1" className={`rounded-full px-4 py-2 text-sm font-bold ${archived ? "bg-primary text-primary-foreground" : "bg-surface-muted text-muted-foreground"}`}>Archived</Link></div>

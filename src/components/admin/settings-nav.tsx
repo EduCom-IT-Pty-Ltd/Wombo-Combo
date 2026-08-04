@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, Building2, FileText, ShieldCheck, Workflow, Zap } from "lucide-react";
+import { ArrowLeft, Building2, ShieldCheck, Workflow, Zap } from "lucide-react";
 import { SETTINGS_SECTIONS, settingsSectionFor, type SettingsIconName } from "@/lib/nav";
 import { PageHeader } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 const ICONS = {
   building: Building2,
   workflow: Workflow,
-  document: FileText,
   shield: ShieldCheck,
   automation: Zap,
 } as const satisfies Record<SettingsIconName, unknown>;
