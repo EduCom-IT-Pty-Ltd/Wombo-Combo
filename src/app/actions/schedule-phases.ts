@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
+import { hasDatabase } from "@/lib/db";
+import * as pgSettings from "@/lib/data/pg/settings";
 import { createLocalSchedulePhase, deleteLocalSchedulePhase, updateLocalSchedulePhase } from "@/lib/data/local-store";
 
 const phaseSchema = z.object({
@@ -16,21 +18,34 @@ export type SchedulePhaseActionState = { ok: boolean; message?: string };
 function revalidateSchedule(projectId: string) { revalidatePath(`/projects/${projectId}/schedule`); revalidatePath("/schedule"); }
 
 export async function addSchedulePhase(_state: SchedulePhaseActionState, formData: FormData): Promise<SchedulePhaseActionState> {
-  await requireCapability("schedule.manage");
+  const session = await requireCapability("schedule.manage");
   const projectId = String(formData.get("projectId") ?? "");
   const parsed = phaseSchema.safeParse(Object.fromEntries(formData));
   if (!projectId || !parsed.success) return { ok: false, message: "Enter a Call-Up, assign a user, and choose a date." };
-  try { await createLocalSchedulePhase({ projectId, ...parsed.data, description: parsed.data.description || null }); } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not add phase." }; }
+  const value = { ...parsed.data, description: parsed.data.description || null };
+  try {
+    if (hasDatabase) await pgSettings.createSchedulePhase(session.org.id, { projectId, ...value });
+    else await createLocalSchedulePhase({ projectId, ...value });
+  } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not add phase." }; }
   revalidateSchedule(projectId); return { ok: true, message: "Call-Up added." };
 }
 
 export async function updateSchedulePhase(_state: SchedulePhaseActionState, formData: FormData): Promise<SchedulePhaseActionState> {
-  await requireCapability("schedule.manage");
+  const session = await requireCapability("schedule.manage");
   const projectId = String(formData.get("projectId") ?? ""); const id = String(formData.get("id") ?? "");
   const parsed = phaseSchema.safeParse(Object.fromEntries(formData));
   if (!projectId || !id || !parsed.success) return { ok: false, message: "Check the Call-Up details." };
-  try { await updateLocalSchedulePhase(id, { ...parsed.data, description: parsed.data.description || null }); } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not update phase." }; }
+  const value = { ...parsed.data, description: parsed.data.description || null };
+  try {
+    if (hasDatabase) await pgSettings.updateSchedulePhase(session.org.id, id, value);
+    else await updateLocalSchedulePhase(id, value);
+  } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not update phase." }; }
   revalidateSchedule(projectId); return { ok: true, message: "Call-Up updated." };
 }
 
-export async function deleteSchedulePhase(id: string, projectId: string) { await requireCapability("schedule.manage"); await deleteLocalSchedulePhase(id); revalidateSchedule(projectId); }
+export async function deleteSchedulePhase(id: string, projectId: string) {
+  const session = await requireCapability("schedule.manage");
+  if (hasDatabase) await pgSettings.deleteSchedulePhase(session.org.id, id);
+  else await deleteLocalSchedulePhase(id);
+  revalidateSchedule(projectId);
+}

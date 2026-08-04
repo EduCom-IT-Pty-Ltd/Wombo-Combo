@@ -2,10 +2,12 @@ import "server-only";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { materialUsage, timeEntries, variations } from "@/lib/db/schema/field";
-import { assignments, leaveRequests } from "@/lib/db/schema/scheduling";
+import { assignments, leaveRequests, schedulePhases } from "@/lib/db/schema/scheduling";
+import { memberships } from "@/lib/db/schema/org";
 import { projects } from "@/lib/db/schema/projects";
 import { sites } from "@/lib/db/schema/crm";
 import { defects, inspections, inspectionItems } from "@/lib/db/schema/qa";
+import { assertUserAvailable } from "./settings";
 import { documents } from "@/lib/db/schema/documents";
 import type { DocumentKind } from "@/lib/db/schema/enums";
 import type {
@@ -85,6 +87,89 @@ function toTimeEntry(row: typeof timeEntries.$inferSelect): TimeEntry {
     costRateCentsPerHour: row.costRateCentsPerHour,
     notes: row.notes,
   };
+}
+
+export interface AttendanceInput {
+  projectId: string;
+  userId: string;
+  startedAt: string;
+  endedAt: string;
+  breakMinutes: number;
+  notes?: string;
+}
+
+/**
+ * The hourly cost to snapshot onto a shift.
+ *
+ * Copied onto the row rather than joined at read time, so raising someone's rate
+ * next year does not rewrite what last year's jobs cost. Doubles as the
+ * "is this a real employee of this org" check the JSON store did against its
+ * people list.
+ */
+async function costRateFor(orgId: string, userId: string): Promise<number> {
+  const [membership] = await db()
+    .select({ costRateCents: memberships.costRateCents })
+    .from(memberships)
+    .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId), eq(memberships.active, true)))
+    .limit(1);
+  if (!membership) throw new Error("Choose a valid employee");
+  // `cost_rate_cents` is a text column, and is null for people who have never
+  // had a rate set. Either way an unset rate is zero, not a crash.
+  return Number(membership.costRateCents ?? 0) || 0;
+}
+
+/**
+ * An attendance correction entered from the office.
+ *
+ * Unlike the field clock this is always a completed shift, recorded for someone
+ * else after the fact — so `pausedAt` is explicitly null rather than inherited
+ * from whatever the crew's phone last did.
+ */
+export async function createAttendanceEntry(orgId: string, input: AttendanceInput): Promise<void> {
+  await db().insert(timeEntries).values({
+    orgId,
+    projectId: input.projectId,
+    userId: input.userId,
+    startedAt: new Date(input.startedAt),
+    endedAt: new Date(input.endedAt),
+    breakMinutes: input.breakMinutes,
+    pausedAt: null,
+    costRateCentsPerHour: await costRateFor(orgId, input.userId),
+    notes: input.notes?.trim() || null,
+  });
+}
+
+export async function updateAttendanceEntry(
+  orgId: string,
+  entryId: string,
+  input: Omit<AttendanceInput, "projectId">,
+): Promise<void> {
+  const costRateCentsPerHour = await costRateFor(orgId, input.userId);
+  const updated = await db()
+    .update(timeEntries)
+    .set({
+      userId: input.userId,
+      startedAt: new Date(input.startedAt),
+      endedAt: new Date(input.endedAt),
+      breakMinutes: input.breakMinutes,
+      pausedAt: null,
+      costRateCentsPerHour,
+      notes: input.notes?.trim() || null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(timeEntries.orgId, orgId), eq(timeEntries.id, entryId)))
+    .returning({ id: timeEntries.id });
+  if (updated.length === 0) throw new Error("Time entry not found");
+}
+
+/** Returns the deleted entry, so the caller knows which project to revalidate. */
+export async function deleteAttendanceEntry(orgId: string, entryId: string): Promise<{ projectId: string }> {
+  const [deleted] = await db()
+    .delete(timeEntries)
+    .where(and(eq(timeEntries.orgId, orgId), eq(timeEntries.id, entryId)))
+    .returning({ projectId: timeEntries.projectId });
+  if (!deleted) throw new Error("Time entry not found");
+  return deleted;
 }
 
 // --- Scheduling -------------------------------------------------------------
@@ -338,6 +423,95 @@ export async function listInspections(orgId: string, projectId: string): Promise
     completedAt: row.completedAt?.toISOString() ?? null,
     items: itemsBy.get(row.id) ?? [],
   }));
+}
+
+/**
+ * The checklist a brand-new inspection starts with.
+ *
+ * A deliberate two-line default rather than nothing: an inspection with no items
+ * cannot be passed or failed, and asking someone to build a checklist before
+ * they can book a date is the wrong order to do the work in.
+ */
+const DEFAULT_INSPECTION_ITEMS = [
+  { prompt: "Workmanship meets approved scope", isCritical: true },
+  { prompt: "Site is clean and safe", isCritical: false },
+];
+
+/**
+ * Schedule — or reschedule — the QA inspection, and mirror it onto the calendar.
+ *
+ * The mirrored Call-Up is what puts the inspection in front of the inspector at
+ * all; the QA screen is not somewhere people look daily. It is matched on
+ * `inspectionId` so rescheduling moves the existing entry rather than leaving a
+ * trail of stale ones on the old dates.
+ */
+export async function scheduleInspection(
+  orgId: string,
+  input: { inspectionId?: string | null; projectId: string; inspectorId: string; date: string },
+): Promise<void> {
+  await assertUserAvailable(orgId, input.inspectorId, input.date);
+
+  // Date only, pinned to UTC midnight: an inspection is booked for a day, and
+  // storing local midnight would read back as the day before in some timezones.
+  const scheduledFor = new Date(`${input.date}T00:00:00.000Z`);
+
+  const [existing] = input.inspectionId
+    ? await db()
+        .select({ id: inspections.id })
+        .from(inspections)
+        .where(
+          and(
+            eq(inspections.orgId, orgId),
+            eq(inspections.id, input.inspectionId),
+            eq(inspections.projectId, input.projectId),
+          ),
+        )
+        .limit(1)
+    : [];
+
+  let inspectionId = existing?.id;
+
+  if (inspectionId) {
+    await db()
+      .update(inspections)
+      .set({ inspectorUserId: input.inspectorId, scheduledFor, updatedAt: new Date() })
+      .where(and(eq(inspections.orgId, orgId), eq(inspections.id, inspectionId)));
+  } else {
+    const [created] = await db()
+      .insert(inspections)
+      .values({
+        orgId,
+        projectId: input.projectId,
+        result: "pending",
+        inspectorUserId: input.inspectorId,
+        scheduledFor,
+      })
+      .returning({ id: inspections.id });
+    inspectionId = created.id;
+
+    await db()
+      .insert(inspectionItems)
+      .values(
+        DEFAULT_INSPECTION_ITEMS.map((item, sortOrder) => ({ orgId, inspectionId: created.id, ...item, sortOrder })),
+      );
+  }
+
+  const phase = {
+    title: "QA inspection",
+    description: "Scheduled QA inspection",
+    userId: input.inspectorId,
+    date: input.date,
+  };
+
+  const moved = await db()
+    .update(schedulePhases)
+    .set({ ...phase, updatedAt: new Date() })
+    .where(and(eq(schedulePhases.orgId, orgId), eq(schedulePhases.inspectionId, inspectionId)))
+    .returning({ id: schedulePhases.id });
+
+  if (moved.length === 0) {
+    await db().insert(schedulePhases).values({ orgId, projectId: input.projectId, inspectionId, ...phase });
+  }
 }
 
 export async function listDefects(orgId: string, opts: { projectId?: string } = {}): Promise<Defect[]> {

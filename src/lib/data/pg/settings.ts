@@ -1,11 +1,11 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, lte, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { once } from "../request-scope";
 import { organizations } from "@/lib/db/schema/org";
 import { projects, tasks } from "@/lib/db/schema/projects";
-import { schedulePhases } from "@/lib/db/schema/scheduling";
+import { leaveRequests, schedulePhases } from "@/lib/db/schema/scheduling";
 import { priceListItems } from "@/lib/db/schema/quoting";
 import { marginPctOf, sellFromMargin } from "@/lib/domain/money";
 import { customers, sites } from "@/lib/db/schema/crm";
@@ -227,6 +227,65 @@ export async function listSchedulePhases(
       ? [row.siteName, [row.siteSuburb, row.siteState].filter(Boolean).join(" ")].filter(Boolean).join(" · ")
       : null,
   }));
+}
+
+/**
+ * Refuse to book someone who is on leave that day.
+ *
+ * The same rule the JSON store enforced, and the reason it lives beside the
+ * write rather than in the form: a booking made from a stale page, or by two
+ * people at once, has to be caught here or not at all.
+ *
+ * `requested` leave counts as unavailable alongside `approved`. Someone who has
+ * asked for the day off and not heard back is exactly who should not be quietly
+ * booked onto a job.
+ */
+export async function assertUserAvailable(orgId: string, userId: string, date: string): Promise<void> {
+  const day = new Date(`${date}T00:00:00.000Z`);
+  const [clash] = await db()
+    .select({ type: leaveRequests.type })
+    .from(leaveRequests)
+    .where(
+      and(
+        eq(leaveRequests.orgId, orgId),
+        eq(leaveRequests.userId, userId),
+        notInArray(leaveRequests.status, ["cancelled", "declined"]),
+        lte(leaveRequests.startsAt, new Date(`${date}T23:59:59.999Z`)),
+        gte(leaveRequests.endsAt, day),
+      ),
+    )
+    .limit(1);
+
+  if (clash) throw new Error(`This person is unavailable on that date (${clash.type.replaceAll("_", " ")}).`);
+}
+
+export interface SchedulePhaseInput {
+  title: string;
+  description: string | null;
+  userId: string;
+  date: string;
+}
+
+export async function createSchedulePhase(
+  orgId: string,
+  input: SchedulePhaseInput & { projectId: string },
+): Promise<void> {
+  await assertUserAvailable(orgId, input.userId, input.date);
+  await db().insert(schedulePhases).values({ orgId, ...input });
+}
+
+export async function updateSchedulePhase(orgId: string, id: string, input: SchedulePhaseInput): Promise<void> {
+  await assertUserAvailable(orgId, input.userId, input.date);
+  const updated = await db()
+    .update(schedulePhases)
+    .set({ ...input, updatedAt: new Date() })
+    .where(and(eq(schedulePhases.orgId, orgId), eq(schedulePhases.id, id)))
+    .returning({ id: schedulePhases.id });
+  if (updated.length === 0) throw new Error("Phase not found");
+}
+
+export async function deleteSchedulePhase(orgId: string, id: string): Promise<void> {
+  await db().delete(schedulePhases).where(and(eq(schedulePhases.orgId, orgId), eq(schedulePhases.id, id)));
 }
 
 // --- Per-status workflow checklists -----------------------------------------
@@ -545,6 +604,25 @@ export async function saveCustomerPriceLists(orgId: string, value: CustomerPrice
 
 export async function saveProductionTemplates(orgId: string, value: ProductionTemplate[]): Promise<void> {
   await writeSetting(orgId, "productionTemplates", value);
+}
+
+export async function saveProjectTemplates(orgId: string, value: ProjectTemplate[]): Promise<void> {
+  await writeSetting(orgId, "projectTemplates", value);
+}
+
+/**
+ * Clear a deleted project template off the customers that defaulted to it.
+ *
+ * Templates live in the settings blob, so nothing cascades. A customer pointing
+ * at a template that no longer exists would silently start new projects with no
+ * default at all — the same outcome, but reached by accident rather than by
+ * anyone deciding it.
+ */
+export async function clearCustomerDefaultProjectTemplate(orgId: string, templateId: string): Promise<void> {
+  await db()
+    .update(customers)
+    .set({ defaultProjectTemplateId: null, updatedAt: new Date() })
+    .where(and(eq(customers.orgId, orgId), eq(customers.defaultProjectTemplateId, templateId)));
 }
 
 /** Revenue account code invoices are coded to. Null until an admin picks one. */

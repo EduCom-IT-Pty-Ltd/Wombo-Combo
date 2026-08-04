@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
+import { hasDatabase } from "@/lib/db";
+import * as pgField from "@/lib/data/pg/field";
+import { recordEvent } from "@/lib/data/pg/workflow";
 import { createLocalAttendanceEntry, deleteLocalAttendanceEntry, updateLocalAttendanceEntry } from "@/lib/data/local-store";
 
 export type AttendanceActionState = { ok: boolean; message?: string };
@@ -43,11 +46,16 @@ function parseEntry(formData: FormData) {
 }
 
 export async function addAttendanceEntry(_state: AttendanceActionState, formData: FormData): Promise<AttendanceActionState> {
-  await requireCapability("schedule.manage");
+  const session = await requireCapability("schedule.manage");
   const input = parseEntry(formData);
   if (!input) return { ok: false, message: "Choose an employee and valid clock-in and clock-out times." };
   try {
-    await createLocalAttendanceEntry(input);
+    if (hasDatabase) {
+      await pgField.createAttendanceEntry(session.org.id, input);
+      await recordEvent({ orgId: session.org.id, projectId: input.projectId, type: "attendance.added", summary: "Attendance added", actorUserId: input.userId });
+    } else {
+      await createLocalAttendanceEntry(input);
+    }
     revalidateAttendance(input.projectId);
     return { ok: true, message: "Attendance entry added." };
   } catch (error) {
@@ -56,12 +64,17 @@ export async function addAttendanceEntry(_state: AttendanceActionState, formData
 }
 
 export async function updateAttendanceEntry(_state: AttendanceActionState, formData: FormData): Promise<AttendanceActionState> {
-  await requireCapability("schedule.manage");
+  const session = await requireCapability("schedule.manage");
   const input = parseEntry(formData);
   const entryId = String(formData.get("entryId") ?? "");
   if (!input || !entryId) return { ok: false, message: "Check the attendance details." };
   try {
-    await updateLocalAttendanceEntry({ ...input, entryId });
+    if (hasDatabase) {
+      await pgField.updateAttendanceEntry(session.org.id, entryId, input);
+      await recordEvent({ orgId: session.org.id, projectId: input.projectId, type: "attendance.updated", summary: "Attendance updated", actorUserId: input.userId });
+    } else {
+      await updateLocalAttendanceEntry({ ...input, entryId });
+    }
     revalidateAttendance(input.projectId);
     return { ok: true, message: "Attendance entry updated." };
   } catch (error) {
@@ -70,7 +83,12 @@ export async function updateAttendanceEntry(_state: AttendanceActionState, formD
 }
 
 export async function deleteAttendanceEntry(entryId: string) {
-  await requireCapability("schedule.manage");
-  const entry = await deleteLocalAttendanceEntry(entryId);
+  const session = await requireCapability("schedule.manage");
+  const entry = hasDatabase
+    ? await pgField.deleteAttendanceEntry(session.org.id, entryId)
+    : await deleteLocalAttendanceEntry(entryId);
+  if (hasDatabase) {
+    await recordEvent({ orgId: session.org.id, projectId: entry.projectId, type: "attendance.deleted", summary: "Attendance deleted" });
+  }
   revalidateAttendance(entry.projectId);
 }

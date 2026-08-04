@@ -35,12 +35,11 @@ Reads go through `src/lib/data/repository.ts`, which dispatches to
 `src/lib/data/pg/*` when `hasDatabase` is true and to the JSON store otherwise. Every
 repository read is ported.
 
-**Writes are not all ported, and a write that is not is silently lost.** Reads come
-from Postgres as soon as `DATABASE_URL` is set, so an action that still writes only to
-the JSON store saves without error and the screen never shows the change. Each action
-dispatches on `hasDatabase` itself. Still JSON-only, and broken against a database:
-`attendance.ts`, `labour.ts`, `project-templates.ts`, `qa-schedule.ts`,
-`schedule-phases.ts`. Check before trusting a save.
+Writes live in the actions and each one dispatches on `hasDatabase` itself; all of them
+are ported. **Keep it that way** — reads come from Postgres as soon as `DATABASE_URL` is
+set, so an action that writes only to the JSON store saves without error and the screen
+never shows the change. There is no error to notice. `actions/demo.ts` is the one
+deliberate exception: it reads the store for the demo user switcher and writes nothing.
 
 Money is never summed in SQL — totals come from `src/lib/domain/*` so a list page and a
 detail page cannot disagree. `neon-http` has no interactive transactions, so anything
