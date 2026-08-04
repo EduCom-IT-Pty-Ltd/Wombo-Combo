@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useActionState } from "react";
 import { Building2, ImagePlus } from "lucide-react";
 import { updateOrganisation, type OrganisationActionState } from "@/app/actions/organisation";
-import { Button, Card, CardHeader } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 import type { OrganisationSettings } from "@/lib/data/types";
 
 const initialState: OrganisationActionState = { ok: false };
@@ -15,8 +15,7 @@ export function OrganisationSettingsForm({ settings, isDemo }: { settings: Organ
   return (
     <form action={action}>
       <Card className="overflow-hidden">
-        <CardHeader title="Organisation profile" description="Your company name, project reference settings and the logo shown in the app." />
-        <div className="grid gap-5 border-t border-border-subtle p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_13rem]">
+        <div className="grid gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_13rem]">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block sm:col-span-2"><span className="mb-1.5 block text-xs font-bold text-muted-foreground">Organisation name</span><input name="name" defaultValue={settings.name} className={inputClass} required /></label>
             <label className="block"><span className="mb-1.5 block text-xs font-bold text-muted-foreground">Organisation slug</span><input name="slug" defaultValue={settings.slug} className={inputClass} required /></label>

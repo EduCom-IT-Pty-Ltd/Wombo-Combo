@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import { saveStatusSettingsAction, type SaveStatusSettingsState } from "@/app/actions/status-settings";
-import { Button, Card, CardHeader } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 import type { StatusFieldTemplate, StatusSetting, StatusTaskTemplate } from "@/lib/domain/status-settings";
 
 type EditableField = { label: string; required: boolean };
@@ -77,9 +77,8 @@ export function StatusFlowSettings({ settings, templates, fields }: { settings: 
   return <form action={action}>
     <input type="hidden" name="status-settings" value={payload} />
     <Card>
-      <CardHeader title="Project status flow" description="Drag stages to change their order. Edit a stage to change its name, colour and checklist." action={<Button type="button" size="sm" variant="primary" onClick={newStatus} disabled={available.length === 0}><Plus className="size-4" /> Add status</Button>} />
       <div className="p-4 sm:p-5">
-        <div className="mb-3 flex items-center justify-between"><div><p className="text-sm font-bold">Workflow stages</p><p className="text-xs text-muted-foreground">Drag cards into the order your projects follow.</p></div><span className="rounded-full bg-surface-muted px-2 py-1 text-xs font-bold text-muted-foreground">{flow.length} stages</span></div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><p className="text-sm font-bold">Workflow stages</p><p className="text-xs text-muted-foreground">Drag the cards into the order your projects follow. Tap one to change its name, colour, checklist and required details.</p></div><div className="flex shrink-0 items-center gap-2"><span className="rounded-full bg-surface-muted px-2 py-1 text-xs font-bold text-muted-foreground">{flow.length} stages</span><Button type="button" size="sm" variant="primary" onClick={newStatus} disabled={available.length === 0}><Plus className="size-4" /> Add status</Button></div></div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {flow.map((item, index) => <button key={item.status} type="button" draggable onDragStart={() => setDragging(item.status)} onDragOver={(event) => event.preventDefault()} onDrop={() => reorder(item.status)} onClick={() => { setIsNew(false); setEditing(item); }} className={`group flex min-h-20 items-center gap-3 rounded-xl border bg-surface p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-border-strong hover:shadow-md ${dragging === item.status ? "opacity-40" : ""}`}>
             <GripVertical className="size-5 shrink-0 text-muted-foreground" /><span className="grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold text-white" style={{ backgroundColor: item.color }}>{index + 1}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{item.label}</span><span className="mt-0.5 block text-xs text-muted-foreground">{item.tasks.length} {item.tasks.length === 1 ? "task" : "tasks"} · {item.fields.length} {item.fields.length === 1 ? "field" : "fields"}</span></span><Pencil className="size-4 text-muted-foreground group-hover:text-primary" />

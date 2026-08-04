@@ -1,60 +1,30 @@
-import { AUTOMATION_RULES } from "@/lib/domain/automation";
-import { isDemoMode } from "@/lib/db";
-import { Badge, Card, CardHeader, PageHeader } from "@/components/ui";
-import { StatusFlowSettings } from "@/components/admin/status-flow-settings";
-import { readOrganisationSettings, readQuoteDocumentTemplateSettings, readRolePermissions, readStatusFieldTemplates, readStatusSettings, readStatusTaskTemplates } from "@/lib/data/local-store";
-import { OrganisationSettingsForm } from "@/components/admin/organisation-settings";
-import { RolePermissionsManager } from "@/components/admin/role-permissions-manager";
-import { QuoteLetterheadDesigner } from "@/components/admin/quote-letterhead-designer";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
+import { SETTINGS_SECTIONS } from "@/lib/nav";
+import { SettingsIcon } from "@/components/admin/settings-nav";
 
-export const metadata = { title: "Admin" };
+export const metadata = { title: "Settings" };
 
-export default async function AdminPage() {
-  const [statusSettings, statusTaskTemplates, statusFieldTemplates, organisation, rolePermissions, quoteTemplate] = await Promise.all([readStatusSettings(), readStatusTaskTemplates(), readStatusFieldTemplates(), readOrganisationSettings(), readRolePermissions(), readQuoteDocumentTemplateSettings()]);
-
+export default function SettingsIndexPage() {
   return (
-    <div className="space-y-4">
-      <PageHeader title="Settings" description="Organisation settings, status flow, roles and automation rules" />
-
-      <StatusFlowSettings settings={statusSettings} templates={statusTaskTemplates} fields={statusFieldTemplates} />
-
-      {/* Keyed to `isDemoMode` (is there a database?) rather than `session.isDemo`
-          (is the user really signed in?). Once WorkOS is configured but
-          DATABASE_URL is not, those diverge — and it is persistence, not auth,
-          that decides whether this warning is true. */}
-      <OrganisationSettingsForm settings={organisation} isDemo={isDemoMode} />
-
-      <QuoteLetterheadDesigner settings={quoteTemplate} />
-
-      <Card>
-        <CardHeader
-          title="Automation rules"
-          description="Derived from the workflow specification. Runs on the matching trigger."
-        />
-        <ul className="divide-y divide-border-subtle">
-          {AUTOMATION_RULES.map((rule) => (
-            <li key={rule.id} className="px-4 py-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-xs text-muted-foreground">{rule.on}</span>
-                <Badge tone="blue">{rule.effects.length} effects</Badge>
-              </div>
-              <p className="mt-1 text-sm">{rule.describedAs}</p>
-              <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                {rule.effects.map((effect, i) => (
-                  <li
-                    key={i}
-                    className="rounded bg-surface-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
-                  >
-                    {effect.type}
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
-      </Card>
-
-      <RolePermissionsManager overrides={rolePermissions} />
-    </div>
+    <ul className="grid gap-3 sm:grid-cols-2">
+      {SETTINGS_SECTIONS.map((section) => (
+        <li key={section.segment}>
+          <Link
+            href={`/admin/${section.segment}`}
+            className="ui-card-pop flex h-full min-h-20 items-center gap-3 rounded-[var(--radius)] border border-border-subtle bg-surface p-4 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+          >
+            <span className="grid size-10 shrink-0 place-items-center rounded-[var(--radius)] bg-primary/10 text-primary">
+              <SettingsIcon name={section.icon} className="size-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-foreground">{section.label}</span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{section.description}</span>
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }

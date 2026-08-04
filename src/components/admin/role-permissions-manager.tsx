@@ -5,7 +5,7 @@ import { Check, LockKeyhole, Minus } from "lucide-react";
 import type { Role } from "@/lib/db/schema/enums";
 import { capabilitiesFor, PERMISSION_AREAS, ROLE_LABELS, type Capability, type RolePermissionOverrides } from "@/lib/domain/permissions";
 import { saveRolePermissionsAction, type RolePermissionsActionState } from "@/app/actions/role-permissions";
-import { Button, Card, CardHeader } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 
 const editableRoles = ["manager", "finance", "staff"] as const;
 const initialState: RolePermissionsActionState = { ok: false };
@@ -29,8 +29,7 @@ export function RolePermissionsManager({ overrides }: { overrides: RolePermissio
   }
 
   return <form action={action}><input type="hidden" name="permissions" value={JSON.stringify(permissions)} /><Card>
-    <CardHeader title="Roles & access" description="Choose exactly what Manager, Finance and Staff can view or edit. Edit automatically includes View for that area." />
-    <div className="mx-4 mb-4 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground"><span className="font-bold text-foreground">Owner and Administrator</span> always have full access and are locked. Changes are saved locally for testing and apply to the selected role immediately.</div>
+    <div className="m-4 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground"><span className="font-bold text-foreground">Owner and Administrator</span> always have full access and are locked. Changes are saved locally for testing and apply to the selected role immediately.</div>
     <div className="overflow-x-auto border-t border-border-subtle"><table className="w-full min-w-[58rem] text-sm"><thead><tr className="border-b border-border-subtle"><th className="sticky left-0 z-10 min-w-72 bg-surface px-4 py-3 text-left text-xs font-bold text-muted-foreground">Area</th><th className="min-w-28 px-3 py-3 text-left text-xs font-bold text-muted-foreground">Owner</th><th className="min-w-28 px-3 py-3 text-left text-xs font-bold text-muted-foreground">Administrator</th>{editableRoles.map((role) => <th key={role} className="min-w-32 px-3 py-3 text-left text-xs font-bold text-muted-foreground">{ROLE_LABELS[role]}</th>)}</tr></thead><tbody className="divide-y divide-border-subtle">{PERMISSION_AREAS.map((area) => <tr key={area.name}><td className="sticky left-0 z-10 bg-surface px-4 py-3"><p className="font-bold">{area.name}</p><p className="mt-0.5 max-w-72 text-xs leading-relaxed text-muted-foreground">{area.description}</p></td><td className="px-3 py-3 align-top"><Locked /></td><td className="px-3 py-3 align-top"><Locked /></td>{editableRoles.map((role) => { const hasView = area.view.every((capability) => selected[role].has(capability)); const hasEdit = area.edit.length > 0 && area.edit.every((capability) => selected[role].has(capability)); return <td key={role} className="px-3 py-3 align-top"><div className="flex flex-col gap-2"><Toggle label="View" checked={hasView} onChange={(checked) => { toggle(role, area.view, checked); if (!checked) toggle(role, area.edit, false); }} /><Toggle label="Edit" checked={hasEdit} disabled={!area.edit.length} onChange={(checked) => toggle(role, area.edit, checked, area.view)} /></div></td>; })}</tr>)}</tbody></table></div>
     <div className="flex flex-wrap items-center gap-3 border-t border-border-subtle px-4 py-3 sm:px-5"><Button type="submit" variant="primary" disabled={pending}>{pending ? "Saving…" : "Save permissions"}</Button>{state.message ? <p className={state.ok ? "text-xs text-[var(--tone-emerald-fg)]" : "text-xs text-[var(--tone-rose-fg)]"}>{state.message}</p> : null}</div>
   </Card></form>;

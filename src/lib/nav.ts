@@ -42,6 +42,57 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/admin", label: "Settings", icon: "settings", capability: "admin.manage" },
 ];
 
+export type SettingsIconName = "building" | "workflow" | "document" | "shield" | "automation";
+
+/**
+ * Settings is a section, not a page — each entry is its own route under
+ * `/admin` so nobody has to scroll past the status flow to reach permissions.
+ */
+export interface SettingsSection {
+  segment: string;
+  label: string;
+  /** Plain-language summary, shown on the settings index and as the page description. */
+  description: string;
+  icon: SettingsIconName;
+}
+
+export const SETTINGS_SECTIONS: SettingsSection[] = [
+  {
+    segment: "organisation",
+    label: "Organisation",
+    description: "Company name, project number prefix, currency, timezone and the logo shown across the app.",
+    icon: "building",
+  },
+  {
+    segment: "workflow",
+    label: "Project workflow",
+    description: "The stages a project moves through, plus the checklist and details each stage needs.",
+    icon: "workflow",
+  },
+  {
+    segment: "quote-template",
+    label: "Quote document",
+    description: "Upload an A4 letterhead and position the details that appear on every quote PDF.",
+    icon: "document",
+  },
+  {
+    segment: "permissions",
+    label: "Roles & access",
+    description: "Choose what Manager, Finance and Staff can view or edit. Edit always includes View.",
+    icon: "shield",
+  },
+  {
+    segment: "automations",
+    label: "Automations",
+    description: "What the portal does on its own as a project moves through the workflow.",
+    icon: "automation",
+  },
+];
+
+export function settingsSectionFor(pathname: string): SettingsSection | undefined {
+  return SETTINGS_SECTIONS.find((section) => pathname === `/admin/${section.segment}`);
+}
+
 /** Project workspace tabs — the spec's "Project Workspace" module. */
 export interface ProjectTab {
   segment: string;

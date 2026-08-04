@@ -430,10 +430,11 @@ export type CatalogueMaterialInput = Omit<CatalogueMaterial, "id"> & {
 };
 
 /**
- * Catalogue rows are keyed by `code` within an org, and the code is blank on
- * parent rows that exist only to group variations. Those cannot go through the
- * unique index, so they get a generated placeholder — visible nowhere, but it
- * keeps a second unnamed parent from colliding with the first.
+ * Catalogue rows are keyed by `code` within an org, and the code is blank on the
+ * legacy parent rows that exist only to group variations. Those cannot go
+ * through the unique index, so they get a generated placeholder — visible
+ * nowhere, but it keeps a second unnamed parent from colliding with the first.
+ * Nothing writes one any more: every Xero item carries a code.
  */
 function codeFor(input: CatalogueMaterialInput): string {
   return input.sku.trim() || `internal-${randomUUID()}`;
@@ -464,26 +465,6 @@ function materialValues(orgId: string, input: CatalogueMaterialInput) {
     xeroSalesAccountCode: input.xeroSalesAccountCode ?? null,
     active: true,
   };
-}
-
-export async function createCatalogueMaterial(
-  orgId: string,
-  input: CatalogueMaterialInput,
-): Promise<CatalogueMaterial> {
-  const [row] = await db().insert(priceListItems).values(materialValues(orgId, input)).returning();
-  return toCatalogueMaterial(row);
-}
-
-export async function updateCatalogueMaterial(
-  orgId: string,
-  id: string,
-  input: CatalogueMaterialInput,
-): Promise<void> {
-  const { orgId: _orgId, ...values } = materialValues(orgId, input);
-  await db()
-    .update(priceListItems)
-    .set({ ...values, updatedAt: new Date() })
-    .where(and(eq(priceListItems.orgId, orgId), eq(priceListItems.id, id)));
 }
 
 /**
@@ -521,10 +502,13 @@ export async function deleteCatalogueMaterial(orgId: string, id: string): Promis
 }
 
 /**
- * Bulk upsert, matching on code.
+ * Bulk upsert, matching on code. The Xero item sync is the only caller, and so
+ * the only thing that writes material data at all — nothing in the application
+ * creates or edits a material, because a hand-kept row would drift from Xero and
+ * lose the `xero_item_id` its quote lines need to carry an item code.
  *
  * One statement per row rather than a single multi-row insert: `on conflict do
- * update` cannot see the other rows in its own batch, so a file containing the
+ * update` cannot see the other rows in its own batch, so a pull containing the
  * same code twice would fail the whole statement rather than have the second
  * win. Catalogues are hundreds of rows, not millions, and correctness is worth
  * more here than one round trip.

@@ -74,6 +74,13 @@ and land in that item's own revenue account. Only rows with a `xero_item_id` may
 code; an unrecognised one fails the whole document. Everything we create in Xero is a
 DRAFT, approved and sent by a human there.
 
+**`syncItemsFromXero` is the only thing that writes a material.** There is no create,
+edit or CSV-import path, and adding one would be a bug: `materialValues` blanks
+`xero_item_id` for any input that does not carry one, so a write from this side detaches
+the row from its Xero item and silently stops its lines carrying a code until the next
+sync. Deleting is the exception — the sync only adds and updates, so removing a row is
+the only way to clear an item that no longer exists in Xero.
+
 ## Mobile
 
 Non-negotiable, because field crews are half the users: 44px minimum tap targets, 16px inputs

@@ -479,33 +479,6 @@ export async function createLocalCustomer(input: {
   });
 }
 
-export async function createLocalCatalogueMaterial(input: Omit<CatalogueMaterial, "id">) {
-  return updateLocalStore((store) => {
-    const material = { id: `mat-${randomUUID()}`, ...input };
-    store.catalogueMaterials.push(material);
-    return material;
-  });
-}
-
-/** CSV imports update matching SKUs and create any new material rows in one write. */
-export async function importLocalCatalogueMaterials(inputs: Array<Omit<CatalogueMaterial, "id">>) {
-  return updateLocalStore((store) => {
-    let created = 0;
-    let updated = 0;
-    for (const input of inputs) {
-      const existing = store.catalogueMaterials.find((material) => material.sku.toLowerCase() === input.sku.toLowerCase());
-      if (existing) {
-        Object.assign(existing, input);
-        updated += 1;
-      } else {
-        store.catalogueMaterials.push({ id: `mat-${randomUUID()}`, ...input });
-        created += 1;
-      }
-    }
-    return { created, updated };
-  });
-}
-
 export async function createLocalPriceList(input: { name: string; entries: CustomerPriceList["entries"] }) {
   return updateLocalStore((store) => {
     const list = { id: `pl-${randomUUID()}`, ...input };
@@ -514,9 +487,7 @@ export async function createLocalPriceList(input: { name: string; entries: Custo
   });
 }
 
-export async function updateLocalCatalogueMaterial(id: string, input: Omit<CatalogueMaterial, "id">) {
-  await updateLocalStore((store) => { const material = store.catalogueMaterials.find((item) => item.id === id); if (!material) throw new Error("Material not found"); Object.assign(material, input); });
-}
+/** The catalogue is mirrored from Xero, so removing a row is the only write. */
 export async function deleteLocalCatalogueMaterial(id: string) {
   await updateLocalStore((store) => { store.catalogueMaterials = store.catalogueMaterials.filter((item) => item.id !== id); for (const list of store.customerPriceLists) list.entries = list.entries.filter((entry) => entry.materialId !== id); for (const template of store.productionTemplates) template.materials = template.materials.filter((entry) => entry.materialId !== id); });
 }
