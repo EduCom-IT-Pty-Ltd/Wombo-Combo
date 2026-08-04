@@ -40,7 +40,7 @@ export async function saveQuoteDocumentTemplate(_state: QuoteTemplateActionState
   const settings: QuoteDocumentTemplateSettings = { ...parsed.data, letterheadUrl };
   if (hasDatabase) await savePgQuoteTemplate(session.org.id, settings);
   else await saveQuoteDocumentTemplateSettings(settings);
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/projects", "layout");
   return { ok: true, message: "Quote letterhead template saved." };
 }

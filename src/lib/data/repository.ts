@@ -1,7 +1,7 @@
 import "server-only";
 import { hasDatabase } from "@/lib/db";
 import { once } from "./request-scope";
-import { listPeople as pgListPeople } from "./pg/org";
+import * as pgOrg from "./pg/org";
 import * as pgCustomers from "./pg/customers";
 import * as pgProjects from "./pg/projects";
 import * as pgWorkflow from "./pg/workflow";
@@ -15,6 +15,7 @@ import type {
   CatalogueMaterial,
   CustomerPriceList,
   LabourSettings,
+  OrganisationSettings,
   ProjectCostingOptions,
   QuoteDocumentTemplateSettings,
   ProductionTemplate,
@@ -36,6 +37,8 @@ import type {
   WorkflowField,
 } from "./types";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
+import type { RolePermissionOverrides } from "@/lib/domain/permissions";
+import type { StatusFieldTemplate, StatusTaskTemplate } from "@/lib/domain/status-settings";
 import { calculateCosting, entryHours, type CostingResult } from "@/lib/domain/costing";
 import { EMPTY_CONTEXT, type TransitionContext } from "@/lib/domain/status";
 
@@ -65,7 +68,7 @@ import { EMPTY_CONTEXT, type TransitionContext } from "@/lib/domain/status";
  */
 export async function listPeople(orgId: string): Promise<Person[]> {
   return once(`people:${orgId}`, async () => {
-    if (hasDatabase) return pgListPeople(orgId);
+    if (hasDatabase) return pgOrg.listPeople(orgId);
     return (await readLocalStore()).people;
   });
 }
@@ -311,7 +314,7 @@ export async function getQuote(orgId: string, id: string): Promise<QuoteSummary 
  * filtered per call. A project with fourteen stages in its flow used to issue
  * fifty-six queries to render one stepper.
  */
-function workflowTaskTemplates(orgId: string) {
+export function getStatusTaskTemplates(orgId: string): Promise<StatusTaskTemplate[]> {
   return once(`workflowTaskTemplates:${orgId}`, async () =>
     hasDatabase ? (await pgSettings.getStatusTaskTemplates(orgId)) ?? (await readStatusTaskTemplates()) : readStatusTaskTemplates(),
   );
@@ -325,7 +328,7 @@ function workflowTaskRows(orgId: string, projectId: string) {
 
 export async function listWorkflowTasks(orgId: string, projectId: string, status: ProjectStatus): Promise<Task[]> {
   const [templates, existing] = await Promise.all([
-    workflowTaskTemplates(orgId),
+    getStatusTaskTemplates(orgId),
     workflowTaskRows(orgId, projectId),
   ]);
 
@@ -369,7 +372,7 @@ export async function listWorkflowTasks(orgId: string, projectId: string, status
 
 /** PORTED. */
 /** Same shape as the checklist above, and read once per request for the same reason. */
-function workflowFieldTemplates(orgId: string) {
+export function getStatusFieldTemplates(orgId: string): Promise<StatusFieldTemplate[]> {
   return once(`workflowFieldTemplates:${orgId}`, async () =>
     hasDatabase ? (await pgSettings.getStatusFieldTemplates(orgId)) ?? (await readStatusFieldTemplates()) : readStatusFieldTemplates(),
   );
@@ -389,7 +392,7 @@ function workflowFieldValues(orgId: string, projectId: string) {
 
 export async function listWorkflowFields(orgId: string, projectId: string, status: ProjectStatus): Promise<WorkflowField[]> {
   const [templates, values] = await Promise.all([
-    workflowFieldTemplates(orgId),
+    getStatusFieldTemplates(orgId),
     workflowFieldValues(orgId, projectId),
   ]);
 
@@ -734,5 +737,28 @@ export async function getStatusSettings(orgId: string) {
       if (saved) return saved;
     }
     return readLocalStatusSettings();
+  });
+}
+
+/**
+ * PORTED. Same story: the Settings screen read the JSON store directly, so an
+ * organisation saved to Postgres rendered as the demo organisation the moment
+ * the page came back.
+ */
+export async function getOrganisationSettings(orgId: string): Promise<OrganisationSettings> {
+  return once(`organisationSettings:${orgId}`, async () => {
+    if (hasDatabase) {
+      const saved = await pgOrg.getOrganisation(orgId);
+      if (saved) return saved;
+    }
+    return (await readLocalStore()).organisation;
+  });
+}
+
+/** PORTED. */
+export async function getRolePermissions(orgId: string): Promise<RolePermissionOverrides> {
+  return once(`rolePermissions:${orgId}`, async () => {
+    if (hasDatabase) return pgSettings.getRolePermissions(orgId);
+    return (await readLocalStore()).rolePermissions;
   });
 }

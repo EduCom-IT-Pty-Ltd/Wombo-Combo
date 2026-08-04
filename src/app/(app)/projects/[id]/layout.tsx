@@ -3,13 +3,12 @@ import Link from "next/link";
 import { ArrowLeft, MapPin } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
-import { getProject, isProjectArchived, listCustomerOptions, listWorkflowFields, listWorkflowTasks } from "@/lib/data/repository";
+import { getProject, getStatusSettings, isProjectArchived, listCustomerOptions, listWorkflowFields, listWorkflowTasks } from "@/lib/data/repository";
 import { PROJECT_TABS } from "@/lib/nav";
 import { StatusBadge, StatusStepper } from "@/components/status-badge";
 import { ProjectTabs } from "@/components/projects/project-tabs";
 import { ProjectOptions } from "@/components/projects/project-options";
 import { ProjectTabTransition } from "@/components/projects/project-tab-transition";
-import { readStatusSettings } from "@/lib/data/local-store";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -32,7 +31,7 @@ export default async function ProjectLayout({
 
   const tabs = PROJECT_TABS.filter((t) => can(session.role, t.capability, session.permissionOverrides));
   const [statusSettings, customers, archived] = await Promise.all([
-    readStatusSettings(),
+    getStatusSettings(session.org.id),
     listCustomerOptions(session.org.id),
     isProjectArchived(session.org.id, project.id),
   ]);

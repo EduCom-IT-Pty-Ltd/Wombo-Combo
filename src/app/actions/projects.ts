@@ -13,7 +13,7 @@ import { applyLocalAutomationEffect, completeWorkflowTasksThrough, persistLocalT
 import { hasDatabase } from "@/lib/db";
 import * as pgWorkflow from "@/lib/data/pg/workflow";
 import * as pgSettings from "@/lib/data/pg/settings";
-import { listWorkflowTasks } from "@/lib/data/repository";
+import { getStatusSettings, getStatusTaskTemplates, listWorkflowTasks } from "@/lib/data/repository";
 
 const transitionSchema = z.object({
   projectId: z.string().min(1),
@@ -74,7 +74,6 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
     };
   }
 
-  if (confirmJump && completeSkipped) await completeWorkflowTasksThrough(projectId, to);
   if (check.warnings.length > 0 && !can(session.role, "project.transition.override", session.permissionOverrides)) {
     return {
       ok: false,
@@ -98,6 +97,12 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
   if (!moved) {
     return { ok: false, message: "Someone else changed this project's status. Reload and try again." };
   }
+
+  // The tick-box on the jump dialog, applied only once the jump has actually
+  // happened. Doing it before the write meant a move that was then refused —
+  // for want of the override permission, or because someone else had already
+  // moved the project — still closed every checklist it claimed to be skipping.
+  if (confirmJump && completeSkipped) await completeSkippedChecklists(session.org.id, projectId, to);
 
   // Automations run only after the transition has committed. A rule that reads
   // the project must see the new status, and a rule that fails must not be able
@@ -190,6 +195,30 @@ async function persistTransition(args: {
   if (hasDatabase) return pgWorkflow.persistTransition(args);
   await persistLocalTransition(args);
   return true;
+}
+
+/**
+ * Close every checklist item belonging to the stages `target` was jumped over.
+ *
+ * Works from the templates rather than from the rows that exist, because an
+ * untouched checklist item has no row yet — and an untouched checklist is
+ * precisely what a project skipping four stages is carrying.
+ */
+async function completeSkippedChecklists(orgId: string, projectId: string, target: ProjectStatus): Promise<void> {
+  if (!hasDatabase) {
+    await completeWorkflowTasksThrough(projectId, target);
+    return;
+  }
+
+  const flow = (await getStatusSettings(orgId))
+    .filter((setting) => setting.inProgressFlow)
+    .sort((a, b) => a.position - b.position);
+  const targetIndex = flow.findIndex((setting) => setting.status === target);
+  if (targetIndex < 1) return;
+
+  const skipped = new Set(flow.slice(0, targetIndex).map((setting) => setting.status));
+  const templates = (await getStatusTaskTemplates(orgId)).filter((template) => skipped.has(template.status));
+  await pgSettings.completeWorkflowTasks(orgId, projectId, templates);
 }
 
 /**

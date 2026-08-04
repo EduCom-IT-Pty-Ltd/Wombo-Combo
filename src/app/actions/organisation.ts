@@ -43,6 +43,6 @@ export async function updateOrganisation(_state: OrganisationActionState, formDa
   if (hasDatabase) await saveOrganisation(session.org.id, settings);
   else await saveOrganisationSettings(settings);
   revalidatePath("/", "layout");
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   return { ok: true, message: "Organisation settings saved." };
 }

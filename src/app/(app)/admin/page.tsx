@@ -2,10 +2,13 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { SETTINGS_SECTIONS } from "@/lib/nav";
 import { SettingsIcon } from "@/components/admin/settings-nav";
+import { requireSettingsAccess } from "./guard";
 
 export const metadata = { title: "Settings" };
 
-export default function SettingsIndexPage() {
+export default async function SettingsIndexPage() {
+  await requireSettingsAccess();
+
   return (
     <ul className="grid gap-3 sm:grid-cols-2">
       {SETTINGS_SECTIONS.map((section) => (

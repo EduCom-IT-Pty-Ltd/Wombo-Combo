@@ -1,10 +1,11 @@
 import "server-only";
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { materialUsage, timeEntries, variations } from "@/lib/db/schema/field";
 import { assignments, leaveRequests, schedulePhases } from "@/lib/db/schema/scheduling";
 import { memberships } from "@/lib/db/schema/org";
 import { projects } from "@/lib/db/schema/projects";
+import { priceListItems } from "@/lib/db/schema/quoting";
 import { sites } from "@/lib/db/schema/crm";
 import { defects, inspections, inspectionItems } from "@/lib/db/schema/qa";
 import { assertUserAvailable } from "./settings";
@@ -170,6 +171,222 @@ export async function deleteAttendanceEntry(orgId: string, entryId: string): Pro
     .returning({ projectId: timeEntries.projectId });
   if (!deleted) throw new Error("Time entry not found");
   return deleted;
+}
+
+// --- The field clock --------------------------------------------------------
+
+/**
+ * Minutes a shift has spent paused, for adding to `break_minutes`. Zero when it
+ * is not paused: `greatest` returns 0 rather than null there, which is what
+ * keeps resuming and clocking off from blanking the breaks already recorded.
+ */
+const pausedMinutes = sql`greatest(0, coalesce(round(extract(epoch from (now() - ${timeEntries.pausedAt})) / 60), 0))::int`;
+
+/**
+ * Check in. Returns the shift the person is now on, which is not always the one
+ * they asked for — see below.
+ *
+ * One clock at a time per person, and the check is inside the statement rather
+ * than a read followed by an insert. `neon-http` has no interactive
+ * transactions, and the crew are on phones: a request whose response is lost on
+ * a bad signal gets tapped again, and two open shifts on the same job is a mess
+ * somebody has to unpick by hand. An empty `returning` means they were already
+ * clocked on, so we hand back the shift that won instead — the caller compares
+ * the project and tells them to clock off the other job.
+ */
+export async function startTimeEntry(
+  orgId: string,
+  input: { projectId: string; userId: string; notes?: string },
+): Promise<{ projectId: string; created: boolean } | null> {
+  const costRateCentsPerHour = await costRateFor(orgId, input.userId);
+
+  const inserted = await db().execute<{ project_id: string }>(sql`
+    insert into ${timeEntries} (org_id, project_id, user_id, started_at, cost_rate_cents_per_hour, notes)
+    select ${orgId}::uuid, ${input.projectId}::uuid, ${input.userId}::uuid, now(),
+           ${costRateCentsPerHour}::int, ${input.notes?.trim() || null}::text
+    where not exists (
+      select 1
+      from ${timeEntries}
+      where ${timeEntries.orgId} = ${orgId}::uuid
+        and ${timeEntries.userId} = ${input.userId}::uuid
+        and ${timeEntries.endedAt} is null
+    )
+    returning project_id
+  `);
+
+  const created = inserted.rows[0];
+  if (created) return { projectId: created.project_id, created: true };
+
+  const open = await getOpenTimeEntry(orgId, input.userId);
+  return open ? { projectId: open.projectId, created: false } : null;
+}
+
+/**
+ * Check out. Guarded on the shift still being open, so a second tap reports
+ * "already closed" rather than moving the finish time.
+ *
+ * A shift ended while paused counts the pause as a break, exactly as resuming
+ * first and then checking out would have.
+ */
+export async function endTimeEntry(
+  orgId: string,
+  input: { entryId: string; userId: string; breakMinutes: number },
+): Promise<{ projectId: string } | null> {
+  const [row] = await db()
+    .update(timeEntries)
+    .set({
+      endedAt: new Date(),
+      pausedAt: null,
+      breakMinutes: sql`${timeEntries.breakMinutes} + ${input.breakMinutes} + ${pausedMinutes}`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(timeEntries.orgId, orgId),
+        eq(timeEntries.id, input.entryId),
+        eq(timeEntries.userId, input.userId),
+        isNull(timeEntries.endedAt),
+      ),
+    )
+    .returning({ projectId: timeEntries.projectId });
+  return row ?? null;
+}
+
+/**
+ * Pause or resume, decided from the row rather than from the client — the phone
+ * that sent this may be showing a state two taps out of date.
+ *
+ * Both branches are one statement: every expression in `set` sees the row as it
+ * was before the update, so the resume can bank the elapsed pause in the same
+ * breath as clearing it. `returning` gives back the new value, which is how the
+ * caller knows which of the two just happened.
+ */
+export async function toggleTimeEntryPause(
+  orgId: string,
+  input: { entryId: string; userId: string },
+): Promise<{ projectId: string; pausedAt: string | null } | null> {
+  const [row] = await db()
+    .update(timeEntries)
+    .set({
+      pausedAt: sql`case when ${timeEntries.pausedAt} is null then now() else null end`,
+      breakMinutes: sql`case when ${timeEntries.pausedAt} is null then ${timeEntries.breakMinutes} else ${timeEntries.breakMinutes} + ${pausedMinutes} end`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(timeEntries.orgId, orgId),
+        eq(timeEntries.id, input.entryId),
+        eq(timeEntries.userId, input.userId),
+        isNull(timeEntries.endedAt),
+      ),
+    )
+    .returning({ projectId: timeEntries.projectId, pausedAt: timeEntries.pausedAt });
+
+  return row ? { projectId: row.projectId, pausedAt: row.pausedAt?.toISOString() ?? null } : null;
+}
+
+/**
+ * A crew member correcting their own finished shift. Only their own, and only a
+ * finished one — a running clock is changed by pausing or checking out, not by
+ * typing a different start time into it.
+ */
+export async function updateOwnTimeEntry(
+  orgId: string,
+  input: { entryId: string; userId: string; startedAt: string; endedAt: string; breakMinutes: number },
+): Promise<{ projectId: string } | null> {
+  const [row] = await db()
+    .update(timeEntries)
+    .set({
+      startedAt: new Date(input.startedAt),
+      endedAt: new Date(input.endedAt),
+      breakMinutes: input.breakMinutes,
+      pausedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(timeEntries.orgId, orgId),
+        eq(timeEntries.id, input.entryId),
+        eq(timeEntries.userId, input.userId),
+        isNotNull(timeEntries.endedAt),
+      ),
+    )
+    .returning({ projectId: timeEntries.projectId });
+  return row ?? null;
+}
+
+/**
+ * Materials consumed, logged from site.
+ *
+ * The unit cost comes from the catalogue when the description names a line we
+ * already price, so nobody standing on a roof is ever asked to type a figure.
+ * An unrecognised description still records — what was used matters more than
+ * what it cost, and the office can price it later.
+ */
+export async function addMaterialUse(
+  orgId: string,
+  input: { projectId: string; description: string; quantity: number; unit: string; userId: string | null },
+): Promise<void> {
+  const description = input.description.trim();
+  const [catalogue] = await db()
+    .select({ id: priceListItems.id, unitCostCents: priceListItems.unitCostCents })
+    .from(priceListItems)
+    .where(
+      and(
+        eq(priceListItems.orgId, orgId),
+        eq(priceListItems.active, true),
+        sql`lower(${priceListItems.name}) = lower(${description})`,
+      ),
+    )
+    .limit(1);
+
+  await db().insert(materialUsage).values({
+    orgId,
+    projectId: input.projectId,
+    priceListItemId: catalogue?.id ?? null,
+    description,
+    quantity: String(input.quantity),
+    unit: input.unit,
+    unitCostCents: catalogue?.unitCostCents ?? 0,
+    recordedByUserId: input.userId,
+  });
+}
+
+/**
+ * A scope change flagged from site. Raised as a draft with no money on it: the
+ * crew are saying "this is extra", and the office prices it before it goes out.
+ *
+ * The sequence is counted inside the insert for the same reason quote versions
+ * are — two people raising a variation on the same job at once would otherwise
+ * both read the same count and claim the same reference.
+ */
+export async function addVariation(
+  orgId: string,
+  input: { projectId: string; title: string; userId: string | null },
+): Promise<{ reference: string }> {
+  const [project] = await db()
+    .select({ projectNumber: projects.projectNumber })
+    .from(projects)
+    .where(and(eq(projects.orgId, orgId), eq(projects.id, input.projectId)))
+    .limit(1);
+  if (!project) throw new Error("Project not found");
+
+  const prefix = `VO-${project.projectNumber.split("-").pop() ?? "0000"}-`;
+  const [row] = await db()
+    .insert(variations)
+    .values({
+      orgId,
+      projectId: input.projectId,
+      reference: sql`${prefix}::text || lpad(((
+        select count(*) from ${variations}
+        where ${variations.orgId} = ${orgId} and ${variations.projectId} = ${input.projectId}
+      ) + 1)::text, 2, '0')`,
+      title: input.title.trim(),
+      status: "draft",
+      raisedByUserId: input.userId,
+    })
+    .returning({ reference: variations.reference });
+  return row;
 }
 
 // --- Scheduling -------------------------------------------------------------

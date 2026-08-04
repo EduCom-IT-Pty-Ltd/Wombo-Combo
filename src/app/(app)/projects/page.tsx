@@ -2,8 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
-import { listArchivedProjects, listPeople, listProjectTemplates, listProjects } from "@/lib/data/repository";
-import { readStatusSettings } from "@/lib/data/local-store";
+import { getStatusSettings, listArchivedProjects, listPeople, listProjectTemplates, listProjects } from "@/lib/data/repository";
 import type { ProjectSummary } from "@/lib/data/types";
 import { orderedFlow } from "@/lib/domain/status-settings";
 import { ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
@@ -41,7 +40,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const [projectsInView, people, statusSettings, projectTemplates] = await Promise.all([
     showArchived ? listArchivedProjects(session.org.id) : listProjects(session.org.id),
     listPeople(session.org.id),
-    readStatusSettings(),
+    getStatusSettings(session.org.id),
     listProjectTemplates(session.org.id),
   ]);
   const projects = showArchived ? projectsInView : projectsInView.filter((project) => matchesFilter(project, filter));

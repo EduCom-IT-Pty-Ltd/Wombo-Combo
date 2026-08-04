@@ -39,6 +39,6 @@ export async function saveRolePermissionsAction(_state: RolePermissionsActionSta
   if (hasDatabase) await savePgRolePermissions(session.org.id, cleaned);
   else await saveRolePermissions(cleaned);
   revalidatePath("/", "layout");
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   return { ok: true, message: "Role permissions saved." };
 }

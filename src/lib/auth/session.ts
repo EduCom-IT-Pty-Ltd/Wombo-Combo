@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ROLES, type Role } from "@/lib/db/schema/enums";
 import { type Capability, can, type RolePermissionOverrides } from "@/lib/domain/permissions";
 import { readLocalStore } from "@/lib/data/local-store";
+import * as pgSettings from "@/lib/data/pg/settings";
 import { hasDatabase } from "@/lib/db";
 import type { Person } from "@/lib/data/types";
 import { bootstrapEmail, expectedOrgId, workosConfigured } from "./workos-config";
@@ -125,13 +126,16 @@ async function loadWorkosSession(): Promise<Session> {
   };
 
   const store = await readLocalStore();
-  // Role permission overrides are still administered through the JSON store;
-  // that slice of the migration has not landed yet.
-  const permissionOverrides = store.rolePermissions;
 
   const { org, person } = hasDatabase
     ? await resolveTenantFromDatabase(email)
     : { org: { ...BASE_ORG, ...store.organisation }, person: store.people.find((item) => item.email.trim().toLowerCase() === email) ?? null };
+
+  // Overrides follow the same rule as every other read: Postgres when there is
+  // a database, the JSON store otherwise. Reading them from the store while
+  // Settings saved them to Postgres meant a change to Manager, Finance or Staff
+  // access was written, displayed, and then never enforced.
+  const permissionOverrides = hasDatabase ? await pgSettings.getRolePermissions(org.id) : store.rolePermissions;
 
   if (!person) {
     // The invite-only gate. Authenticating with WorkOS is not enough; someone

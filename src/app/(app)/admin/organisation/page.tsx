@@ -1,11 +1,13 @@
 import { isDemoMode } from "@/lib/db";
-import { readOrganisationSettings } from "@/lib/data/local-store";
+import { getOrganisationSettings } from "@/lib/data/repository";
 import { OrganisationSettingsForm } from "@/components/admin/organisation-settings";
+import { requireSettingsAccess } from "../guard";
 
 export const metadata = { title: "Organisation · Settings" };
 
 export default async function OrganisationSettingsPage() {
-  const organisation = await readOrganisationSettings();
+  const session = await requireSettingsAccess();
+  const organisation = await getOrganisationSettings(session.org.id);
 
   /* Keyed to `isDemoMode` (is there a database?) rather than `session.isDemo`
      (is the user really signed in?). Once WorkOS is configured but

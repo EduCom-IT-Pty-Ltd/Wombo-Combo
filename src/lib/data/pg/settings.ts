@@ -384,6 +384,58 @@ export async function setWorkflowTaskComplete(
   });
 }
 
+/**
+ * Tick off a set of checklist items in one go — the tick-box on the dialog that
+ * skips a project past one or more stages.
+ *
+ * Items with no row yet are inserted already complete rather than ignored. A
+ * checklist item only becomes a `tasks` row once somebody touches it, so most of
+ * what is being closed here has never been written down, and updating only what
+ * exists would silently do nothing on exactly the projects this is meant for.
+ */
+export async function completeWorkflowTasks(
+  orgId: string,
+  projectId: string,
+  templates: Array<{ id: string; title: string; status: ProjectStatus }>,
+): Promise<void> {
+  if (templates.length === 0) return;
+  const completedAt = new Date();
+
+  const updated = await db()
+    .update(tasks)
+    .set({ status: "done", completedAt, updatedAt: completedAt })
+    .where(
+      and(
+        eq(tasks.orgId, orgId),
+        eq(tasks.projectId, projectId),
+        inArray(
+          tasks.workflowTemplateId,
+          templates.map((template) => template.id),
+        ),
+      ),
+    )
+    .returning({ workflowTemplateId: tasks.workflowTemplateId });
+
+  const written = new Set(updated.map((row) => row.workflowTemplateId));
+  const missing = templates.filter((template) => !written.has(template.id));
+  if (missing.length === 0) return;
+
+  await db()
+    .insert(tasks)
+    .values(
+      missing.map((template) => ({
+        orgId,
+        projectId,
+        title: template.title,
+        kind: "admin" as const,
+        status: "done" as const,
+        completedAt,
+        workflowStatus: template.status,
+        workflowTemplateId: template.id,
+      })),
+    );
+}
+
 export async function listWorkflowTaskRows(orgId: string, projectId: string) {
   return db()
     .select()
