@@ -31,6 +31,21 @@ export async function listQuotes(orgId: string, projectId: string): Promise<Quot
   return withLines(orgId, rows);
 }
 
+/**
+ * Every quote for a set of projects, in two queries rather than two per project.
+ * `withLines` already batches its half, so the only thing that scaled with the
+ * number of projects was asking one project at a time.
+ */
+export async function listQuotesForProjects(orgId: string, projectIds: string[]): Promise<QuoteSummary[]> {
+  if (projectIds.length === 0) return [];
+  const rows = await db()
+    .select()
+    .from(quotes)
+    .where(and(eq(quotes.orgId, orgId), inArray(quotes.projectId, projectIds)))
+    .orderBy(desc(quotes.version));
+  return withLines(orgId, rows);
+}
+
 export async function getQuote(orgId: string, id: string): Promise<QuoteSummary | null> {
   const [row] = await db()
     .select()

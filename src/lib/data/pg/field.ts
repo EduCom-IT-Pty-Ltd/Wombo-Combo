@@ -44,6 +44,20 @@ export async function listTimeEntries(
 }
 
 /**
+ * Time entries for a set of projects in one query. The finance table costs every
+ * completed job at once, and asking per job made the page cost a query per row.
+ */
+export async function listTimeEntriesForProjects(orgId: string, projectIds: string[]): Promise<TimeEntry[]> {
+  if (projectIds.length === 0) return [];
+  const rows = await db()
+    .select()
+    .from(timeEntries)
+    .where(and(eq(timeEntries.orgId, orgId), inArray(timeEntries.projectId, projectIds)))
+    .orderBy(desc(timeEntries.startedAt));
+  return rows.map(toTimeEntry);
+}
+
+/**
  * The caller's open shift, if any. Open means never checked out — a paused
  * shift is still open, which is what keeps the "on site" indicator showing
  * while someone is on a break.

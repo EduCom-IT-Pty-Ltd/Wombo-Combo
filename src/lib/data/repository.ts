@@ -1,5 +1,6 @@
 import "server-only";
 import { hasDatabase } from "@/lib/db";
+import { once } from "./request-scope";
 import { listPeople as pgListPeople } from "./pg/org";
 import * as pgCustomers from "./pg/customers";
 import * as pgProjects from "./pg/projects";
@@ -45,6 +46,12 @@ import { EMPTY_CONTEXT, type TransitionContext } from "@/lib/domain/status";
  * Each function takes `orgId` first — the signature makes an unscoped query
  * awkward to write by accident. In the Drizzle implementation every `where`
  * clause starts `eq(table.orgId, orgId)`.
+ *
+ * Reads are deduplicated per request through `once` — see `request-scope.ts`.
+ * That is what lets a layout and the page it wraps both ask for the project
+ * without paying for it twice, so no screen has to thread data it did not want.
+ * The key must capture every argument that changes the result, or two different
+ * questions get one answer.
  */
 
 // TODO(neon): swap each body for a Drizzle query once DATABASE_URL is set.
@@ -57,8 +64,10 @@ import { EMPTY_CONTEXT, type TransitionContext } from "@/lib/domain/status";
  * and the list the app displays drift apart.
  */
 export async function listPeople(orgId: string): Promise<Person[]> {
-  if (hasDatabase) return pgListPeople(orgId);
-  return (await readLocalStore()).people;
+  return once(`people:${orgId}`, async () => {
+    if (hasDatabase) return pgListPeople(orgId);
+    return (await readLocalStore()).people;
+  });
 }
 
 /** PORTED by derivation — reads through listPeople. */
@@ -68,72 +77,116 @@ export async function getPerson(orgId: string, id: string): Promise<Person | nul
 
 /** PORTED. */
 export async function listCustomers(orgId: string): Promise<Customer[]> {
-  if (hasDatabase) return pgCustomers.listCustomers(orgId);
-  return [...(await readLocalStore()).customers].sort((a, b) => a.name.localeCompare(b.name));
+  return once(`customers:${orgId}`, async () => {
+    if (hasDatabase) return pgCustomers.listCustomers(orgId);
+    return [...(await readLocalStore()).customers].sort((a, b) => a.name.localeCompare(b.name));
+  });
+}
+
+export interface CustomerOption {
+  id: string;
+  name: string;
+  defaultProjectTemplateId: string | null;
+}
+
+/**
+ * Customers as a picker sees them. `listCustomers` costs four queries because it
+ * enriches each row with a contact, a site count and lifetime value; a dropdown
+ * needs none of that.
+ */
+export async function listCustomerOptions(orgId: string): Promise<CustomerOption[]> {
+  return once(`customerOptions:${orgId}`, async () => {
+    if (hasDatabase) return pgCustomers.listCustomerOptions(orgId);
+    return (await listCustomers(orgId)).map(({ id, name, defaultProjectTemplateId }) => ({
+      id,
+      name,
+      defaultProjectTemplateId: defaultProjectTemplateId ?? null,
+    }));
+  });
 }
 
 /** PORTED. Archived is `active = false`, not a separate table. */
 export async function listArchivedCustomers(orgId: string): Promise<Customer[]> {
-  if (hasDatabase) return pgCustomers.listArchivedCustomers(orgId);
-  return [...(await readLocalStore()).archivedCustomers].sort((a, b) => a.name.localeCompare(b.name));
+  return once(`customers.archived:${orgId}`, async () => {
+    if (hasDatabase) return pgCustomers.listArchivedCustomers(orgId);
+    return [...(await readLocalStore()).archivedCustomers].sort((a, b) => a.name.localeCompare(b.name));
+  });
 }
 
 /** PORTED. */
 export async function isCustomerArchived(orgId: string, id: string): Promise<boolean> {
-  if (hasDatabase) return pgCustomers.isCustomerArchived(orgId, id);
-  return (await readLocalStore()).archivedCustomers.some((customer) => customer.id === id);
+  return once(`customer.archived:${orgId}:${id}`, async () => {
+    if (hasDatabase) return pgCustomers.isCustomerArchived(orgId, id);
+    return (await readLocalStore()).archivedCustomers.some((customer) => customer.id === id);
+  });
 }
 
 /** PORTED. */
 export async function listCatalogueMaterials(orgId: string): Promise<CatalogueMaterial[]> {
-  if (hasDatabase) return pgSettings.listCatalogueMaterials(orgId);
-  return [...(await readLocalStore()).catalogueMaterials].sort((a, b) => a.name.localeCompare(b.name));
+  return once(`catalogueMaterials:${orgId}`, async () => {
+    if (hasDatabase) return pgSettings.listCatalogueMaterials(orgId);
+    return [...(await readLocalStore()).catalogueMaterials].sort((a, b) => a.name.localeCompare(b.name));
+  });
 }
 
 /** PORTED. */
 export async function listCustomerPriceLists(orgId: string): Promise<CustomerPriceList[]> {
-  if (hasDatabase) return pgSettings.listCustomerPriceLists(orgId);
-  return [...(await readLocalStore()).customerPriceLists].sort((a, b) => a.name.localeCompare(b.name));
+  return once(`customerPriceLists:${orgId}`, async () => {
+    if (hasDatabase) return pgSettings.listCustomerPriceLists(orgId);
+    return [...(await readLocalStore()).customerPriceLists].sort((a, b) => a.name.localeCompare(b.name));
+  });
 }
 
 /** PORTED. */
 export async function getLabourSettings(orgId: string): Promise<LabourSettings> {
-  if (hasDatabase) return pgSettings.getLabourSettings(orgId);
-  return (await readLocalStore()).labourSettings;
+  return once(`labourSettings:${orgId}`, async () => {
+    if (hasDatabase) return pgSettings.getLabourSettings(orgId);
+    return (await readLocalStore()).labourSettings;
+  });
 }
 
 /** PORTED. */
 export async function getProjectCostingOptions(orgId: string, projectId: string): Promise<ProjectCostingOptions> {
-  if (hasDatabase) return pgSettings.getProjectCostingOptions(orgId, projectId);
-  return (await readLocalStore()).projectCostingOptions[projectId] ?? { standardLabourEnabled: false, employeeCount: 0, includeSubcontractorMaterialCosts: false };
+  return once(`costingOptions:${orgId}:${projectId}`, async () => {
+    if (hasDatabase) return pgSettings.getProjectCostingOptions(orgId, projectId);
+    return (await readLocalStore()).projectCostingOptions[projectId] ?? { standardLabourEnabled: false, employeeCount: 0, includeSubcontractorMaterialCosts: false };
+  });
 }
 
 /** PORTED. Falls back to the packaged default until an admin saves one. */
 export async function getQuoteDocumentTemplateSettings(orgId: string): Promise<QuoteDocumentTemplateSettings> {
-  if (hasDatabase) {
-    const saved = await pgSettings.getQuoteDocumentTemplateSettings(orgId);
-    if (saved) return saved;
-  }
-  return (await readLocalStore()).quoteDocumentTemplate;
+  return once(`quoteDocumentTemplate:${orgId}`, async () => {
+    if (hasDatabase) {
+      const saved = await pgSettings.getQuoteDocumentTemplateSettings(orgId);
+      if (saved) return saved;
+    }
+    return (await readLocalStore()).quoteDocumentTemplate;
+  });
 }
 
 /** PORTED. */
 export async function listProductionTemplates(orgId: string): Promise<ProductionTemplate[]> {
-  if (hasDatabase) return pgSettings.listProductionTemplates(orgId);
-  return [...(await readLocalStore()).productionTemplates].sort((a, b) => a.name.localeCompare(b.name));
+  return once(`productionTemplates:${orgId}`, async () => {
+    if (hasDatabase) return pgSettings.listProductionTemplates(orgId);
+    return [...(await readLocalStore()).productionTemplates].sort((a, b) => a.name.localeCompare(b.name));
+  });
 }
 
 /** PORTED. */
 export async function listProjectTemplates(orgId: string): Promise<ProjectTemplate[]> {
-  if (hasDatabase) return pgSettings.listProjectTemplates(orgId);
-  return [...(await readLocalStore()).projectTemplates].sort((a, b) => a.name.localeCompare(b.name));
+  return once(`projectTemplates:${orgId}`, async () => {
+    if (hasDatabase) return pgSettings.listProjectTemplates(orgId);
+    return [...(await readLocalStore()).projectTemplates].sort((a, b) => a.name.localeCompare(b.name));
+  });
 }
 
 /** PORTED. */
 export async function getCustomer(orgId: string, id: string): Promise<Customer | null> {
-  if (hasDatabase) return pgCustomers.getCustomer(orgId, id);
-  const store = await readLocalStore();
-  return store.customers.find((customer) => customer.id === id) ?? store.archivedCustomers.find((customer) => customer.id === id) ?? null;
+  return once(`customer:${orgId}:${id}`, async () => {
+    if (hasDatabase) return pgCustomers.getCustomer(orgId, id);
+    const store = await readLocalStore();
+    return store.customers.find((customer) => customer.id === id) ?? store.archivedCustomers.find((customer) => customer.id === id) ?? null;
+  });
 }
 
 export interface ProjectFilters {
@@ -143,8 +196,21 @@ export interface ProjectFilters {
   assignedTo?: string;
 }
 
+/**
+ * Spelled out rather than `JSON.stringify`d, so a filter added to the interface
+ * without being added here is a missing property rather than a silently shared
+ * cache entry.
+ */
+function filterKey(filters: ProjectFilters): string {
+  return [filters.status?.join("+") ?? "", filters.customerId ?? "", filters.search ?? "", filters.assignedTo ?? ""].join("/");
+}
+
 /** PORTED. Filtering happens in SQL rather than after loading every row. */
 export async function listProjects(orgId: string, filters: ProjectFilters = {}): Promise<ProjectSummary[]> {
+  return once(`projects:${orgId}:${filterKey(filters)}`, () => loadProjects(orgId, filters));
+}
+
+async function loadProjects(orgId: string, filters: ProjectFilters): Promise<ProjectSummary[]> {
   if (hasDatabase) return pgProjects.listProjects(orgId, filters);
   let rows: ProjectSummary[] = (await readLocalStore()).projects;
 
@@ -171,33 +237,64 @@ export async function listProjects(orgId: string, filters: ProjectFilters = {}):
 
 /** PORTED. Archived is derived from status, not a separate flag. */
 export async function listArchivedProjects(orgId: string): Promise<ProjectSummary[]> {
-  if (hasDatabase) return pgProjects.listArchivedProjects(orgId);
-  return [...(await readLocalStore()).archivedProjects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return once(`projects.archived:${orgId}`, async () => {
+    if (hasDatabase) return pgProjects.listArchivedProjects(orgId);
+    return [...(await readLocalStore()).archivedProjects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  });
 }
 
 /** PORTED. */
 export async function isProjectArchived(orgId: string, id: string): Promise<boolean> {
-  if (hasDatabase) return pgProjects.isProjectArchived(orgId, id);
-  return (await readLocalStore()).archivedProjects.some((project) => project.id === id);
+  return once(`project.archived:${orgId}:${id}`, async () => {
+    if (hasDatabase) return pgProjects.isProjectArchived(orgId, id);
+    return (await readLocalStore()).archivedProjects.some((project) => project.id === id);
+  });
 }
 
 /** PORTED. */
 export async function getProject(orgId: string, id: string): Promise<ProjectDetail | null> {
-  if (hasDatabase) return pgProjects.getProject(orgId, id);
-  const store = await readLocalStore();
-  return store.projects.find((p) => p.id === id) ?? store.archivedProjects.find((p) => p.id === id) ?? null;
+  return once(`project:${orgId}:${id}`, async () => {
+    if (hasDatabase) return pgProjects.getProject(orgId, id);
+    const store = await readLocalStore();
+    return store.projects.find((p) => p.id === id) ?? store.archivedProjects.find((p) => p.id === id) ?? null;
+  });
 }
 
 /** PORTED. */
 export async function listQuotes(orgId: string, projectId: string): Promise<QuoteSummary[]> {
-  if (hasDatabase) return pgQuotes.listQuotes(orgId, projectId);
-  return (await readLocalStore()).quotes.filter((q) => q.projectId === projectId).sort((a, b) => b.version - a.version);
+  return once(`quotes:${orgId}:${projectId}`, async () => {
+    if (hasDatabase) return pgQuotes.listQuotes(orgId, projectId);
+    return (await readLocalStore()).quotes.filter((q) => q.projectId === projectId).sort((a, b) => b.version - a.version);
+  });
+}
+
+/**
+ * Quotes for many projects in one query, for the screens that show a row per
+ * project. Called per project instead, a customer with thirty jobs cost sixty
+ * queries to render one table.
+ */
+export async function listQuotesByProject(orgId: string, projectIds: string[]): Promise<Map<string, QuoteSummary[]>> {
+  if (projectIds.length === 0) return new Map();
+  const quotes = hasDatabase
+    ? await pgQuotes.listQuotesForProjects(orgId, projectIds)
+    : (await readLocalStore()).quotes.filter((quote) => projectIds.includes(quote.projectId));
+
+  const byProject = new Map<string, QuoteSummary[]>();
+  for (const quote of quotes) {
+    const list = byProject.get(quote.projectId) ?? [];
+    list.push(quote);
+    byProject.set(quote.projectId, list);
+  }
+  for (const list of byProject.values()) list.sort((a, b) => b.version - a.version);
+  return byProject;
 }
 
 /** PORTED. */
 export async function getQuote(orgId: string, id: string): Promise<QuoteSummary | null> {
-  if (hasDatabase) return pgQuotes.getQuote(orgId, id);
-  return (await readLocalStore()).quotes.find((quote) => quote.id === id) ?? null;
+  return once(`quote:${orgId}:${id}`, async () => {
+    if (hasDatabase) return pgQuotes.getQuote(orgId, id);
+    return (await readLocalStore()).quotes.find((quote) => quote.id === id) ?? null;
+  });
 }
 
 /**
@@ -208,14 +305,29 @@ export async function getQuote(orgId: string, id: string): Promise<QuoteSummary 
  * writing a dozen rows per project, and means changing a template does not
  * orphan anything.
  */
-export async function listWorkflowTasks(orgId: string, projectId: string, status: ProjectStatus): Promise<Task[]> {
-  const templates = hasDatabase
-    ? (await pgSettings.getStatusTaskTemplates(orgId)) ?? (await readStatusTaskTemplates())
-    : await readStatusTaskTemplates();
+/**
+ * The checklist is asked for one stage at a time, but neither the templates nor
+ * the project's rows are stage-specific — so both are read once per request and
+ * filtered per call. A project with fourteen stages in its flow used to issue
+ * fifty-six queries to render one stepper.
+ */
+function workflowTaskTemplates(orgId: string) {
+  return once(`workflowTaskTemplates:${orgId}`, async () =>
+    hasDatabase ? (await pgSettings.getStatusTaskTemplates(orgId)) ?? (await readStatusTaskTemplates()) : readStatusTaskTemplates(),
+  );
+}
 
-  const existing = hasDatabase
-    ? await pgSettings.listWorkflowTaskRows(orgId, projectId)
-    : (await readLocalStore()).tasks;
+function workflowTaskRows(orgId: string, projectId: string) {
+  return once(`workflowTaskRows:${orgId}:${projectId}`, async () =>
+    hasDatabase ? pgSettings.listWorkflowTaskRows(orgId, projectId) : (await readLocalStore()).tasks,
+  );
+}
+
+export async function listWorkflowTasks(orgId: string, projectId: string, status: ProjectStatus): Promise<Task[]> {
+  const [templates, existing] = await Promise.all([
+    workflowTaskTemplates(orgId),
+    workflowTaskRows(orgId, projectId),
+  ]);
 
   return templates
     .filter((template) => template.status === status)
@@ -256,18 +368,30 @@ export async function listWorkflowTasks(orgId: string, projectId: string, status
 }
 
 /** PORTED. */
-export async function listWorkflowFields(orgId: string, projectId: string, status: ProjectStatus): Promise<WorkflowField[]> {
-  const templates = hasDatabase
-    ? (await pgSettings.getStatusFieldTemplates(orgId)) ?? (await readStatusFieldTemplates())
-    : await readStatusFieldTemplates();
+/** Same shape as the checklist above, and read once per request for the same reason. */
+function workflowFieldTemplates(orgId: string) {
+  return once(`workflowFieldTemplates:${orgId}`, async () =>
+    hasDatabase ? (await pgSettings.getStatusFieldTemplates(orgId)) ?? (await readStatusFieldTemplates()) : readStatusFieldTemplates(),
+  );
+}
 
-  const values = hasDatabase
-    ? await pgSettings.getWorkflowFieldValues(orgId, projectId)
-    : Object.fromEntries(
-        (await readLocalStore()).workflowFieldValues
-          .filter((entry) => entry.projectId === projectId)
-          .map((entry) => [entry.templateId, { value: entry.value, updatedAt: entry.updatedAt }]),
-      );
+function workflowFieldValues(orgId: string, projectId: string) {
+  return once(`workflowFieldValues:${orgId}:${projectId}`, async () =>
+    hasDatabase
+      ? pgSettings.getWorkflowFieldValues(orgId, projectId)
+      : Object.fromEntries(
+          (await readLocalStore()).workflowFieldValues
+            .filter((entry) => entry.projectId === projectId)
+            .map((entry) => [entry.templateId, { value: entry.value, updatedAt: entry.updatedAt }]),
+        ),
+  );
+}
+
+export async function listWorkflowFields(orgId: string, projectId: string, status: ProjectStatus): Promise<WorkflowField[]> {
+  const [templates, values] = await Promise.all([
+    workflowFieldTemplates(orgId),
+    workflowFieldValues(orgId, projectId),
+  ]);
 
   return templates
     .filter((template) => template.status === status)
@@ -286,6 +410,14 @@ export async function listAssignments(
   orgId: string,
   opts: { projectId?: string; userId?: string; from?: Date; to?: Date } = {},
 ): Promise<Assignment[]> {
+  const key = `assignments:${orgId}:${opts.projectId ?? ""}:${opts.userId ?? ""}:${opts.from?.getTime() ?? ""}:${opts.to?.getTime() ?? ""}`;
+  return once(key, () => loadAssignments(orgId, opts));
+}
+
+async function loadAssignments(
+  orgId: string,
+  opts: { projectId?: string; userId?: string; from?: Date; to?: Date },
+): Promise<Assignment[]> {
   if (hasDatabase) return pgField.listAssignments(orgId, opts);
   return (await readLocalStore()).assignments
     .filter((a) => {
@@ -300,6 +432,10 @@ export async function listAssignments(
 
 /** PORTED. */
 export async function listSchedulePhases(orgId: string, opts: { projectId?: string; userId?: string } = {}): Promise<SchedulePhaseView[]> {
+  return once(`schedulePhases:${orgId}:${opts.projectId ?? ""}:${opts.userId ?? ""}`, () => loadSchedulePhases(orgId, opts));
+}
+
+async function loadSchedulePhases(orgId: string, opts: { projectId?: string; userId?: string }): Promise<SchedulePhaseView[]> {
   if (hasDatabase) return pgSettings.listSchedulePhases(orgId, opts);
   const store = await readLocalStore();
   return store.schedulePhases
@@ -314,8 +450,10 @@ export async function listSchedulePhases(orgId: string, opts: { projectId?: stri
 
 /** PORTED. */
 export async function listLeave(orgId: string, opts: { userId?: string } = {}): Promise<LeaveEntry[]> {
-  if (hasDatabase) return pgField.listLeave(orgId);
-  return (await readLocalStore()).leave.filter((l) => !opts.userId || l.userId === opts.userId);
+  return once(`leave:${orgId}:${opts.userId ?? ""}`, async () => {
+    if (hasDatabase) return pgField.listLeave(orgId);
+    return (await readLocalStore()).leave.filter((l) => !opts.userId || l.userId === opts.userId);
+  });
 }
 
 /** PORTED. */
@@ -323,51 +461,69 @@ export async function listTimeEntries(
   orgId: string,
   opts: { projectId?: string; userId?: string } = {},
 ): Promise<TimeEntry[]> {
-  if (hasDatabase) return pgField.listTimeEntries(orgId, opts);
-  return (await readLocalStore()).timeEntries.filter(
-    (t) => (!opts.projectId || t.projectId === opts.projectId) && (!opts.userId || t.userId === opts.userId),
-  );
+  return once(`timeEntries:${orgId}:${opts.projectId ?? ""}:${opts.userId ?? ""}`, async () => {
+    if (hasDatabase) return pgField.listTimeEntries(orgId, opts);
+    return (await readLocalStore()).timeEntries.filter(
+      (t) => (!opts.projectId || t.projectId === opts.projectId) && (!opts.userId || t.userId === opts.userId),
+    );
+  });
 }
 
 /** PORTED. */
 export async function getOpenTimeEntry(orgId: string, userId: string): Promise<TimeEntry | null> {
-  if (hasDatabase) return pgField.getOpenTimeEntry(orgId, userId);
-  const entries = await listTimeEntries(orgId, { userId });
-  return entries.find((t) => t.endedAt === null) ?? null;
+  return once(`timeEntry.open:${orgId}:${userId}`, async () => {
+    if (hasDatabase) return pgField.getOpenTimeEntry(orgId, userId);
+    const entries = await listTimeEntries(orgId, { userId });
+    return entries.find((t) => t.endedAt === null) ?? null;
+  });
 }
 
 /** PORTED. */
 export async function listMaterials(orgId: string, projectId: string): Promise<MaterialUse[]> {
-  if (hasDatabase) return pgField.listMaterials(orgId, projectId);
-  return (await readLocalStore()).materials.filter((m) => m.projectId === projectId);
+  return once(`materials:${orgId}:${projectId}`, async () => {
+    if (hasDatabase) return pgField.listMaterials(orgId, projectId);
+    return (await readLocalStore()).materials.filter((m) => m.projectId === projectId);
+  });
 }
 
 /** PORTED. */
 export async function listVariations(orgId: string, projectId: string): Promise<Variation[]> {
-  if (hasDatabase) return pgField.listVariations(orgId, projectId);
-  return (await readLocalStore()).variations.filter((v) => v.projectId === projectId);
+  return once(`variations:${orgId}:${projectId}`, async () => {
+    if (hasDatabase) return pgField.listVariations(orgId, projectId);
+    return (await readLocalStore()).variations.filter((v) => v.projectId === projectId);
+  });
 }
 
 /** PORTED. */
 export async function listDocuments(orgId: string, projectId: string): Promise<DocumentRecord[]> {
-  if (hasDatabase) return pgField.listDocuments(orgId, projectId);
-  return (await readLocalStore()).documents.filter((d) => d.projectId === projectId);
+  return once(`documents:${orgId}:${projectId}`, async () => {
+    if (hasDatabase) return pgField.listDocuments(orgId, projectId);
+    return (await readLocalStore()).documents.filter((d) => d.projectId === projectId);
+  });
 }
 
 /** PORTED. */
 export async function listInspections(orgId: string, projectId: string): Promise<Inspection[]> {
-  if (hasDatabase) return pgField.listInspections(orgId, projectId);
-  return (await readLocalStore()).inspections.filter((i) => i.projectId === projectId);
+  return once(`inspections:${orgId}:${projectId}`, async () => {
+    if (hasDatabase) return pgField.listInspections(orgId, projectId);
+    return (await readLocalStore()).inspections.filter((i) => i.projectId === projectId);
+  });
 }
 
 /** PORTED. */
 export async function listDefects(orgId: string, opts: { projectId?: string } = {}): Promise<Defect[]> {
-  if (hasDatabase) return pgField.listDefects(orgId, opts);
-  return (await readLocalStore()).defects.filter((d) => !opts.projectId || d.projectId === opts.projectId);
+  return once(`defects:${orgId}:${opts.projectId ?? ""}`, async () => {
+    if (hasDatabase) return pgField.listDefects(orgId, opts);
+    return (await readLocalStore()).defects.filter((d) => !opts.projectId || d.projectId === opts.projectId);
+  });
 }
 
 /** PORTED. */
 export async function listEvents(orgId: string, projectId: string): Promise<ProjectEvent[]> {
+  return once(`events:${orgId}:${projectId}`, () => loadEvents(orgId, projectId));
+}
+
+async function loadEvents(orgId: string, projectId: string): Promise<ProjectEvent[]> {
   if (hasDatabase) return pgWorkflow.listEvents(orgId, projectId);
   return (await readLocalStore()).events
     .filter((e) => e.projectId === projectId)
@@ -417,7 +573,69 @@ export async function getCosting(orgId: string, project: ProjectDetail): Promise
     getLabourSettings(orgId),
     getProjectCostingOptions(orgId, project.id),
   ]);
-  const quote = quotes[0];
+  return costingFrom({ quote: quotes[0], entries, labourSettings, costingOptions });
+}
+
+/**
+ * Costing for many projects in four queries, however many projects there are.
+ *
+ * The finance table costs every completed job. Done through `getCosting` that
+ * was four queries per row on top of the nine each project cost to read — a
+ * page whose price grew with the business, for a table nobody paginates.
+ */
+export async function getCostingByProject(orgId: string, projectIds: string[]): Promise<Map<string, CostingResult>> {
+  if (projectIds.length === 0) return new Map();
+
+  const [quotesByProject, entries, labourSettings, costingOptions] = await Promise.all([
+    listQuotesByProject(orgId, projectIds),
+    hasDatabase
+      ? pgField.listTimeEntriesForProjects(orgId, projectIds)
+      : listTimeEntries(orgId).then((all) => all.filter((entry) => projectIds.includes(entry.projectId))),
+    getLabourSettings(orgId),
+    hasDatabase
+      ? pgSettings.getProjectCostingOptionsForProjects(orgId, projectIds)
+      : costingOptionsFromStore(projectIds),
+  ]);
+
+  const entriesByProject = new Map<string, TimeEntry[]>();
+  for (const entry of entries) {
+    const list = entriesByProject.get(entry.projectId) ?? [];
+    list.push(entry);
+    entriesByProject.set(entry.projectId, list);
+  }
+
+  return new Map(
+    projectIds.map((projectId) => [
+      projectId,
+      costingFrom({
+        quote: quotesByProject.get(projectId)?.[0],
+        entries: entriesByProject.get(projectId) ?? [],
+        labourSettings,
+        costingOptions: costingOptions.get(projectId) ?? DEFAULT_COSTING_OPTIONS,
+      }),
+    ]),
+  );
+}
+
+const DEFAULT_COSTING_OPTIONS: ProjectCostingOptions = {
+  standardLabourEnabled: false,
+  employeeCount: 0,
+  includeSubcontractorMaterialCosts: false,
+};
+
+async function costingOptionsFromStore(projectIds: string[]): Promise<Map<string, ProjectCostingOptions>> {
+  const saved = (await readLocalStore()).projectCostingOptions;
+  return new Map(projectIds.map((id) => [id, saved[id] ?? DEFAULT_COSTING_OPTIONS]));
+}
+
+/** The arithmetic, once, so the single and batched paths cannot disagree. */
+function costingFrom(input: {
+  quote: QuoteSummary | undefined;
+  entries: TimeEntry[];
+  labourSettings: LabourSettings;
+  costingOptions: ProjectCostingOptions;
+}): CostingResult {
+  const { quote, entries, labourSettings, costingOptions } = input;
   const subcontractorRates = new Map(labourSettings.subcontractorMaterialRates.map((rate) => [rate.materialId, rate.costCentsPerM2]));
   const subcontractorMaterialCostCents = costingOptions.includeSubcontractorMaterialCosts ? (quote?.lines ?? []).reduce((sum, line) => sum + Math.round(line.quantity * (line.catalogueMaterialId ? subcontractorRates.get(line.catalogueMaterialId) ?? 0 : 0)), 0) : 0;
   const budgetedLabourCostCents = labourSettings.standardLabourEnabled && costingOptions.standardLabourEnabled ? labourSettings.standardLabourCostCentsPerEmployee * costingOptions.employeeCount : 0;
@@ -443,15 +661,19 @@ export interface DashboardMetrics {
   quotesOutstandingCount: number;
   wipValueCents: number;
   readyToInvoiceCents: number;
-  openDefects: number;
 }
 
-/** PORTED by derivation — composes ported reads only. */
+/**
+ * PORTED by derivation — composes ported reads only.
+ *
+ * `listProjects` here is the same read the dashboard and finance pages make for
+ * themselves; per-request deduplication is what stops that costing twice.
+ *
+ * There was an `openDefects` count too, which neither caller ever displayed —
+ * the QA page counts its own. It cost a query on two pages to be thrown away.
+ */
 export async function getDashboardMetrics(orgId: string): Promise<DashboardMetrics> {
-  const [projects, defects] = await Promise.all([
-    listProjects(orgId),
-    listDefects(orgId),
-  ]);
+  const projects = await listProjects(orgId);
   // Was reading readLocalStore() directly, which bypassed the repository and
   // would have reported JSON-store shifts on a database-backed deployment.
   const openEntries = (await listTimeEntries(orgId)).filter((t) => t.endedAt === null);
@@ -471,7 +693,6 @@ export async function getDashboardMetrics(orgId: string): Promise<DashboardMetri
     readyToInvoiceCents: projects
       .filter((p) => p.status === "ready_for_invoice")
       .reduce((s, p) => s + p.contractValueCents, 0),
-    openDefects: defects.filter((d) => !d.resolvedAt).length,
   };
 }
 
@@ -483,6 +704,10 @@ export async function getDashboardMetrics(orgId: string): Promise<DashboardMetri
  * the whole application.
  */
 export async function listSearchIndex(orgId: string, includeCustomers: boolean) {
+  return once(`searchIndex:${orgId}:${includeCustomers}`, () => loadSearchIndex(orgId, includeCustomers));
+}
+
+async function loadSearchIndex(orgId: string, includeCustomers: boolean) {
   if (!hasDatabase) {
     const store = await readLocalStore();
     return {
@@ -503,9 +728,11 @@ export async function listSearchIndex(orgId: string, includeCustomers: boolean) 
  * then never read back.
  */
 export async function getStatusSettings(orgId: string) {
-  if (hasDatabase) {
-    const saved = await pgSettings.getStatusSettings(orgId);
-    if (saved) return saved;
-  }
-  return readLocalStatusSettings();
+  return once(`statusSettings:${orgId}`, async () => {
+    if (hasDatabase) {
+      const saved = await pgSettings.getStatusSettings(orgId);
+      if (saved) return saved;
+    }
+    return readLocalStatusSettings();
+  });
 }

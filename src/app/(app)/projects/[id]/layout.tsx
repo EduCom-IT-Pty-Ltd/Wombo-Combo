@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, MapPin } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
-import { getProject, isProjectArchived, listCustomers, listWorkflowFields, listWorkflowTasks } from "@/lib/data/repository";
+import { getProject, isProjectArchived, listCustomerOptions, listWorkflowFields, listWorkflowTasks } from "@/lib/data/repository";
 import { PROJECT_TABS } from "@/lib/nav";
 import { StatusBadge, StatusStepper } from "@/components/status-badge";
 import { ProjectTabs } from "@/components/projects/project-tabs";
@@ -33,7 +33,7 @@ export default async function ProjectLayout({
   const tabs = PROJECT_TABS.filter((t) => can(session.role, t.capability, session.permissionOverrides));
   const [statusSettings, customers, archived] = await Promise.all([
     readStatusSettings(),
-    listCustomers(session.org.id),
+    listCustomerOptions(session.org.id),
     isProjectArchived(session.org.id, project.id),
   ]);
   const workflowStatuses = statusSettings.filter((setting) => setting.inProgressFlow).map((setting) => setting.status);

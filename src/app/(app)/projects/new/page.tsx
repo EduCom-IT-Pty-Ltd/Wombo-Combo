@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
-import { listCustomers, listProjectTemplates } from "@/lib/data/repository";
+import { listCustomerOptions, listProjectTemplates } from "@/lib/data/repository";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { NewRequestForm } from "@/components/projects/new-request-form";
 
@@ -23,7 +23,7 @@ export default async function NewProjectPage({
     );
   }
 
-  const [customers, templates] = await Promise.all([listCustomers(session.org.id), listProjectTemplates(session.org.id)]);
+  const [customers, templates] = await Promise.all([listCustomerOptions(session.org.id), listProjectTemplates(session.org.id)]);
   // Only honour a customer the session can actually see, so the deep link cannot
   // be used to name an account outside the org.
   const forCustomer = customers.find((customer) => customer.id === customerId);

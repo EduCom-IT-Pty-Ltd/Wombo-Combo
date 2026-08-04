@@ -1,6 +1,7 @@
 import "server-only";
-import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { once } from "../request-scope";
 import { organizations } from "@/lib/db/schema/org";
 import { projects, tasks } from "@/lib/db/schema/projects";
 import { schedulePhases } from "@/lib/db/schema/scheduling";
@@ -47,13 +48,35 @@ interface OrgSettings {
   logoUrl?: string | null;
 }
 
+/**
+ * All of it lives in one jsonb column, so all of it arrives in one read. Nine
+ * getters hang off this — labour, price lists, templates, permissions, the
+ * status flow — and every one of them used to fetch the same row again.
+ */
 async function readSettings(orgId: string): Promise<OrgSettings> {
-  const [row] = await db()
-    .select({ settings: organizations.settings })
-    .from(organizations)
-    .where(eq(organizations.id, orgId))
-    .limit(1);
-  return (row?.settings ?? {}) as OrgSettings;
+  return once(`orgSettings:${orgId}`, async () => {
+    const [row] = await db()
+      .select({ settings: organizations.settings })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+    return (row?.settings ?? {}) as OrgSettings;
+  });
+}
+
+/**
+ * `projects.custom_fields` holds both the costing options and the workflow
+ * field values. They are asked for separately and read together.
+ */
+async function readProjectCustomFields(orgId: string, projectId: string): Promise<Record<string, unknown>> {
+  return once(`projectCustomFields:${orgId}:${projectId}`, async () => {
+    const [row] = await db()
+      .select({ customFields: projects.customFields })
+      .from(projects)
+      .where(and(eq(projects.orgId, orgId), eq(projects.id, projectId)))
+      .limit(1);
+    return (row?.customFields ?? {}) as Record<string, unknown>;
+  });
 }
 
 /** Merges one key into the settings object without reading it back first. */
@@ -127,13 +150,26 @@ const DEFAULT_COSTING: ProjectCostingOptions = {
 };
 
 export async function getProjectCostingOptions(orgId: string, projectId: string): Promise<ProjectCostingOptions> {
-  const [row] = await db()
-    .select({ customFields: projects.customFields })
-    .from(projects)
-    .where(and(eq(projects.orgId, orgId), eq(projects.id, projectId)))
-    .limit(1);
-  const fields = (row?.customFields ?? {}) as { costing?: ProjectCostingOptions };
+  const fields = (await readProjectCustomFields(orgId, projectId)) as { costing?: ProjectCostingOptions };
   return fields.costing ?? DEFAULT_COSTING;
+}
+
+/**
+ * Costing options for many projects at once, for the finance table. One read
+ * per row turned a page of completed jobs into a query per job.
+ */
+export async function getProjectCostingOptionsForProjects(
+  orgId: string,
+  projectIds: string[],
+): Promise<Map<string, ProjectCostingOptions>> {
+  if (projectIds.length === 0) return new Map();
+  const rows = await db()
+    .select({ id: projects.id, customFields: projects.customFields })
+    .from(projects)
+    .where(and(eq(projects.orgId, orgId), inArray(projects.id, projectIds)));
+  return new Map(
+    rows.map((row) => [row.id, ((row.customFields ?? {}) as { costing?: ProjectCostingOptions }).costing ?? DEFAULT_COSTING]),
+  );
 }
 
 export async function saveProjectCostingOptions(
@@ -214,12 +250,7 @@ export async function getWorkflowFieldValues(
   orgId: string,
   projectId: string,
 ): Promise<Record<string, { value: string; updatedAt: string }>> {
-  const [row] = await db()
-    .select({ customFields: projects.customFields })
-    .from(projects)
-    .where(and(eq(projects.orgId, orgId), eq(projects.id, projectId)))
-    .limit(1);
-  const fields = (row?.customFields ?? {}) as {
+  const fields = (await readProjectCustomFields(orgId, projectId)) as {
     workflowFields?: Record<string, { value: string; updatedAt: string }>;
   };
   return fields.workflowFields ?? {};

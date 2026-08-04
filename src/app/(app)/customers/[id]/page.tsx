@@ -4,7 +4,7 @@ import { ArrowLeft, Plus } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
-import { getCustomer, isCustomerArchived, listCustomerPriceLists, listPeople, listProjectTemplates, listProjects, listQuotes } from "@/lib/data/repository";
+import { getCustomer, isCustomerArchived, listCustomerPriceLists, listPeople, listProjectTemplates, listProjects, listQuotesByProject } from "@/lib/data/repository";
 import { ButtonLink, Card, CardHeader, EmptyState, Field, Stat } from "@/components/ui";
 import { ProjectRow } from "@/components/projects/project-row";
 import { CustomerProjectTemplateSelect } from "@/components/customers/customer-project-template-select";
@@ -23,7 +23,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     listCustomerPriceLists(session.org.id),
     isCustomerArchived(session.org.id, customer.id),
   ]);
-  const quotes = (await Promise.all(projects.map((project) => listQuotes(session.org.id, project.id)))).flat();
+  // One query for the customer's whole quote history, not one per project.
+  const quotes = [...(await listQuotesByProject(session.org.id, projects.map((project) => project.id))).values()].flat();
   const showFinancials = can(session.role, "finance.revenue.view", session.permissionOverrides);
   const createProjectHref = `/projects/new?customerId=${customer.id}`;
   const canCreateProject = can(session.role, "project.create", session.permissionOverrides) && !archived;

@@ -3,6 +3,7 @@ import "server-only";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { once } from "./request-scope";
 import * as seed from "./demo-data";
 import type {
   Customer,
@@ -111,7 +112,23 @@ function freshStore(): LocalStore {
   });
 }
 
+/**
+ * Read once per request.
+ *
+ * Even with a database configured this runs on every request — the session
+ * reads role permission overrides from here — and it is not cheap: a file read,
+ * a JSON parse and several deep clones of the seed data. Pages that also want
+ * the status flow were paying for all of it a second and third time.
+ *
+ * Writes deliberately do not go through the memo: `updateLocalStore` reads,
+ * mutates and writes back, and must not be handed an object another caller is
+ * already reading.
+ */
 export async function readLocalStore(): Promise<LocalStore> {
+  return once("localStore", loadStore);
+}
+
+async function loadStore(): Promise<LocalStore> {
   try {
     const store = JSON.parse(await readFile(storePath, "utf8")) as Partial<LocalStore>;
     const savedSettings = store.statusSettings ?? structuredClone(DEFAULT_STATUS_SETTINGS);
@@ -228,7 +245,7 @@ function addWorkflowTasks(store: LocalStore, projectId: string, status: ProjectS
 }
 
 export async function updateLocalStore<T>(update: (store: LocalStore) => T): Promise<T> {
-  const store = await readLocalStore();
+  const store = await loadStore();
   const result = update(store);
   await mkdir(dirname(storePath), { recursive: true });
   const temporaryPath = `${storePath}.${randomUUID()}.tmp`;

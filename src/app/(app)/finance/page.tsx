@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { formatMoney, formatPercent } from "@/lib/domain/money";
-import { getCosting, getDashboardMetrics, getProject, listProjects } from "@/lib/data/repository";
+import { getCostingByProject, getDashboardMetrics, listProjects } from "@/lib/data/repository";
 import { Badge, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { XeroConnectionPanel } from "@/components/finance/xero-connection";
@@ -32,14 +32,13 @@ export default async function FinancePage({
 
   // Margin performance on completed jobs — the number that says whether quoting
   // is calibrated to what delivery actually costs.
+  //
+  // Costed in one batch. The list already carries everything the table renders,
+  // so re-reading each project in full to hand it to the costing was buying nine
+  // queries a row for its id.
   const completed = projects.filter((p) => ["ready_for_invoice", "closed"].includes(p.status));
-  const performance = await Promise.all(
-    completed.map(async (p) => {
-      const detail = await getProject(session.org.id, p.id);
-      const costing = detail ? await getCosting(session.org.id, detail) : null;
-      return { project: p, costing };
-    }),
-  );
+  const costingByProject = await getCostingByProject(session.org.id, completed.map((p) => p.id));
+  const performance = completed.map((p) => ({ project: p, costing: costingByProject.get(p.id) ?? null }));
 
   return (
     <div className="space-y-4">

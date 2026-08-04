@@ -35,14 +35,16 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const filter = FILTERS.some((item) => item.key === params.group) ? params.group as FilterKey : "active";
   const session = await getSession();
   const showFinancials = can(session.role, "finance.revenue.view", session.permissionOverrides);
-  const [allProjects, people, statusSettings, projectTemplates, archivedProjects] = await Promise.all([
-    listProjects(session.org.id),
+  // Only the list this tab renders. Loading both cost seven queries for a
+  // result the page threw away, on the screen people open most.
+  const showArchived = filter === "archived";
+  const [projectsInView, people, statusSettings, projectTemplates] = await Promise.all([
+    showArchived ? listArchivedProjects(session.org.id) : listProjects(session.org.id),
     listPeople(session.org.id),
     readStatusSettings(),
     listProjectTemplates(session.org.id),
-    listArchivedProjects(session.org.id),
   ]);
-  const projects = filter === "archived" ? archivedProjects : allProjects.filter((project) => matchesFilter(project, filter));
+  const projects = showArchived ? projectsInView : projectsInView.filter((project) => matchesFilter(project, filter));
 
   return (
     <div className="space-y-5">

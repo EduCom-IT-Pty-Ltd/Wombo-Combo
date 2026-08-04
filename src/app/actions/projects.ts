@@ -8,6 +8,7 @@ import { can } from "@/lib/domain/permissions";
 import { checkTransition, type ProjectStatus } from "@/lib/domain/status";
 import { runAutomations, type AutomationEffect, type AutomationTrigger } from "@/lib/domain/automation";
 import { buildTransitionContext, getProject } from "@/lib/data/repository";
+import { forgetReads } from "@/lib/data/request-scope";
 import { applyLocalAutomationEffect, completeWorkflowTasksThrough, persistLocalTransition, saveLocalWorkflowFieldValues, setLocalWorkflowTaskComplete } from "@/lib/data/local-store";
 import { hasDatabase } from "@/lib/db";
 import * as pgWorkflow from "@/lib/data/pg/workflow";
@@ -101,6 +102,11 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
   // Automations run only after the transition has committed. A rule that reads
   // the project must see the new status, and a rule that fails must not be able
   // to leave the status unwritten.
+  //
+  // Reads are deduplicated per request, and this request already read the
+  // project — at its old status. Dropping that is what makes the guarantee above
+  // true rather than merely intended.
+  forgetReads();
   const trigger = triggerForStatus(to, projectId);
   if (trigger) {
     await runAutomations(trigger, (effect, firedBy) => executeEffect(effect, firedBy, session.org.id));

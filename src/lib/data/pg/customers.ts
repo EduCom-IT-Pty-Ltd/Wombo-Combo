@@ -33,6 +33,27 @@ export async function listArchivedCustomers(orgId: string): Promise<Customer[]> 
   return loadCustomers(orgId, false);
 }
 
+/**
+ * Just enough customer to fill a picker.
+ *
+ * `listCustomers` enriches every row with its primary contact, site count and
+ * lifetime value — three extra queries, and none of it visible in a dropdown.
+ * The project header and the new-project form want a name and an id.
+ */
+export async function listCustomerOptions(
+  orgId: string,
+): Promise<Array<{ id: string; name: string; defaultProjectTemplateId: string | null }>> {
+  return db()
+    .select({
+      id: customers.id,
+      name: customers.name,
+      defaultProjectTemplateId: customers.defaultProjectTemplateId,
+    })
+    .from(customers)
+    .where(and(eq(customers.orgId, orgId), eq(customers.active, true)))
+    .orderBy(asc(customers.name));
+}
+
 export async function getCustomer(orgId: string, id: string): Promise<Customer | null> {
   const [row] = await db()
     .select()
