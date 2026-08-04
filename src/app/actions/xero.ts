@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCapability } from "@/lib/auth/session";
+import { hasDatabase } from "@/lib/db";
 import {
   buildAuthorisationUrl,
   disconnect,
@@ -12,6 +13,7 @@ import {
   xeroConfigured,
   type XeroConnection,
 } from "@/lib/integrations/xero/client";
+import type { StaleCustomer } from "@/lib/integrations/xero/contacts";
 import { XERO_STATE_COOKIE } from "@/app/api/xero/callback/route";
 
 export interface XeroStatus {
@@ -172,6 +174,7 @@ export async function syncMaterialsFromXero(): Promise<{ ok: boolean; message: s
  */
 export async function syncCustomersFromXero(): Promise<{ ok: boolean; message: string }> {
   const session = await requireCapability("customer.manage");
+  if (!hasDatabase) return { ok: false, message: "Not available on demo data." };
   if (!xeroConfigured()) return { ok: false, message: "Xero is not configured." };
   if (!(await getConnection(session.org.id))) return { ok: false, message: "Connect Xero first, from Finance." };
 
@@ -191,6 +194,59 @@ export async function syncCustomersFromXero(): Promise<{ ok: boolean; message: s
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Could not read contacts from Xero." };
   }
+}
+
+/**
+ * What an earlier, looser sync left behind.
+ *
+ * Read-only on purpose. It reports rather than acts, because a Xero read that
+ * came back short — a throttle, a mid-pagination failure, a scope that changed —
+ * looks exactly like a great many customers having gone stale at once, and the
+ * only reliable guard against that is a person reading the list first.
+ */
+export async function reviewXeroCustomerCleanup(): Promise<{
+  ok: boolean;
+  message?: string;
+  stale?: StaleCustomer[];
+}> {
+  const session = await requireCapability("customer.manage");
+  // Before `getConnection`, which reads the database and would throw rather than
+  // report when there is not one.
+  if (!hasDatabase) return { ok: false, message: "Not available on demo data." };
+  if (!xeroConfigured()) return { ok: false, message: "Xero is not configured." };
+  if (!(await getConnection(session.org.id))) return { ok: false, message: "Connect Xero first, from Finance." };
+
+  try {
+    const { findStaleXeroCustomers } = await import("@/lib/integrations/xero/contacts");
+    return { ok: true, stale: await findStaleXeroCustomers(session.org.id) };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not read contacts from Xero." };
+  }
+}
+
+/**
+ * Archive the reviewed set.
+ *
+ * Nothing is pushed to Xero, and that is the point: these contacts are already
+ * archived there, or they are suppliers. Mirroring the archive back would retire
+ * a live supplier record in the accounting system over a tidy-up of this app's
+ * customer list.
+ */
+export async function archiveStaleXeroCustomers(ids: string[]): Promise<{ ok: boolean; message: string }> {
+  const session = await requireCapability("customer.manage");
+  if (!hasDatabase) return { ok: false, message: "Not available on demo data." };
+  if (!ids.length) return { ok: false, message: "Nothing was selected." };
+
+  const { archiveXeroLinkedCustomers } = await import("@/lib/data/pg/customers");
+  const archived = await archiveXeroLinkedCustomers(session.org.id, ids);
+
+  revalidatePath("/customers");
+  revalidatePath("/customers/[id]", "page");
+  revalidatePath("/projects", "layout");
+  return {
+    ok: true,
+    message: `${archived} customer${archived === 1 ? "" : "s"} archived. They are on the Archived tab if any need bringing back.`,
+  };
 }
 
 /** Refreshes payment status so the `closed` guard can see settled invoices. */

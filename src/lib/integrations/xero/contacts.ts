@@ -2,7 +2,12 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db, hasDatabase } from "@/lib/db";
 import { customers } from "@/lib/db/schema/crm";
-import { getCustomer, importXeroCustomers, type XeroCustomerImport } from "@/lib/data/pg/customers";
+import {
+  getCustomer,
+  importXeroCustomers,
+  listActiveXeroLinkedCustomers,
+  type XeroCustomerImport,
+} from "@/lib/data/pg/customers";
 import { getConnection, xeroConfigured, xeroFetch } from "./client";
 
 /**
@@ -50,6 +55,8 @@ interface XeroPaymentTerms {
 interface XeroContactRecord {
   ContactID: string;
   Name: string;
+  /** Only read by the clean-up review, which is the one caller that asks for archived contacts. */
+  ContactStatus?: string;
   FirstName?: string;
   LastName?: string;
   EmailAddress?: string;
@@ -142,15 +149,24 @@ function toImport(contact: XeroContactRecord): XeroCustomerImport {
   };
 }
 
-async function fetchAllContacts(orgId: string): Promise<XeroContactRecord[]> {
+/**
+ * Every contact, paged.
+ *
+ * The sync wants active ones only — archived contacts are archived for a reason
+ * and have no business turning up on the new-project form. The clean-up review
+ * wants the lot, because "archived in Xero" is one of the things it is looking
+ * for, and it cannot tell that from "no longer exists" unless it asks for both.
+ */
+async function fetchAllContacts(
+  orgId: string,
+  { includeArchived = false }: { includeArchived?: boolean } = {},
+): Promise<XeroContactRecord[]> {
+  const filter = includeArchived ? "includeArchived=true" : `where=${encodeURIComponent('ContactStatus=="ACTIVE"')}`;
   const all: XeroContactRecord[] = [];
   for (let page = 1; page <= MAX_PAGES; page += 1) {
-    // Active contacts only. Archived ones are archived for a reason and have no
-    // business turning up on the new-project form; Xero's default already
-    // excludes them, and the filter says so rather than relying on that.
     const response = await xeroFetch<{ Contacts?: XeroContactRecord[] }>(
       orgId,
-      `/api.xro/2.0/Contacts?where=${encodeURIComponent('ContactStatus=="ACTIVE"')}&page=${page}&pageSize=${PAGE_SIZE}`,
+      `/api.xro/2.0/Contacts?${filter}&page=${page}&pageSize=${PAGE_SIZE}`,
     );
     const batch = response.Contacts ?? [];
     all.push(...batch);
@@ -183,6 +199,62 @@ export async function syncContactsFromXero(orgId: string): Promise<ContactSyncRe
   const imports = contacts.map(toImport);
   const { created, updated } = await importXeroCustomers(orgId, imports);
   return { created, updated, total: imports.length, suppliersSkipped: fetched.length - contacts.length };
+}
+
+export interface StaleCustomer {
+  id: string;
+  name: string;
+  reason: "supplier" | "archived" | "missing";
+  /** Shown in the review, because these are the rows carrying job history. */
+  projectCount: number;
+}
+
+/**
+ * Customers here that Xero no longer says are customers.
+ *
+ * Three ways a row goes stale: the contact is flagged as a supplier, it has been
+ * archived in Xero, or it is not in Xero at all any more. All three come from an
+ * earlier sync that pulled more than it should have, or from a change made in
+ * Xero since.
+ *
+ * Only rows carrying a `xero_contact_id` are considered. A customer with none
+ * never came from Xero — it predates the integration, or was raised here while
+ * Xero was unreachable — and is nobody's business but the office's.
+ *
+ * This reads and classifies; it writes nothing. The list goes in front of a
+ * person first, because the failure mode of getting it wrong is a page of
+ * customers vanishing from everybody's forms at once.
+ */
+export async function findStaleXeroCustomers(orgId: string): Promise<StaleCustomer[]> {
+  const contacts = await fetchAllContacts(orgId, { includeArchived: true });
+
+  // An empty read is far more likely to be a broken connection or a changed
+  // permission than an accounting system with no contacts in it, and acting on
+  // it would mark every customer stale at once.
+  if (contacts.length === 0) {
+    throw new Error("Xero returned no contacts at all. Nothing has changed — check the connection from Finance.");
+  }
+
+  const byId = new Map(contacts.map((contact) => [contact.ContactID, contact]));
+  const linked = await listActiveXeroLinkedCustomers(orgId);
+
+  const stale: StaleCustomer[] = [];
+  for (const customer of linked) {
+    const contact = byId.get(customer.xeroContactId);
+    // Archived is tested before supplier: when a contact is both, the fact that
+    // somebody retired it in Xero is the more useful thing to read.
+    const reason: StaleCustomer["reason"] | null = !contact
+      ? "missing"
+      : contact.ContactStatus && contact.ContactStatus !== "ACTIVE"
+        ? "archived"
+        : contact.IsSupplier === true
+          ? "supplier"
+          : null;
+    if (reason) stale.push({ id: customer.id, name: customer.name, reason, projectCount: customer.projectCount });
+  }
+
+  // Rows with no projects first — those are the ones nobody has to think about.
+  return stale.sort((a, b) => a.projectCount - b.projectCount || a.name.localeCompare(b.name));
 }
 
 /**

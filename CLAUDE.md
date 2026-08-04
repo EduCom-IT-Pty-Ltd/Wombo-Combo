@@ -84,6 +84,12 @@ gets linked by `ensureXeroContact` on its first export. Note `isCustomerContact`
 *not a supplier* rather than `IsCustomer`: Xero only sets `IsCustomer` once a contact has
 been invoiced, so the obvious test would stop a newly created customer from ever syncing.
 Creating, editing or archiving a customer here pushes the same change up.
+
+Clean-up is separate and two-step: `findStaleXeroCustomers` reads and classifies, the
+person confirms, then `archiveStaleXeroCustomers` archives. It **archives locally and
+pushes nothing** — the contacts it finds are suppliers or already archived in Xero, so
+mirroring the archive back would retire a live supplier record over a tidy-up of this
+app's list. Do not "fix" that by reusing `setXeroContactArchived` here.
 Keep every write path pushing: reads come back from Xero on the next sync, so a change that
 only lands locally is silently reverted and looks like the save not working. That is also
 why `contactPayload` sends empty strings rather than omitting keys — Xero reads an absent

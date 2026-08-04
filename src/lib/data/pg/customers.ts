@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contacts, customers, sites } from "@/lib/db/schema/crm";
 import { projects } from "@/lib/db/schema/projects";
@@ -478,6 +478,61 @@ async function importPrimaryContacts(orgId: string, inputs: XeroCustomerImport[]
   for (const batch of chunk(inserts, IMPORT_CHUNK)) {
     await db().insert(contacts).values(batch);
   }
+}
+
+/**
+ * Active customers that came from Xero, with how many projects hang off each.
+ *
+ * Feeds the clean-up review. Rows with no `xero_contact_id` are excluded by the
+ * join condition rather than filtered afterwards — they never came from Xero and
+ * are not the review's business.
+ */
+export async function listActiveXeroLinkedCustomers(
+  orgId: string,
+): Promise<Array<{ id: string; name: string; xeroContactId: string; projectCount: number }>> {
+  const rows = await db()
+    .select({
+      id: customers.id,
+      name: customers.name,
+      xeroContactId: customers.xeroContactId,
+      projectCount: sql<number>`count(${projects.id})::int`,
+    })
+    .from(customers)
+    .leftJoin(projects, and(eq(projects.orgId, orgId), eq(projects.customerId, customers.id)))
+    .where(and(eq(customers.orgId, orgId), eq(customers.active, true), isNotNull(customers.xeroContactId)))
+    .groupBy(customers.id, customers.name, customers.xeroContactId)
+    .orderBy(asc(customers.name));
+
+  return rows.map((row) => ({ ...row, xeroContactId: row.xeroContactId! }));
+}
+
+/**
+ * Archive a reviewed set in one statement.
+ *
+ * Archive rather than delete: these rows may carry quotes, invoices and job
+ * history, `projects.customer_id` would refuse the delete for any that do, and
+ * "wrong about a supplier" should cost somebody one click to undo rather than a
+ * restore from backup.
+ *
+ * Scoped to `orgId` and to rows that actually came from Xero, so a stale or
+ * doctored list of ids cannot reach a customer this clean-up has no business
+ * touching.
+ */
+export async function archiveXeroLinkedCustomers(orgId: string, ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const rows = await db()
+    .update(customers)
+    .set({ active: false, updatedAt: new Date() })
+    .where(
+      and(
+        eq(customers.orgId, orgId),
+        inArray(customers.id, ids),
+        isNotNull(customers.xeroContactId),
+        eq(customers.active, true),
+      ),
+    )
+    .returning({ id: customers.id });
+  return rows.length;
 }
 
 /** Search index for the top bar: one query, none of the list-page aggregates. */

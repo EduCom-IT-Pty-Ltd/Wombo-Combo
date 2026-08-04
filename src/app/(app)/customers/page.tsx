@@ -4,6 +4,7 @@ import { can } from "@/lib/domain/permissions";
 import { listArchivedCustomers, listCustomers } from "@/lib/data/repository";
 import { ButtonLink, PageHeader } from "@/components/ui";
 import { CustomerXeroSyncButton } from "@/components/customers/xero-sync-button";
+import { XeroCleanupButton } from "@/components/customers/xero-cleanup";
 import { CustomerList } from "@/components/customers/customer-list";
 
 export const metadata = { title: "Customers" };
@@ -22,6 +23,9 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         description={`${customers.length} ${archived ? "archived " : ""}accounts, kept in step with Xero`}
         action={can(session.role, "customer.manage", session.permissionOverrides) ? (
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {/* Clean-up only makes sense against the active list; the archived
+                view is where its results land. */}
+            {archived ? null : <XeroCleanupButton />}
             <CustomerXeroSyncButton />
             <ButtonLink href="/customers/new" variant="primary" size="sm">Add customer</ButtonLink>
           </div>
