@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Wombo Combo",
-    template: "%s · Wombo Combo",
+    default: "EnviroShield Insulation Project Portal",
+    template: "%s · EnviroShield Insulation",
   },
   description: "Project management for installation and fitout contractors — request to invoice.",
 };

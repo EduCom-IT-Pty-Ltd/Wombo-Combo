@@ -1,4 +1,4 @@
-# Wombo Combo — working notes
+# EnviroShield Insulation Project Portal — working notes
 
 Project management platform for installation/fitout contractors. Source of truth for
 requirements is `Project_Management_Platform_Workflow_Specification_5040.pdf`.

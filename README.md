@@ -1,11 +1,11 @@
-# Wombo Combo
+# EnviroShield Insulation Project Portal
 
 Project management for installation and fitout contractors — from new request through to
 financially closed. Built from `Project_Management_Platform_Workflow_Specification_5040.pdf`.
 
 ## Getting started
 
-Double-click **`Start Web App.command`**. It installs dependencies if needed, starts the
+Double-click **`EnviroShield Portal.command`**. It installs dependencies if needed, starts the
 server, opens your browser, and shuts everything down when you close the window.
 
 Or from a terminal:
@@ -17,7 +17,7 @@ npm run dev
 Open http://localhost:3000. No database or auth configuration is needed — with no
 `DATABASE_URL` the app serves a demo dataset (a commercial fitout contractor with fourteen
 jobs spread across every workflow stage). New customers, projects, status changes and their
-workflow effects are persisted locally in `.wombo-data/test-data.json`; this file is ignored by
+workflow effects are persisted locally in `.local-data/test-data.json`; this file is ignored by
 Git and is only for testing. Delete it to reset the app to the original demo data.
 
 Use the **Viewing as** dropdown in the top bar to switch roles and see how the app changes.

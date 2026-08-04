@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Double-click to start Wombo Combo.
+# Double-click to start the EnviroShield Insulation Project Portal.
 #
 # Starts the dev server, waits until it actually responds, opens your browser,
 # and shuts everything down when you close this window or press Ctrl+C.
@@ -18,7 +18,7 @@ set -m
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR" || exit 1
 
-APP_NAME="Wombo Combo"
+APP_NAME="EnviroShield Insulation Project Portal"
 SERVER_PID=""
 CLEANED_UP=""
 

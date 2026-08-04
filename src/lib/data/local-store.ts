@@ -72,7 +72,7 @@ export type LocalStore = {
   schedulePhases: SchedulePhase[];
 };
 
-const storePath = join(process.cwd(), ".wombo-data", "test-data.json");
+const storePath = join(process.cwd(), ".local-data", "test-data.json");
 const DEFAULT_ORGANISATION: OrganisationSettings = { name: "Northline Interiors", slug: "northline", currency: "AUD", timezone: "Australia/Sydney", projectNumberPrefix: "NLI", logoUrl: null };
 const LEGACY_ROLE_MAP: Record<string, Person["role"]> = { project_manager: "manager", scheduler: "manager", estimator: "manager", installer: "staff", qa_inspector: "staff", viewer: "staff" };
 

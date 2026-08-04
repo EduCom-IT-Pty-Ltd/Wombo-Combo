@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 export type Theme = "light" | "dark";
 
-export const THEME_STORAGE_KEY = "wombo-theme";
+export const THEME_STORAGE_KEY = "enviroshield-theme";
 
 /** Status bar tint on mobile, so the browser chrome matches the surface. */
 const THEME_COLOR: Record<Theme, string> = { light: "#ffffff", dark: "#14171d" };
