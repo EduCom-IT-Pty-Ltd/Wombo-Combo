@@ -363,10 +363,13 @@ export async function createProject(
     scopeOfWorks?: string | null;
     initialNotes?: string | null;
     requestedStartOn?: Date | null;
+    /** Some jobs arrive with the PO already issued — see project templates. */
+    poNumber?: string | null;
     projectNumberPrefix: string;
   },
 ): Promise<ProjectDetail> {
   const projectNumber = await allocateProjectNumber(orgId, input.projectNumberPrefix, new Date().getFullYear());
+  const poNumber = input.poNumber?.trim() || null;
 
   const [row] = await db()
     .insert(projects)
@@ -379,6 +382,11 @@ export async function createProject(
       scopeOfWorks: input.scopeOfWorks ?? null,
       initialNotes: input.initialNotes ?? null,
       requestedStartOn: input.requestedStartOn ?? null,
+      poNumber,
+      // Same rule as editing the record: the first time a number appears is
+      // when it was received. Leaving this null would render the project header
+      // as "received —", a PO with no date against it.
+      poReceivedAt: poNumber ? new Date() : null,
       status: "new_request",
     })
     .returning();
