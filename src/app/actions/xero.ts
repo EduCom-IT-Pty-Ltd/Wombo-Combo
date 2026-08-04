@@ -25,7 +25,10 @@ export interface XeroStatus {
 
 export async function getXeroStatus(): Promise<XeroStatus> {
   const session = await requireCapability("finance.view");
-  if (!xeroConfigured()) return { configured: false, connection: null, daysUntilExpiry: null };
+  // The connection lives in the database, so without one there is nothing to
+  // report. Checked before `getConnection`, which would otherwise throw and take
+  // the whole Finance page down rather than rendering it unconfigured.
+  if (!hasDatabase || !xeroConfigured()) return { configured: false, connection: null, daysUntilExpiry: null };
 
   const connection = await getConnection(session.org.id);
   if (!connection) return { configured: true, connection: null, daysUntilExpiry: null };
@@ -293,15 +296,42 @@ export async function listXeroRevenueAccounts(): Promise<Array<{ code: string; n
   return result.Accounts.filter((a) => a.Status === "ACTIVE").map((a) => ({ code: a.Code, name: a.Name }));
 }
 
-/** Projects already pushed to Xero, so the table can render in one query. */
-export async function listExportedProjectIds(): Promise<string[]> {
+export interface ExportedInvoice {
+  projectId: string;
+  number: string | null;
+  /** Null when Xero is not connected or its short code could not be read. */
+  url: string | null;
+}
+
+/**
+ * Projects already pushed to Xero, with a link into each invoice.
+ *
+ * One query for the whole table rather than one per row, and one short-code
+ * lookup for the page rather than one per invoice.
+ */
+export async function listExportedInvoices(): Promise<ExportedInvoice[]> {
   const session = await requireCapability("finance.view");
+  if (!hasDatabase) return [];
+
   const { db } = await import("@/lib/db");
   const { invoiceExports } = await import("@/lib/db/schema/finance");
   const { and, eq, isNotNull } = await import("drizzle-orm");
   const rows = await db()
-    .select({ projectId: invoiceExports.projectId })
+    .select({
+      projectId: invoiceExports.projectId,
+      xeroInvoiceId: invoiceExports.xeroInvoiceId,
+      xeroInvoiceNumber: invoiceExports.xeroInvoiceNumber,
+    })
     .from(invoiceExports)
     .where(and(eq(invoiceExports.orgId, session.org.id), isNotNull(invoiceExports.xeroInvoiceId)));
-  return rows.map((row) => row.projectId);
+
+  const { getXeroShortCode } = await import("@/lib/data/repository");
+  const { xeroInvoiceUrl } = await import("@/lib/integrations/xero/links");
+  const shortCode = await getXeroShortCode(session.org.id);
+
+  return rows.map((row) => ({
+    projectId: row.projectId,
+    number: row.xeroInvoiceNumber,
+    url: shortCode && row.xeroInvoiceId ? xeroInvoiceUrl(shortCode, row.xeroInvoiceId) : null,
+  }));
 }

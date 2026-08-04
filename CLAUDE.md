@@ -85,6 +85,17 @@ gets linked by `ensureXeroContact` on its first export. Note `isCustomerContact`
 been invoiced, so the obvious test would stop a newly created customer from ever syncing.
 Creating, editing or archiving a customer here pushes the same change up.
 
+Deep links into Xero's UI are built in `xero/links.ts` and addressed by the organisation's
+`ShortCode`, not its tenant id — without it, a bookkeeper signed into more than one Xero
+org lands in whichever one Xero last had open. The short code is fetched lazily on first
+use and cached on `xero_connections.short_code`. A missing one costs a hyperlink and
+nothing else; callers render plain text.
+
+Nothing re-reads a quote *from* Xero. `xero_quote_status` is written at export and by
+`markQuoteInvoiced`, so edits made in Xero are invisible here, and `exportProjectInvoice`
+bills the app's own lines. The `invoice_exports` idempotency guard is keyed on the
+**project**, so it cannot see an invoice raised inside Xero.
+
 Clean-up is separate and two-step: `findStaleXeroCustomers` reads and classifies, the
 person confirms, then `archiveStaleXeroCustomers` archives. It **archives locally and
 pushes nothing** — the contacts it finds are suppliers or already archived in Xero, so

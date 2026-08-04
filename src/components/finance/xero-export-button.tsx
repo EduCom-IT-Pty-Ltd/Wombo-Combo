@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { FileUp } from "lucide-react";
-import { exportInvoiceToXero } from "@/app/actions/xero";
+import { ExternalLink, FileUp } from "lucide-react";
+import { exportInvoiceToXero, type ExportedInvoice } from "@/app/actions/xero";
 import { Button } from "@/components/ui";
 
 /**
@@ -12,12 +12,25 @@ import { Button } from "@/components/ui";
  * the button is disabled while pending anyway, because a user who sees nothing
  * happen will click again and deserves to be told what is going on.
  */
-export function XeroExportButton({ projectId, exported }: { projectId: string; exported: boolean }) {
+export function XeroExportButton({ projectId, exported }: { projectId: string; exported: ExportedInvoice | null }) {
   const [pending, start] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   if (exported && !result) {
-    return <span className="text-xs text-muted-foreground">In Xero</span>;
+    return exported.url ? (
+      <a
+        href={exported.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex min-h-11 items-center justify-end gap-1 text-xs font-semibold text-primary underline underline-offset-2 hover:no-underline"
+      >
+        {exported.number ?? "In Xero"}
+        <ExternalLink className="size-3" aria-hidden />
+        <span className="sr-only">(opens in Xero)</span>
+      </a>
+    ) : (
+      <span className="text-xs text-muted-foreground">{exported.number ?? "In Xero"}</span>
+    );
   }
 
   return (

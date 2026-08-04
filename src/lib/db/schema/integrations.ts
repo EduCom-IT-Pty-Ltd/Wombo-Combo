@@ -20,6 +20,12 @@ export const xeroConnections = pgTable(
     /** The Xero organisation this connection is authorised against. */
     tenantId: text("tenant_id").notNull(),
     tenantName: text("tenant_name"),
+    /**
+     * Xero's `ShortCode` for this organisation, which every deep link into their
+     * UI is addressed by. Filled in on first use rather than at connect time, so
+     * a connection made before deep links existed does not need reauthorising.
+     */
+    shortCode: text("short_code"),
     /** AES-256-GCM, keyed from XERO_TOKEN_KEY. Never plaintext. */
     accessTokenEncrypted: text("access_token_encrypted").notNull(),
     refreshTokenEncrypted: text("refresh_token_encrypted").notNull(),

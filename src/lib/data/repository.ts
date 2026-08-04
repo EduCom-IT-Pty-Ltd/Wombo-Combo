@@ -155,6 +155,22 @@ export async function getProjectCostingOptions(orgId: string, projectId: string)
   });
 }
 
+/**
+ * PORTED. The connected Xero organisation's short code, or null.
+ *
+ * Lives here rather than being imported straight from `integrations/xero` so
+ * pages keep to the one read path, and so demo mode answers null without any
+ * page having to know that Xero is a database-only concern. Memoised per
+ * request: several quotes on one screen must not each provoke a lookup.
+ */
+export async function getXeroShortCode(orgId: string): Promise<string | null> {
+  if (!hasDatabase) return null;
+  return once(`xeroShortCode:${orgId}`, async () => {
+    const { getXeroShortCode: read } = await import("@/lib/integrations/xero/links");
+    return read(orgId);
+  });
+}
+
 /** PORTED. */
 export async function listProductionTemplates(orgId: string): Promise<ProductionTemplate[]> {
   return once(`productionTemplates:${orgId}`, async () => {

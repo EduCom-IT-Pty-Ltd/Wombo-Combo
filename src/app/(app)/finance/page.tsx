@@ -6,7 +6,7 @@ import { Badge, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/compone
 import { StatusBadge } from "@/components/status-badge";
 import { XeroConnectionPanel } from "@/components/finance/xero-connection";
 import { XeroExportButton } from "@/components/finance/xero-export-button";
-import { listExportedProjectIds } from "@/app/actions/xero";
+import { listExportedInvoices } from "@/app/actions/xero";
 
 export const metadata = { title: "Finance" };
 
@@ -17,7 +17,7 @@ export default async function FinancePage({
 }) {
   const { xero, xeroError } = await searchParams;
   // One query for the whole table rather than one per row.
-  const exportedProjectIds = await listExportedProjectIds();
+  const exportedInvoices = new Map((await listExportedInvoices()).map((row) => [row.projectId, row]));
   const session = await getSession();
   const currency = session.org.currency;
 
@@ -178,7 +178,7 @@ export default async function FinancePage({
                         <td className="px-4 py-2.5 text-right text-xs text-muted-foreground">No cost captured</td>
                       )}
                       <td className="px-4 py-2.5 text-right">
-                        <XeroExportButton projectId={project.id} exported={exportedProjectIds.includes(project.id)} />
+                        <XeroExportButton projectId={project.id} exported={exportedInvoices.get(project.id) ?? null} />
                       </td>
                     </tr>
                   );

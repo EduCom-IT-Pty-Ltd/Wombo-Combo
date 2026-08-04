@@ -92,6 +92,13 @@
       "when": 1785827442878,
       "tag": "0012_vengeful_expediter",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1785831957148,
+      "tag": "0013_freezing_supreme_intelligence",
+      "breakpoints": true
     }
   ]
 }
