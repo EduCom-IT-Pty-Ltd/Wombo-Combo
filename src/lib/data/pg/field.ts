@@ -10,7 +10,7 @@ import { sites } from "@/lib/db/schema/crm";
 import { defects, inspections, inspectionItems } from "@/lib/db/schema/qa";
 import { assertUserAvailable } from "./settings";
 import { documents } from "@/lib/db/schema/documents";
-import type { DocumentKind } from "@/lib/db/schema/enums";
+import type { DocumentKind, LeaveStatus, LeaveType } from "@/lib/db/schema/enums";
 import type {
   Assignment,
   Defect,
@@ -453,6 +453,71 @@ export async function listLeave(orgId: string): Promise<LeaveEntry[]> {
     endsAt: row.endsAt.toISOString(),
     reason: row.reason,
   }));
+}
+
+export interface LeaveInput {
+  userId: string;
+  type: LeaveType;
+  status: LeaveStatus;
+  /** `YYYY-MM-DD`. Leave is booked in whole days. */
+  startsAt: string;
+  endsAt: string;
+  reason: string | null;
+}
+
+/**
+ * Both ends pinned to UTC midnight, the same convention `assertUserAvailable`
+ * and `scheduleInspection` compare against. Storing local midnight would read
+ * back as the day before in some timezones, which for leave means somebody gets
+ * scheduled on a day they are away.
+ */
+function leaveValues(input: LeaveInput) {
+  return {
+    userId: input.userId,
+    type: input.type,
+    status: input.status,
+    startsAt: new Date(`${input.startsAt}T00:00:00.000Z`),
+    endsAt: new Date(`${input.endsAt}T00:00:00.000Z`),
+    reason: input.reason?.trim() || null,
+  };
+}
+
+/** Recorded against a membership, so an unknown or revoked person is refused. */
+async function assertMember(orgId: string, userId: string): Promise<void> {
+  const [membership] = await db()
+    .select({ userId: memberships.userId })
+    .from(memberships)
+    .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId), eq(memberships.active, true)))
+    .limit(1);
+  if (!membership) throw new Error("Choose a valid employee");
+}
+
+export async function createLeave(orgId: string, input: LeaveInput): Promise<void> {
+  await assertMember(orgId, input.userId);
+  await db().insert(leaveRequests).values({ orgId, ...leaveValues(input) });
+}
+
+export async function updateLeave(orgId: string, id: string, input: LeaveInput): Promise<void> {
+  await assertMember(orgId, input.userId);
+  const updated = await db()
+    .update(leaveRequests)
+    .set({ ...leaveValues(input), updatedAt: new Date() })
+    .where(and(eq(leaveRequests.orgId, orgId), eq(leaveRequests.id, id)))
+    .returning({ id: leaveRequests.id });
+  if (updated.length === 0) throw new Error("Leave record not found");
+}
+
+/**
+ * Returns false when nothing matched rather than throwing. Removing a record
+ * that has already gone is the outcome the caller wanted, and the delete button
+ * has nowhere to put an error — throwing would crash the page over a no-op.
+ */
+export async function deleteLeave(orgId: string, id: string): Promise<boolean> {
+  const deleted = await db()
+    .delete(leaveRequests)
+    .where(and(eq(leaveRequests.orgId, orgId), eq(leaveRequests.id, id)))
+    .returning({ id: leaveRequests.id });
+  return deleted.length > 0;
 }
 
 // --- Materials, variations, documents ---------------------------------------

@@ -7,6 +7,7 @@ import { canAdministerDirectory, inviteToOrganisation, revokeOrganisationAccess,
 import { hasDatabase } from "@/lib/db";
 import { LEAVE_STATUSES, LEAVE_TYPES, ROLES } from "@/lib/db/schema/enums";
 import { deactivatePerson, updatePersonDetails, upsertPerson } from "@/lib/data/pg/org";
+import * as pgField from "@/lib/data/pg/field";
 import { getPerson } from "@/lib/data/repository";
 import { createLocalLeave, createLocalPerson, deleteLocalLeave, deleteLocalPerson, updateLocalLeave, updateLocalPerson } from "@/lib/data/local-store";
 
@@ -146,6 +147,40 @@ export async function deletePerson(id: string): Promise<PeopleActionState> {
   }
 }
 
-export async function addLeave(_state: PeopleActionState, formData: FormData): Promise<PeopleActionState> { await requireCapability("hr.manage"); const parsed = leaveSchema.safeParse(Object.fromEntries(formData)); if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check leave details." }; await createLocalLeave({ ...parsed.data, reason: parsed.data.reason || null }); refreshPeople(); return { ok: true, message: "Availability saved." }; }
-export async function updateLeave(_state: PeopleActionState, formData: FormData): Promise<PeopleActionState> { await requireCapability("hr.manage"); const id = String(formData.get("id") ?? ""); const parsed = leaveSchema.safeParse(Object.fromEntries(formData)); if (!id || !parsed.success) return { ok: false, message: parsed.success ? "Check leave details." : parsed.error.issues[0]?.message }; await updateLocalLeave(id, { ...parsed.data, reason: parsed.data.reason || null }); refreshPeople(); return { ok: true, message: "Availability updated." }; }
-export async function deleteLeave(id: string) { await requireCapability("hr.manage"); await deleteLocalLeave(id); refreshPeople(); }
+export async function addLeave(_state: PeopleActionState, formData: FormData): Promise<PeopleActionState> {
+  const session = await requireCapability("hr.manage");
+  const parsed = leaveSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check leave details." };
+  const input = { ...parsed.data, reason: parsed.data.reason || null };
+  try {
+    if (hasDatabase) await pgField.createLeave(session.org.id, input);
+    else await createLocalLeave(input);
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not save availability." };
+  }
+  refreshPeople();
+  return { ok: true, message: "Availability saved." };
+}
+
+export async function updateLeave(_state: PeopleActionState, formData: FormData): Promise<PeopleActionState> {
+  const session = await requireCapability("hr.manage");
+  const id = String(formData.get("id") ?? "");
+  const parsed = leaveSchema.safeParse(Object.fromEntries(formData));
+  if (!id || !parsed.success) return { ok: false, message: parsed.success ? "Check leave details." : parsed.error.issues[0]?.message };
+  const input = { ...parsed.data, reason: parsed.data.reason || null };
+  try {
+    if (hasDatabase) await pgField.updateLeave(session.org.id, id, input);
+    else await updateLocalLeave(id, input);
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not update availability." };
+  }
+  refreshPeople();
+  return { ok: true, message: "Availability updated." };
+}
+
+export async function deleteLeave(id: string) {
+  const session = await requireCapability("hr.manage");
+  if (hasDatabase) await pgField.deleteLeave(session.org.id, id);
+  else await deleteLocalLeave(id);
+  refreshPeople();
+}

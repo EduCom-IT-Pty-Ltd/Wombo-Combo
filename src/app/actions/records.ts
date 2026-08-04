@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
 import { hasDatabase } from "@/lib/db";
-import { archiveProject, deleteProject, restoreProject } from "@/lib/data/pg/projects";
+import { archiveProject, deleteProject, restoreProject, updateProjectRecord as updatePgProject } from "@/lib/data/pg/projects";
+import { deleteCustomer as deletePgCustomer, setCustomerActive, updateCustomer as updatePgCustomer } from "@/lib/data/pg/customers";
 import { graphConfigured } from "@/lib/integrations/graph/client";
 import { deleteItem } from "@/lib/integrations/sharepoint/folders";
 import {
@@ -31,19 +32,25 @@ const customerSchema = z.object({
 export type RecordActionState = { ok: boolean; message?: string };
 
 export async function updateProjectRecord(_state: RecordActionState, formData: FormData): Promise<RecordActionState> {
-  await requireCapability("project.edit");
+  const session = await requireCapability("project.edit");
   const parsed = projectSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, message: "Check the project details and Project ID." };
-  try { await updateLocalProject(parsed.data); } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not update project." }; }
+  try {
+    if (hasDatabase) await updatePgProject(session.org.id, parsed.data);
+    else await updateLocalProject(parsed.data);
+  } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not update project." }; }
   revalidatePath(`/projects/${parsed.data.id}`, "layout"); revalidatePath("/projects");
   return { ok: true, message: "Project details saved." };
 }
 
 export async function updateCustomerRecord(_state: RecordActionState, formData: FormData): Promise<RecordActionState> {
-  await requireCapability("customer.manage");
+  const session = await requireCapability("customer.manage");
   const parsed = customerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, message: "Check the customer details." };
-  await updateLocalCustomer(parsed.data);
+  try {
+    if (hasDatabase) await updatePgCustomer(session.org.id, parsed.data);
+    else await updateLocalCustomer(parsed.data);
+  } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not update customer." }; }
   revalidatePath(`/customers/${parsed.data.id}`); revalidatePath("/customers"); revalidatePath("/projects", "layout");
   return { ok: true, message: "Customer details saved." };
 }
@@ -112,6 +119,46 @@ export async function deleteProjectRecord(id: string): Promise<RecordActionState
     return { ok: false, message: `${deleted.projectNumber} was deleted, but its SharePoint folder could not be removed. Delete it by hand in SharePoint.` };
   }
 }
-export async function archiveCustomerRecord(id: string) { await requireCapability("customer.manage"); await archiveLocalCustomer(id); revalidatePath("/customers"); }
-export async function restoreCustomerRecord(id: string) { await requireCapability("customer.manage"); await restoreLocalCustomer(id); revalidatePath("/customers"); }
-export async function deleteCustomerRecord(id: string) { await requireCapability("customer.manage"); await deleteLocalCustomer(id); revalidatePath("/customers"); }
+function refreshCustomers() { revalidatePath("/customers"); revalidatePath("/projects", "layout"); }
+
+export async function archiveCustomerRecord(id: string): Promise<RecordActionState> {
+  const session = await requireCapability("customer.manage");
+  if (hasDatabase) {
+    if (!await setCustomerActive(session.org.id, id, false)) return { ok: false, message: "That customer could not be archived." };
+  } else {
+    await archiveLocalCustomer(id);
+  }
+  refreshCustomers();
+  return { ok: true, message: "Customer archived." };
+}
+
+export async function restoreCustomerRecord(id: string): Promise<RecordActionState> {
+  const session = await requireCapability("customer.manage");
+  if (hasDatabase) {
+    if (!await setCustomerActive(session.org.id, id, true)) return { ok: false, message: "That customer could not be restored." };
+  } else {
+    await restoreLocalCustomer(id);
+  }
+  refreshCustomers();
+  return { ok: true, message: "Customer restored." };
+}
+
+/**
+ * Delete a customer outright. Refused while they still have projects — the row
+ * is what every one of those projects points at, so removing it would take their
+ * history with it.
+ */
+export async function deleteCustomerRecord(id: string): Promise<RecordActionState> {
+  const session = await requireCapability("customer.manage");
+  try {
+    if (hasDatabase) {
+      if (!await deletePgCustomer(session.org.id, id)) return { ok: false, message: "That customer could not be found." };
+    } else {
+      await deleteLocalCustomer(id);
+    }
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not delete the customer." };
+  }
+  refreshCustomers();
+  return { ok: true, message: "Customer deleted." };
+}

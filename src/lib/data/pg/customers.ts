@@ -187,6 +187,107 @@ export async function createCustomer(
   return created;
 }
 
+/**
+ * Edit a customer from the record form.
+ *
+ * The contact fields on that form are the *primary* contact, which lives in its
+ * own table — so this is an update of one row and an upsert of another. Clearing
+ * every contact field deletes the primary contact rather than leaving a blank
+ * one behind, because a nameless, emailless contact renders as an empty line on
+ * the customer card and cannot be got rid of any other way.
+ */
+export async function updateCustomer(
+  orgId: string,
+  input: {
+    id: string;
+    name: string;
+    accountType?: string;
+    contactName?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    paymentTermsDays: number;
+    priceListId?: string;
+    defaultProjectTemplateId?: string;
+  },
+): Promise<void> {
+  const updated = await db()
+    .update(customers)
+    .set({
+      name: input.name.trim(),
+      accountType: input.accountType?.trim() || null,
+      paymentTermsDays: String(input.paymentTermsDays),
+      priceListId: input.priceListId || null,
+      defaultProjectTemplateId: input.defaultProjectTemplateId || null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(customers.orgId, orgId), eq(customers.id, input.id)))
+    .returning({ id: customers.id });
+  if (updated.length === 0) throw new Error("Customer not found");
+
+  const contactName = input.contactName?.trim();
+  const email = input.contactEmail?.trim() || null;
+  const phone = input.contactPhone?.trim() || null;
+
+  const [existing] = await db()
+    .select({ id: contacts.id })
+    .from(contacts)
+    .where(and(eq(contacts.orgId, orgId), eq(contacts.customerId, input.id), eq(contacts.isPrimary, true)))
+    .limit(1);
+
+  if (!contactName && !email && !phone) {
+    if (existing) await db().delete(contacts).where(eq(contacts.id, existing.id));
+    return;
+  }
+
+  const [firstName, ...rest] = (contactName || email || "Contact").split(/\s+/);
+  const values = { firstName, lastName: rest.join(" ") || null, email, phone };
+
+  if (existing) {
+    await db().update(contacts).set({ ...values, updatedAt: new Date() }).where(eq(contacts.id, existing.id));
+    return;
+  }
+  await db().insert(contacts).values({ orgId, customerId: input.id, isPrimary: true, ...values });
+}
+
+/**
+ * Park a customer, or bring one back. `active` is the same flag the list pages
+ * split on, so archiving is one column and nothing moves.
+ */
+export async function setCustomerActive(orgId: string, id: string, active: boolean): Promise<boolean> {
+  const rows = await db()
+    .update(customers)
+    .set({ active, updatedAt: new Date() })
+    .where(and(eq(customers.orgId, orgId), eq(customers.id, id)))
+    .returning({ id: customers.id });
+  return rows.length > 0;
+}
+
+/**
+ * Delete a customer outright. Contacts and sites cascade with it.
+ *
+ * Projects do not: `projects.customer_id` references this table without a
+ * cascade, so Postgres refuses the delete while any project still points here.
+ * That refusal is the desired behaviour — silently deleting somebody's job
+ * history along with their customer record would be far worse — but the raw
+ * foreign-key error is not something to put in front of a person, so it is
+ * turned into a sentence.
+ */
+export async function deleteCustomer(orgId: string, id: string): Promise<boolean> {
+  const [{ count }] = await db()
+    .select({ count: sql<number>`count(*)::int` })
+    .from(projects)
+    .where(and(eq(projects.orgId, orgId), eq(projects.customerId, id)));
+  if (count > 0) {
+    throw new Error(`This customer still has ${count} project${count === 1 ? "" : "s"}. Delete or reassign them first.`);
+  }
+
+  const rows = await db()
+    .delete(customers)
+    .where(and(eq(customers.orgId, orgId), eq(customers.id, id)))
+    .returning({ id: customers.id });
+  return rows.length > 0;
+}
+
 /** Search index for the top bar: one query, none of the list-page aggregates. */
 export async function listCustomersForSearch(
   orgId: string,

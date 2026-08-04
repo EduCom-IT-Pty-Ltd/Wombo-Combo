@@ -102,7 +102,19 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
   // happened. Doing it before the write meant a move that was then refused —
   // for want of the override permission, or because someone else had already
   // moved the project — still closed every checklist it claimed to be skipping.
-  if (confirmJump && completeSkipped) await completeSkippedChecklists(session.org.id, projectId, to);
+  //
+  // Reported rather than thrown: the move is already committed, so failing the
+  // whole action would show an error for something that did work, and the
+  // checklists can be ticked by hand.
+  let checklistWarning: string | null = null;
+  if (confirmJump && completeSkipped) {
+    try {
+      await completeSkippedChecklists(session.org.id, projectId, to);
+    } catch (error) {
+      console.error("[projects] closing skipped checklists failed", error);
+      checklistWarning = " The earlier checklists could not be ticked off — do it by hand.";
+    }
+  }
 
   // Automations run only after the transition has committed. A rule that reads
   // the project must see the new status, and a rule that fails must not be able
@@ -121,7 +133,7 @@ export async function transitionProject(input: unknown): Promise<ActionResult> {
   revalidatePath("/projects");
   revalidatePath("/");
 
-  return { ok: true, message: `Moved to ${to.replaceAll("_", " ")}` };
+  return { ok: true, message: `Moved to ${to.replaceAll("_", " ")}${checklistWarning ?? ""}` };
 }
 
 export async function setWorkflowTaskComplete(input: { projectId: string; templateId: string; complete: boolean; completedAt?: string }): Promise<ActionResult> {

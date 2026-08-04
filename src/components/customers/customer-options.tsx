@@ -11,8 +11,23 @@ const initial: RecordActionState = { ok: false };
 const inputClass = "h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-foreground";
 
 export function CustomerOptions({ customer, priceLists, projectTemplates, archived = false }: { customer: Customer; priceLists: Array<{ id: string; name: string }>; projectTemplates: Array<{ id: string; name: string }>; archived?: boolean }) {
-  const [menuOpen, setMenuOpen] = useState(false); const [editing, setEditing] = useState(false); const [pending, startTransition] = useTransition(); const router = useRouter();
-  return <div className="relative"><Button type="button" size="sm" variant="ghost" aria-label="Customer options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal className="size-5" /></Button>{menuOpen ? <div className="absolute right-0 z-30 mt-1 w-44 rounded-lg border border-border-strong bg-surface p-1 shadow-xl"><button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" onClick={() => { setEditing(true); setMenuOpen(false); }}>Edit customer</button>{archived ? <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" disabled={pending} onClick={() => startTransition(async () => { await restoreCustomerRecord(customer.id); router.push(`/customers/${customer.id}`); router.refresh(); })}>Restore</button> : <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" disabled={pending} onClick={() => { if (window.confirm(`Archive ${customer.name}? It will move to the Archived customers view.`)) startTransition(async () => { await archiveCustomerRecord(customer.id); router.push("/customers?archived=1"); router.refresh(); }); }}>Archive</button>}<button className="w-full rounded-md px-3 py-2 text-left text-sm text-[var(--tone-rose-fg)] hover:bg-surface-muted" disabled={pending} onClick={() => { if (window.confirm(`Delete ${customer.name} permanently? Existing project records will retain their saved customer snapshot.`)) startTransition(async () => { await deleteCustomerRecord(customer.id); router.push("/customers"); router.refresh(); }); }}>Delete permanently</button></div> : null}{editing ? <CustomerEditor customer={customer} priceLists={priceLists} projectTemplates={projectTemplates} onClose={() => setEditing(false)} /> : null}</div>;
+  const [menuOpen, setMenuOpen] = useState(false); const [editing, setEditing] = useState(false); const [error, setError] = useState<string | null>(null); const [pending, startTransition] = useTransition(); const router = useRouter();
+
+  // Archiving and deleting can be refused — a customer with projects still on
+  // the books cannot be deleted. Navigate only once the action says it worked,
+  // otherwise the refusal scrolls past on a page we have already left.
+  function run(action: () => Promise<RecordActionState>, destination: string) {
+    setError(null);
+    startTransition(async () => {
+      const result = await action();
+      if (!result.ok) { setError(result.message ?? "That did not work."); return; }
+      setMenuOpen(false);
+      router.push(destination);
+      router.refresh();
+    });
+  }
+
+  return <div className="relative"><Button type="button" size="sm" variant="ghost" aria-label="Customer options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal className="size-5" /></Button>{menuOpen ? <div className="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-border-strong bg-surface p-1 shadow-xl"><button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" onClick={() => { setEditing(true); setMenuOpen(false); }}>Edit customer</button>{archived ? <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" disabled={pending} onClick={() => run(() => restoreCustomerRecord(customer.id), `/customers/${customer.id}`)}>Restore</button> : <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-muted" disabled={pending} onClick={() => { if (window.confirm(`Archive ${customer.name}? It will move to the Archived customers view.`)) run(() => archiveCustomerRecord(customer.id), "/customers?archived=1"); }}>Archive</button>}<button className="w-full rounded-md px-3 py-2 text-left text-sm text-[var(--tone-rose-fg)] hover:bg-surface-muted" disabled={pending} onClick={() => { if (window.confirm(`Delete ${customer.name} permanently? Existing project records will retain their saved customer snapshot.`)) run(() => deleteCustomerRecord(customer.id), "/customers"); }}>Delete permanently</button>{error ? <p className="px-3 py-2 text-xs text-[var(--tone-rose-fg)]">{error}</p> : null}</div> : null}{editing ? <CustomerEditor customer={customer} priceLists={priceLists} projectTemplates={projectTemplates} onClose={() => setEditing(false)} /> : null}</div>;
 }
 
 function CustomerEditor({ customer, priceLists, projectTemplates, onClose }: { customer: Customer; priceLists: Array<{ id: string; name: string }>; projectTemplates: Array<{ id: string; name: string }>; onClose: () => void }) {

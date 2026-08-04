@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { customers, sites } from "@/lib/db/schema/crm";
 import { projectNumberSequences, projects, tasks } from "@/lib/db/schema/projects";
@@ -22,6 +22,23 @@ import { getCustomer } from "./customers";
 
 /** A project no longer in flight. Typed so a status rename fails the build. */
 const FINISHED_PROJECT_STATUSES: ProjectStatus[] = ["closed", "lost", "cancelled"];
+
+/**
+ * Did this query fail on a named unique index?
+ *
+ * Drizzle wraps the driver error, so the SQLSTATE and the constraint name are on
+ * the cause, not the message — and the message it does carry is the whole SQL
+ * statement with its parameters. Matched on `23505` plus the index name rather
+ * than on text, so the check does not depend on how anything is worded.
+ */
+function isUniqueViolation(error: unknown, constraint: string): boolean {
+  for (let current = error, depth = 0; current && depth < 5; depth += 1) {
+    const candidate = current as { code?: string; constraint?: string; cause?: unknown };
+    if (candidate.code === "23505" && candidate.constraint === constraint) return true;
+    current = candidate.cause;
+  }
+  return false;
+}
 
 export interface ProjectFilters {
   status?: ProjectStatus[];
@@ -369,6 +386,107 @@ export async function createProject(
   const created = await getProject(orgId, row.id);
   if (!created) throw new Error("Project was inserted but could not be read back.");
   return created;
+}
+
+/**
+ * Edit a project from the record form.
+ *
+ * The site is edited by name here rather than picked, so the three cases are:
+ * renaming the one attached, attaching a new one, and clearing it. A cleared
+ * site is detached and deleted — it only ever held the name typed on this form,
+ * and leaving orphans behind would fill the customer's site count with rows
+ * nobody can reach.
+ *
+ * The project number is unique per org, and is checked before any of the site
+ * work rather than being left to the constraint. Letting the insert go first
+ * meant a clash aborted the update with a freshly created site already on the
+ * customer, attached to nothing. The constraint is still caught underneath, for
+ * the case where someone else claims the number in between.
+ */
+export async function updateProjectRecord(
+  orgId: string,
+  input: {
+    id: string;
+    projectNumber: string;
+    title: string;
+    customerId: string;
+    siteName?: string;
+    contactName?: string;
+    requestedStartOn?: string;
+    scopeOfWorks?: string;
+    initialNotes?: string;
+    poNumber?: string;
+  },
+): Promise<void> {
+  const [existing] = await db()
+    .select({ siteId: projects.siteId, poReceivedAt: projects.poReceivedAt })
+    .from(projects)
+    .where(and(eq(projects.orgId, orgId), eq(projects.id, input.id)))
+    .limit(1);
+  if (!existing) throw new Error("Project not found");
+
+  const [customer] = await db()
+    .select({ id: customers.id })
+    .from(customers)
+    .where(and(eq(customers.orgId, orgId), eq(customers.id, input.customerId)))
+    .limit(1);
+  if (!customer) throw new Error("Customer not found");
+
+  const projectNumber = input.projectNumber.trim();
+  const [clash] = await db()
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.orgId, orgId), eq(projects.projectNumber, projectNumber), ne(projects.id, input.id)))
+    .limit(1);
+  if (clash) throw new Error("Project ID already exists");
+
+  const siteName = input.siteName?.trim() || "";
+  const accessNotes = input.contactName?.trim() ? `Site contact: ${input.contactName.trim()}` : null;
+  let siteId = existing.siteId;
+
+  if (siteName && existing.siteId) {
+    await db()
+      .update(sites)
+      .set({ name: siteName, accessNotes, customerId: customer.id, updatedAt: new Date() })
+      .where(and(eq(sites.orgId, orgId), eq(sites.id, existing.siteId)));
+  } else if (siteName) {
+    const [site] = await db()
+      .insert(sites)
+      .values({ orgId, customerId: customer.id, name: siteName, accessNotes })
+      .returning({ id: sites.id });
+    siteId = site.id;
+  } else {
+    siteId = null;
+  }
+
+  const poNumber = input.poNumber?.trim() || null;
+  try {
+    await db()
+      .update(projects)
+      .set({
+        projectNumber,
+        title: input.title.trim(),
+        customerId: customer.id,
+        siteId,
+        scopeOfWorks: input.scopeOfWorks?.trim() || null,
+        initialNotes: input.initialNotes?.trim() || null,
+        requestedStartOn: input.requestedStartOn ? new Date(input.requestedStartOn) : null,
+        poNumber,
+        // First time a PO number appears is when it was received. Re-saving the
+        // form must not move that date, and clearing the number clears it.
+        poReceivedAt: poNumber ? (existing.poReceivedAt ?? new Date()) : null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(projects.orgId, orgId), eq(projects.id, input.id)));
+  } catch (error) {
+    if (isUniqueViolation(error, "projects_org_number_idx")) throw new Error("Project ID already exists");
+    throw error;
+  }
+
+  // Detached last: the project has to stop pointing at it before the row can go.
+  if (!siteName && existing.siteId) {
+    await db().delete(sites).where(and(eq(sites.orgId, orgId), eq(sites.id, existing.siteId)));
+  }
 }
 
 /**
