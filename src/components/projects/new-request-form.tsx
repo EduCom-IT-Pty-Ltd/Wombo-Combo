@@ -13,7 +13,7 @@ const initial: NewRequestState = { status: "idle" };
  * form-action + `useActionState` pattern so it works without JS and reports
  * field errors from the same Zod schema the server validates with.
  */
-export function NewRequestForm({ customers, templates, defaultCustomerId }: { customers: Array<{ id: string; name: string; defaultProjectTemplateId: string | null }>; templates: ProjectTemplate[]; defaultCustomerId?: string }) {
+export function NewRequestForm({ customers, templates, defaultCustomerId, isDemo }: { customers: Array<{ id: string; name: string; defaultProjectTemplateId: string | null }>; templates: ProjectTemplate[]; defaultCustomerId?: string; isDemo?: boolean }) {
   const [state, formAction, pending] = useActionState(createProjectRequest, initial);
   const [customerId, setCustomerId] = useState(defaultCustomerId ?? "");
   // Arriving from a customer page pre-applies that customer's default template,
@@ -93,16 +93,18 @@ export function NewRequestForm({ customers, templates, defaultCustomerId }: { cu
             {pending ? "Creating…" : "Create project"}
           </Button>
           {state.status === "error" ? (
-            <p className="text-xs text-[var(--tone-rose-fg)]">{state.message}</p>
-          ) : null}
-          {state.status === "success" ? (
-            <p className="text-xs text-[var(--tone-emerald-fg)]">
-              {state.message} {state.projectId ? <Link className="font-medium underline" href={`/projects/${state.projectId}`}>Open project</Link> : null}
+            <p className="text-xs text-[var(--tone-rose-fg)]">
+              {state.message}{" "}
+              {/* The project exists but its template did not apply. Offer the way
+                  in anyway rather than leaving it stranded on the list page. */}
+              {state.projectId ? <Link className="font-medium underline" href={`/projects/${state.projectId}`}>Open project</Link> : null}
             </p>
           ) : null}
-          <p className="ml-auto text-xs text-muted-foreground">
-            Saved locally on this computer. It can be replaced with the production database later.
-          </p>
+          {isDemo ? (
+            <p className="ml-auto text-xs text-muted-foreground">
+              Demo data — this project is saved to the demo dataset, not a database.
+            </p>
+          ) : null}
         </div>
       </Card>
     </form>

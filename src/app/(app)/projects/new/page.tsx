@@ -46,7 +46,7 @@ export default async function NewProjectPage({
         }
       />
 
-      <NewRequestForm customers={customers.map((c) => ({ id: c.id, name: c.name, defaultProjectTemplateId: c.defaultProjectTemplateId ?? null }))} templates={templates} defaultCustomerId={forCustomer?.id} />
+      <NewRequestForm customers={customers.map((c) => ({ id: c.id, name: c.name, defaultProjectTemplateId: c.defaultProjectTemplateId ?? null }))} templates={templates} defaultCustomerId={forCustomer?.id} isDemo={session.isDemo} />
     </div>
   );
 }

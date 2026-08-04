@@ -7,6 +7,7 @@ import { projects } from "@/lib/db/schema/projects";
 import { sites } from "@/lib/db/schema/crm";
 import { defects, inspections, inspectionItems } from "@/lib/db/schema/qa";
 import { documents } from "@/lib/db/schema/documents";
+import type { DocumentKind } from "@/lib/db/schema/enums";
 import type {
   Assignment,
   Defect,
@@ -208,12 +209,87 @@ export async function listDocuments(orgId: string, projectId: string): Promise<D
     requiresAcknowledgement: row.requiresAcknowledgement,
     uploadedAt: row.createdAt.toISOString(),
     uploadedById: row.uploadedByUserId,
-    // Resolved per request against Graph rather than stored: a SharePoint
-    // download URL is short-lived, so a persisted one would be broken by the
-    // time anyone clicked it.
-    url: null,
+    // Our own route, not the SharePoint one. A Graph download URL lasts minutes,
+    // so a stored one would be dead by the time anyone clicked it — and going
+    // through us means access is checked against the caller's org on every read
+    // rather than being whoever holds the link.
+    url: `/api/documents/${row.id}`,
     note: null,
   }));
+}
+
+/**
+ * Record an uploaded file against a project.
+ *
+ * Same name in the same project is treated as a new revision rather than a
+ * second document: the version continues the sequence and points back at what
+ * it replaced, which is what `supersedesDocumentId` is for. SharePoint keeps
+ * both sets of bytes, so nothing is lost by saying so.
+ */
+export async function createDocument(
+  orgId: string,
+  input: {
+    projectId: string;
+    name: string;
+    kind: DocumentKind;
+    storageKey: string;
+    mimeType: string | null;
+    sizeBytes: number;
+    requiresAcknowledgement: boolean;
+    uploadedByUserId: string | null;
+  },
+): Promise<{ id: string; version: number }> {
+  const [previous] = await db()
+    .select({ id: documents.id, version: documents.version })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.orgId, orgId),
+        eq(documents.projectId, input.projectId),
+        eq(documents.name, input.name),
+      ),
+    )
+    .orderBy(desc(documents.version))
+    .limit(1);
+
+  const version = (previous?.version ?? 0) + 1;
+  const [row] = await db()
+    .insert(documents)
+    .values({
+      orgId,
+      projectId: input.projectId,
+      name: input.name,
+      kind: input.kind,
+      storageKey: input.storageKey,
+      mimeType: input.mimeType,
+      sizeBytes: input.sizeBytes,
+      version,
+      supersedesDocumentId: previous?.id ?? null,
+      requiresAcknowledgement: input.requiresAcknowledgement,
+      uploadedByUserId: input.uploadedByUserId,
+    })
+    .returning({ id: documents.id });
+
+  return { id: row.id, version };
+}
+
+/** Where the bytes live, for the route that resolves a download URL. */
+export async function getDocumentLocation(
+  orgId: string,
+  documentId: string,
+): Promise<{ name: string; storageKey: string; driveId: string | null } | null> {
+  const [row] = await db()
+    .select({
+      name: documents.name,
+      storageKey: documents.storageKey,
+      driveId: projects.sharepointDriveId,
+    })
+    .from(documents)
+    .leftJoin(projects, and(eq(projects.id, documents.projectId), eq(projects.orgId, documents.orgId)))
+    .where(and(eq(documents.orgId, orgId), eq(documents.id, documentId)))
+    .limit(1);
+
+  return row ?? null;
 }
 
 // --- QA ---------------------------------------------------------------------

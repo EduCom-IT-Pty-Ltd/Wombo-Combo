@@ -6,11 +6,12 @@ import { hasDatabase, isDemoMode } from "@/lib/db";
 import { createProject as createPgProject } from "@/lib/data/pg/projects";
 import { createSite as createPgSite } from "@/lib/data/pg/projects";
 import { provisionProjectSharePoint } from "@/lib/integrations/sharepoint/provision-project";
-import { runAutomations, type AutomationEffect } from "@/lib/domain/automation";
+import { runAutomations } from "@/lib/domain/automation";
 import { applyLocalAutomationEffect, createLocalProject } from "@/lib/data/local-store";
 import { listProjectTemplates } from "@/lib/data/repository";
 import { transitionProject } from "@/app/actions/projects";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 const schema = z.object({
   title: z.string().trim().min(3, "Give the project a title"),
@@ -24,8 +25,14 @@ const schema = z.object({
   poNumber: z.string().trim().max(120).optional(),
 });
 
+/**
+ * There is no success state: a created project redirects into itself, so the
+ * only thing left to report is why it was not created. `projectId` is set on
+ * the one partial failure — the project exists but its template did not apply —
+ * so the form can still offer a way in.
+ */
 export interface NewRequestState {
-  status: "idle" | "success" | "error";
+  status: "idle" | "error";
   message?: string;
   projectId?: string;
   errors?: Partial<Record<keyof z.infer<typeof schema>, string>>;
@@ -78,7 +85,10 @@ export async function createProjectRequest(
     await provisionProjectSharePoint(session.org.id, project.id);
 
     revalidatePath("/projects");
-    return { status: "success", projectId: project.id, message: `Created ${project.projectNumber}.` };
+    // Straight into the project rather than announcing a number and asking for
+    // another click. Creating a project is the start of working on it, and the
+    // number is on the page we land on anyway.
+    redirect(`/projects/${project.id}`);
   }
 
   if (isDemoMode) {
@@ -90,9 +100,7 @@ export async function createProjectRequest(
       projectNumberPrefix: session.org.projectNumberPrefix,
       actorId: session.user.id,
     });
-    const effects: AutomationEffect[] = [];
     await runAutomations({ kind: "project.created", projectId: project.id }, async (effect) => {
-      effects.push(effect);
       await applyLocalAutomationEffect(effect, { kind: "project.created", projectId: project.id });
     });
     if (template && template.startingStatus !== "new_request") {
@@ -102,12 +110,7 @@ export async function createProjectRequest(
       if (!transition.ok) return { status: "error", projectId: project.id, message: `${project.projectNumber} was created, but could not be moved to the template status: ${transition.message}` };
     }
     revalidatePath("/projects");
-
-    return {
-      status: "success",
-      projectId: project.id,
-      message: `Created ${project.projectNumber}${template ? ` using ${template.name}` : ""}. ${effects.length} workflow actions recorded.`,
-    };
+    redirect(`/projects/${project.id}`);
   }
 
   throw new Error("No database and not in demo mode — check DATABASE_URL and DEMO_MODE.");

@@ -2,22 +2,12 @@ import { ExternalLink, FileText, ShieldAlert } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/domain/permissions";
 import { listDocuments, listPeople } from "@/lib/data/repository";
-import { Badge, Button, Card, CardHeader, EmptyState } from "@/components/ui";
+import { Badge, Card, CardHeader, EmptyState } from "@/components/ui";
 import { formatBytes, formatDate } from "@/lib/utils";
+import { documentKindLabel } from "@/lib/domain/documents";
 import { getSharePointFolder } from "@/app/actions/sharepoint";
 import { SharePointFolderCard } from "@/components/projects/sharepoint-folder-card";
-
-const KIND_LABELS: Record<string, string> = {
-  drawing: "Drawing",
-  swms: "SWMS",
-  permit: "Permit",
-  certificate: "Certificate",
-  photo: "Photo",
-  purchase_order: "Purchase order",
-  quote_pdf: "Quote",
-  completion_certificate: "Completion certificate",
-  other: "Other",
-};
+import { DocumentUpload } from "@/components/projects/document-upload";
 
 export default async function ProjectDocumentsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -46,9 +36,7 @@ export default async function ProjectDocumentsPage({ params }: { params: Promise
           description="Drawings, SWMS, permits and certificates"
           action={
             can(session.role, "document.upload", session.permissionOverrides) ? (
-              <Button size="sm" variant="secondary">
-                Upload
-              </Button>
+              <DocumentUpload projectId={id} hasFolder={Boolean(folder.url)} />
             ) : null
           }
         />
@@ -59,7 +47,7 @@ export default async function ProjectDocumentsPage({ params }: { params: Promise
             {Object.entries(grouped).map(([kind, docs]) => (
               <section key={kind}>
                 <h3 className="bg-surface-muted px-4 py-1.5 text-xs font-medium text-muted-foreground">
-                  {KIND_LABELS[kind] ?? kind}
+                  {documentKindLabel(kind)}
                 </h3>
                 <ul className="divide-y divide-border-subtle">
                   {docs.map((doc) => {
