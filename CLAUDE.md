@@ -76,10 +76,14 @@ DRAFT, approved and sent by a human there. There is no quote PDF: a quote's only
 customer-facing form is the draft Xero produces.
 
 **Xero is the source of truth for customers**, and unlike materials that sync is two-way —
-see `src/lib/integrations/xero/contacts.ts`. `syncContactsFromXero` pulls, matching on
-`xero_contact_id` then on name, adding and updating only; a customer with no Xero contact
-is left alone, because it may have live projects and gets linked by `ensureXeroContact` on
-its first export. Creating, editing or archiving a customer here pushes the same change up.
+see `src/lib/integrations/xero/contacts.ts`. `syncContactsFromXero` pulls **active,
+non-supplier contacts only**, matching on `xero_contact_id` then on name, adding and
+updating; it never writes `active`, so archiving stays a human decision on one side or the
+other. A customer with no Xero contact is left alone, because it may have live projects and
+gets linked by `ensureXeroContact` on its first export. Note `isCustomerContact` tests for
+*not a supplier* rather than `IsCustomer`: Xero only sets `IsCustomer` once a contact has
+been invoiced, so the obvious test would stop a newly created customer from ever syncing.
+Creating, editing or archiving a customer here pushes the same change up.
 Keep every write path pushing: reads come back from Xero on the next sync, so a change that
 only lands locally is silently reverted and looks like the save not working. That is also
 why `contactPayload` sends empty strings rather than omitting keys — Xero reads an absent

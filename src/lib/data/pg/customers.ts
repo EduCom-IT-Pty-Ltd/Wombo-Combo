@@ -295,7 +295,6 @@ export interface XeroCustomerImport {
   billingAddress: string | null;
   /** Null when Xero's terms are month-relative and do not express a day count. */
   paymentTermsDays: number | null;
-  active: boolean;
   /** Null when Xero holds no person, which must not blank out one held here. */
   contact: { firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
 }
@@ -317,10 +316,12 @@ function normaliseName(name: string): string {
 /**
  * Mirror Xero's contacts into the customer table.
  *
- * Adds and updates; never deletes. A customer here with no Xero contact is left
- * alone — it predates the integration or was created while Xero was down, it may
- * have live projects hanging off it, and `ensureXeroContact` links it the first
- * time something is exported for it.
+ * Adds and updates; never deletes, and never touches `active`. A customer here
+ * with no Xero contact is left alone — it predates the integration or was
+ * created while Xero was down, it may have live projects hanging off it, and
+ * `ensureXeroContact` links it the first time something is exported for it.
+ * Archiving stays a decision someone makes, in one place or the other, rather
+ * than something a sync does on their behalf.
  *
  * Two passes, because a first sync has to recognise customers that already exist
  * on both sides. The first claims unlinked rows whose name matches a contact,
@@ -333,25 +334,23 @@ function normaliseName(name: string): string {
 export async function importXeroCustomers(
   orgId: string,
   raw: XeroCustomerImport[],
-): Promise<{ created: number; updated: number; archived: number }> {
+): Promise<{ created: number; updated: number }> {
   // Postgres refuses an ON CONFLICT that would touch the same row twice in one
   // statement, so a contact appearing on two pages must not reach the insert
   // twice. Last wins, which for paged reads is the fresher copy.
   const inputs = [...new Map(raw.map((input) => [input.xeroContactId, input])).values()];
-  if (inputs.length === 0) return { created: 0, updated: 0, archived: 0 };
+  if (inputs.length === 0) return { created: 0, updated: 0 };
 
   const existing = await db()
     .select({
       id: customers.id,
       name: customers.name,
       xeroContactId: customers.xeroContactId,
-      active: customers.active,
     })
     .from(customers)
     .where(eq(customers.orgId, orgId));
 
   const linkedIds = new Set(existing.map((row) => row.xeroContactId).filter(Boolean) as string[]);
-  const activeBy = new Map(existing.filter((row) => row.xeroContactId).map((row) => [row.xeroContactId!, row.active]));
 
   // Only unlinked rows are candidates, and only where the name is unambiguous —
   // two customers called "Smith Building" cannot be told apart by name, and
@@ -365,7 +364,6 @@ export async function importXeroCustomers(
 
   let created = 0;
   let updated = 0;
-  let archived = 0;
 
   for (const input of inputs) {
     if (linkedIds.has(input.xeroContactId)) continue;
@@ -379,7 +377,6 @@ export async function importXeroCustomers(
     // rather than stealing the row back.
     unlinkedByName.set(normaliseName(input.name), null);
     linkedIds.add(input.xeroContactId);
-    activeBy.set(input.xeroContactId, true);
   }
 
   for (const batch of chunk(inputs, IMPORT_CHUNK)) {
@@ -393,7 +390,6 @@ export async function importXeroCustomers(
           billingAddress: input.billingAddress,
           paymentTermsDays: input.paymentTermsDays == null ? null : String(input.paymentTermsDays),
           xeroContactId: input.xeroContactId,
-          active: input.active,
         })),
       )
       .onConflictDoUpdate({
@@ -405,7 +401,8 @@ export async function importXeroCustomers(
           // Xero not expressing a day count must not reset the row to nothing,
           // so a null from the import keeps whatever is already there.
           paymentTermsDays: sql`coalesce(excluded.payment_terms_days, ${customers.paymentTermsDays})`,
-          active: sql`excluded.active`,
+          // `active` is deliberately absent. Archiving is somebody's decision,
+          // and a customer parked here stays parked no matter what Xero says.
           updatedAt: new Date(),
         },
       })
@@ -417,13 +414,9 @@ export async function importXeroCustomers(
     }
   }
 
-  for (const input of inputs) {
-    if (!input.active && activeBy.get(input.xeroContactId) === true) archived += 1;
-  }
-
   await importPrimaryContacts(orgId, inputs);
 
-  return { created, updated, archived };
+  return { created, updated };
 }
 
 /**

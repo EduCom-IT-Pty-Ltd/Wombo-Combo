@@ -158,7 +158,10 @@ export async function syncMaterialsFromXero(): Promise<{ ok: boolean; message: s
 }
 
 /**
- * Mirror Xero's contacts into the customer list.
+ * Mirror Xero's active customer contacts into the customer list.
+ *
+ * Suppliers and archived contacts are not pulled — see `isCustomerContact` and
+ * the `ContactStatus` filter in `xero/contacts.ts`.
  *
  * `customer.manage` rather than `finance.*`: this maintains the customer list,
  * which is the estimator's and the office's job, not the bookkeeper's.
@@ -174,15 +177,15 @@ export async function syncCustomersFromXero(): Promise<{ ok: boolean; message: s
 
   try {
     const { syncContactsFromXero } = await import("@/lib/integrations/xero/contacts");
-    const { created, updated, archived, total } = await syncContactsFromXero(session.org.id);
+    const { created, updated, total, suppliersSkipped } = await syncContactsFromXero(session.org.id);
     revalidatePath("/customers");
     // The list alone is not enough — a renamed customer's own page caches too.
     revalidatePath("/customers/[id]", "page");
     revalidatePath("/projects", "layout");
     return {
       ok: true,
-      message: `${total} contact${total === 1 ? "" : "s"} from Xero: ${created} added, ${updated} updated.${
-        archived ? ` ${archived} archived in Xero and now archived here.` : ""
+      message: `${total} customer${total === 1 ? "" : "s"} from Xero: ${created} added, ${updated} updated.${
+        suppliersSkipped ? ` ${suppliersSkipped} supplier${suppliersSkipped === 1 ? "" : "s"} skipped.` : ""
       }`,
     };
   } catch (error) {

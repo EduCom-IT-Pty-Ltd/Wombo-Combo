@@ -50,7 +50,6 @@ interface XeroPaymentTerms {
 interface XeroContactRecord {
   ContactID: string;
   Name: string;
-  ContactStatus?: string;
   FirstName?: string;
   LastName?: string;
   EmailAddress?: string;
@@ -72,17 +71,16 @@ const MAX_PAGES = 200;
 
 /**
  * Suppliers are contacts too, and pulling them in would put every timber
- * merchant in the customer list.
+ * merchant in the customer list. Anything Xero flags as a supplier is skipped.
  *
- * The test is deliberately "supplier and not customer" rather than "is
- * customer": Xero only sets `IsCustomer` once a contact has been billed, so a
- * contact created five minutes ago — exactly the one someone is about to quote —
- * has neither flag set. Excluding only the known-supplier-and-never-a-customer
- * case keeps those, and costs nothing but the odd supplier that has also been
- * sold something.
+ * Contacts with neither flag are kept, and that is not an oversight: Xero only
+ * sets `IsCustomer` once a contact has been invoiced, so testing for it would
+ * mean a customer created in Xero five minutes ago — exactly the one somebody is
+ * about to quote — never syncs. "Not a supplier" is the strictest test that
+ * still lets a brand-new customer through.
  */
 function isCustomerContact(contact: XeroContactRecord): boolean {
-  return !(contact.IsSupplier === true && contact.IsCustomer !== true);
+  return contact.IsSupplier !== true;
 }
 
 function phoneOf(contact: XeroContactRecord): string | null {
@@ -134,7 +132,6 @@ function toImport(contact: XeroContactRecord): XeroCustomerImport {
     abn: contact.TaxNumber?.trim() || null,
     billingAddress: addressOf(contact),
     paymentTermsDays: paymentTermDaysOf(contact),
-    active: contact.ContactStatus !== "ARCHIVED",
     // Null rather than an empty contact when Xero holds no person: the sync
     // should not blank out a name and mobile somebody typed into the portal
     // just because the accounting system never had them.
@@ -148,11 +145,12 @@ function toImport(contact: XeroContactRecord): XeroCustomerImport {
 async function fetchAllContacts(orgId: string): Promise<XeroContactRecord[]> {
   const all: XeroContactRecord[] = [];
   for (let page = 1; page <= MAX_PAGES; page += 1) {
-    // `includeArchived` so archiving in Xero archives here too, rather than
-    // leaving a dead customer selectable on the new-project form.
+    // Active contacts only. Archived ones are archived for a reason and have no
+    // business turning up on the new-project form; Xero's default already
+    // excludes them, and the filter says so rather than relying on that.
     const response = await xeroFetch<{ Contacts?: XeroContactRecord[] }>(
       orgId,
-      `/api.xro/2.0/Contacts?includeArchived=true&page=${page}&pageSize=${PAGE_SIZE}`,
+      `/api.xro/2.0/Contacts?where=${encodeURIComponent('ContactStatus=="ACTIVE"')}&page=${page}&pageSize=${PAGE_SIZE}`,
     );
     const batch = response.Contacts ?? [];
     all.push(...batch);
@@ -164,26 +162,27 @@ async function fetchAllContacts(orgId: string): Promise<XeroContactRecord[]> {
 export interface ContactSyncResult {
   created: number;
   updated: number;
-  /** Matched customers that Xero has since archived. */
-  archived: number;
   total: number;
+  /** Contacts Xero returned that were skipped as suppliers. */
+  suppliersSkipped: number;
 }
 
 /**
- * Pull every customer contact from Xero.
+ * Pull the active, non-supplier contacts from Xero.
  *
- * Adds and updates only. A customer that exists here and not in Xero is left
- * exactly as it is — it may well have live projects, and archiving it because it
- * predates the integration would take it off the forms people are using. It gets
- * linked the first time its quote is exported, by `ensureXeroContact`.
+ * Adds and updates only, and never archives. A customer that exists here and not
+ * in Xero — because it predates the integration, or was archived there — is left
+ * exactly as it is; it may well have live projects, and taking it off the forms
+ * people are using is not something a sync should do on its own. Unlinked rows
+ * get their contact id the first time a quote is exported, by
+ * `ensureXeroContact`.
  */
 export async function syncContactsFromXero(orgId: string): Promise<ContactSyncResult> {
-  const contacts = (await fetchAllContacts(orgId)).filter(
-    (contact) => contact.ContactID && contact.Name?.trim() && isCustomerContact(contact),
-  );
+  const fetched = (await fetchAllContacts(orgId)).filter((contact) => contact.ContactID && contact.Name?.trim());
+  const contacts = fetched.filter(isCustomerContact);
   const imports = contacts.map(toImport);
-  const { created, updated, archived } = await importXeroCustomers(orgId, imports);
-  return { created, updated, archived, total: imports.length };
+  const { created, updated } = await importXeroCustomers(orgId, imports);
+  return { created, updated, total: imports.length, suppliersSkipped: fetched.length - contacts.length };
 }
 
 /**

@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import Link from "next/link";
 import { createProjectRequest, type NewRequestState } from "@/app/actions/new-request";
 import { Button, Card, CardHeader } from "@/components/ui";
+import { CustomerPicker } from "@/components/customers/customer-picker";
 import type { ProjectTemplate } from "@/lib/data/types";
 
 const initial: NewRequestState = { status: "idle" };
@@ -15,9 +16,9 @@ const initial: NewRequestState = { status: "idle" };
  */
 export function NewRequestForm({ customers, templates, defaultCustomerId, isDemo }: { customers: Array<{ id: string; name: string; defaultProjectTemplateId: string | null }>; templates: ProjectTemplate[]; defaultCustomerId?: string; isDemo?: boolean }) {
   const [state, formAction, pending] = useActionState(createProjectRequest, initial);
-  const [customerId, setCustomerId] = useState(defaultCustomerId ?? "");
   // Arriving from a customer page pre-applies that customer's default template,
-  // the same as picking them from the dropdown would.
+  // the same as picking them from the field would. The chosen customer itself
+  // lives in the picker; only the template it implies is needed out here.
   const [templateId, setTemplateId] = useState(
     () => customers.find((customer) => customer.id === defaultCustomerId)?.defaultProjectTemplateId ?? "",
   );
@@ -30,27 +31,13 @@ export function NewRequestForm({ customers, templates, defaultCustomerId, isDemo
           <Text name="title" label="Project title" error={state.errors?.title} required />
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-muted-foreground">Customer</span>
-              <select
-                name="customerId"
-                required
-                className={inputClass}
-                value={customerId}
-                onChange={(event) => {
-                  setCustomerId(event.target.value);
-                  setTemplateId(customers.find((customer) => customer.id === event.target.value)?.defaultProjectTemplateId ?? "");
-                }}
-              >
-                <option value="">Select a customer…</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <FieldError message={state.errors?.customerId} />
-            </label>
+            <CustomerPicker
+              customers={customers}
+              defaultCustomerId={defaultCustomerId}
+              required
+              error={state.errors?.customerId}
+              onSelect={(customer) => setTemplateId(customer?.defaultProjectTemplateId ?? "")}
+            />
 
             <Text name="siteName" label="Site name" error={state.errors?.siteName} />
           </div>
