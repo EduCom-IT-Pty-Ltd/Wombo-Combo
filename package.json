@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "graph:check": "tsx --conditions=react-server scripts/graph-check.ts",
     "sync:org": "tsx --conditions=react-server scripts/sync-org.ts",
+    "db:status": "tsx scripts/db-status.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
