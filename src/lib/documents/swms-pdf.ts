@@ -110,12 +110,21 @@ function addPage(writer: Writer, section: string) {
 function drawHeader(writer: Writer) {
   const { page, regular, bold, logo, project, section } = writer;
   page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 76, width: PAGE_WIDTH, height: 76, color: PALE });
+  // Some approved organisation marks include a solid white background. Give
+  // every logo a dedicated white panel so it feels intentional, whether or
+  // not the supplied file itself is transparent.
+  page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 76, width: 148, height: 76, color: rgb(1, 1, 1) });
   page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 76, width: 7, height: 76, color: ACCENT });
   let titleX = MARGIN;
   if (logo) {
-    const size = logo.scaleToFit(58, 42);
-    page.drawImage(logo, { x: MARGIN, y: PAGE_HEIGHT - 60, width: size.width, height: size.height });
-    titleX += 70;
+    const size = logo.scaleToFit(112, 52);
+    page.drawImage(logo, {
+      x: 19 + (112 - size.width) / 2,
+      y: PAGE_HEIGHT - 76 + (76 - size.height) / 2,
+      width: size.width,
+      height: size.height,
+    });
+    titleX = 164;
   }
   page.drawText("SAFE WORK METHOD STATEMENT", { x: titleX, y: PAGE_HEIGHT - 34, size: 14, font: bold, color: INK });
   page.drawText(clean(section), { x: titleX, y: PAGE_HEIGHT - 51, size: 8.5, font: regular, color: MUTED });
