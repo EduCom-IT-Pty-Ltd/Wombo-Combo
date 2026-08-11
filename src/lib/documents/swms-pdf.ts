@@ -21,6 +21,10 @@ const LINE = rgb(0.8, 0.83, 0.87);
 const PALE = rgb(0.95, 0.96, 0.98);
 const ACCENT = rgb(0.06, 0.34, 0.56);
 const TICK = rgb(0.06, 0.48, 0.27);
+// The SWMS is a field document, not a photo archive. Keeping the embedded
+// copies below this budget gives a sharp A4 printout while keeping the file
+// comfortably below the 2 MB sharing limit in normal use.
+const PHOTO_EMBED_BUDGET_BYTES = 1_350_000;
 
 export type PdfImage = { name: string; mimeType: string | null; bytes: Uint8Array };
 
@@ -54,11 +58,13 @@ export async function createSwmsPdf(input: SwmsPdfInput): Promise<Uint8Array> {
   pdf.setAuthor(input.project.customerName);
   pdf.setSubject("Safe Work Method Statement");
 
-  const [regular, bold, logo] = await Promise.all([
+  const [regular, bold, preparedLogo, photos] = await Promise.all([
     pdf.embedFont(StandardFonts.Helvetica),
     pdf.embedFont(StandardFonts.HelveticaBold),
-    embedImage(pdf, input.logo),
+    prepareLogoForPdf(input.logo),
+    preparePhotosForPdf(input.photos),
   ]);
+  const logo = await embedImage(pdf, preparedLogo);
   const writer = createWriter(pdf, regular, bold, logo, input.project, "Project details");
   const { values } = input.record;
 
@@ -83,9 +89,9 @@ export async function createSwmsPdf(input: SwmsPdfInput): Promise<Uint8Array> {
   drawNotes(writer, "Comments", values.comments || "No additional comments recorded.");
   drawSignOff(writer, input.record);
 
-  await drawPhotoPages(writer, input.template, input.record, input.photos);
+  await drawPhotoPages(writer, input.template, input.record, photos);
   addPageNumbers(writer);
-  return pdf.save();
+  return pdf.save({ useObjectStreams: true });
 }
 
 function createWriter(pdf: PDFDocument, regular: PDFFont, bold: PDFFont, logo: PDFImage | null, project: ProjectDetail, section: string): Writer {
@@ -149,15 +155,18 @@ function drawRule(writer: Writer) {
 function drawDetails(writer: Writer, entries: Array<[string, string]>) {
   const columnWidth = (PAGE_WIDTH - MARGIN * 2 - 14) / 2;
   for (let index = 0; index < entries.length; index += 2) {
-    ensureSpace(writer, 44, "Project details");
+    const row = entries.slice(index, index + 2);
+    const lineCounts = row.map(([, value]) => wrap(clean(value || "-"), columnWidth - 16, 9, writer.regular).length);
+    const height = Math.max(40, Math.max(...lineCounts) * 10 + 25);
+    ensureSpace(writer, height + 8);
     const rowY = writer.y;
-    entries.slice(index, index + 2).forEach(([label, value], itemIndex) => {
+    row.forEach(([label, value], itemIndex) => {
       const x = MARGIN + itemIndex * (columnWidth + 14);
-      writer.page.drawRectangle({ x, y: rowY - 31, width: columnWidth, height: 36, color: PALE, borderColor: LINE, borderWidth: 0.5 });
+      writer.page.drawRectangle({ x, y: rowY - height, width: columnWidth, height, color: PALE, borderColor: LINE, borderWidth: 0.5 });
       writer.page.drawText(clean(label).toUpperCase(), { x: x + 8, y: rowY - 9, size: 6.8, font: writer.bold, color: MUTED });
       drawWrapped(writer, clean(value || "-"), x + 8, rowY - 21, columnWidth - 16, 9, writer.regular, INK, 10);
     });
-    writer.y -= 44;
+    writer.y -= height + 8;
   }
   writer.y -= 2;
 }
@@ -265,19 +274,26 @@ function drawNotes(writer: Writer, title: string, value: string) {
 }
 
 function drawSignOff(writer: Writer, record: SwmsRecord) {
-  ensureSpace(writer, 120, "Measurements and sign-off");
+  ensureSpace(writer, 136, "Measurements and sign-off");
   writer.page.drawText("INSTALLER SIGN-OFF", { x: MARGIN, y: writer.y, size: 9, font: writer.bold, color: ACCENT });
-  writer.y -= 14;
+  writer.y -= 17;
   const names = record.values.installerNames.filter(Boolean);
   const rows = Math.max(4, names.length);
+  const nameWidth = 252;
+  const signatureX = MARGIN + nameWidth + 16;
+  const signatureWidth = PAGE_WIDTH - MARGIN - signatureX;
+  writer.page.drawRectangle({ x: MARGIN, y: writer.y - 17, width: nameWidth, height: 17, color: PALE, borderColor: LINE, borderWidth: 0.5 });
+  writer.page.drawRectangle({ x: signatureX, y: writer.y - 17, width: signatureWidth, height: 17, color: PALE, borderColor: LINE, borderWidth: 0.5 });
+  writer.page.drawText("INSTALLER", { x: MARGIN + 6, y: writer.y - 11, size: 6.8, font: writer.bold, color: MUTED });
+  writer.page.drawText("SIGNATURE", { x: signatureX + 6, y: writer.y - 11, size: 6.8, font: writer.bold, color: MUTED });
+  writer.y -= 17;
   for (let index = 0; index < rows; index += 1) {
-    const y = writer.y - index * 20;
-    writer.page.drawLine({ start: { x: MARGIN, y }, end: { x: MARGIN + 300, y }, thickness: 0.5, color: LINE });
-    writer.page.drawText(clean(names[index] || ""), { x: MARGIN + 5, y: y + 5, size: 8.5, font: writer.regular, color: INK });
-    writer.page.drawText("Signature", { x: MARGIN + 320, y: y + 5, size: 7, font: writer.regular, color: MUTED });
-    writer.page.drawLine({ start: { x: MARGIN + 375, y }, end: { x: PAGE_WIDTH - MARGIN, y }, thickness: 0.5, color: LINE });
+    const y = writer.y - index * 23;
+    writer.page.drawRectangle({ x: MARGIN, y: y - 23, width: nameWidth, height: 23, borderColor: LINE, borderWidth: 0.5 });
+    writer.page.drawRectangle({ x: signatureX, y: y - 23, width: signatureWidth, height: 23, borderColor: LINE, borderWidth: 0.5 });
+    writer.page.drawText(clean(names[index] || ""), { x: MARGIN + 6, y: y - 15, size: 8.5, font: writer.regular, color: INK });
   }
-  writer.y -= rows * 20 + 15;
+  writer.y -= rows * 23 + 15;
   writer.page.drawText(`Time out: ${clean(record.values.timeOut || "-")}`, { x: MARGIN, y: writer.y, size: 8.5, font: writer.bold, color: INK });
   writer.y -= 22;
 }
@@ -314,9 +330,59 @@ async function drawPhotoPages(writer: Writer, template: SwmsTemplate, record: Sw
     writer.page.drawRectangle({ x, y, width: cellWidth, height: cellHeight, color: PALE, borderColor: LINE, borderWidth: 0.5 });
     const bounds = image.scaleToFit(cellWidth - 12, cellHeight - 34);
     writer.page.drawImage(image, { x: x + (cellWidth - bounds.width) / 2, y: y + 23 + (cellHeight - 34 - bounds.height) / 2, width: bounds.width, height: bounds.height });
-    writer.page.drawText(clean(photo.name), { x: x + 6, y: y + 7, size: 6.8, font: writer.regular, color: MUTED, maxWidth: cellWidth - 12 });
+    writer.page.drawText(truncate(clean(photo.name), cellWidth - 12, 6.8, writer.regular), { x: x + 6, y: y + 7, size: 6.8, font: writer.regular, color: MUTED, maxWidth: cellWidth - 12 });
     slot += 1;
   }
+}
+
+async function prepareLogoForPdf(logo: PdfImage | null): Promise<PdfImage | null> {
+  if (!logo || logo.bytes.byteLength <= 180_000) return logo;
+  try {
+    const sharp = (await import("sharp")).default;
+    const bytes = await sharp(logo.bytes)
+      .resize({ width: 480, height: 240, fit: "inside", withoutEnlargement: true })
+      .png({ palette: true, quality: 85, compressionLevel: 9 })
+      .toBuffer();
+    return { ...logo, mimeType: "image/png", bytes: new Uint8Array(bytes) };
+  } catch {
+    return logo;
+  }
+}
+
+async function preparePhotosForPdf(photos: PdfImage[]): Promise<PdfImage[]> {
+  if (photos.length === 0) return [];
+  const perPhotoBudget = Math.max(18_000, Math.floor(PHOTO_EMBED_BUDGET_BYTES / photos.length));
+  const prepared = await Promise.all(photos.map((photo) => compressPhotoForPdf(photo, perPhotoBudget)));
+  return prepared.filter((photo): photo is PdfImage => photo !== null);
+}
+
+async function compressPhotoForPdf(photo: PdfImage, byteBudget: number): Promise<PdfImage | null> {
+  try {
+    const sharp = (await import("sharp")).default;
+    const source = sharp(photo.bytes, { limitInputPixels: false }).rotate();
+    const profiles = [
+      { edge: 1_000, quality: 72 },
+      { edge: 760, quality: 62 },
+      { edge: 560, quality: 52 },
+      { edge: 420, quality: 42 },
+    ];
+    for (const profile of profiles) {
+      const bytes = await source.clone()
+        .resize({ width: profile.edge, height: profile.edge, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: profile.quality, progressive: true, mozjpeg: true, chromaSubsampling: "4:2:0" })
+        .toBuffer();
+      if (bytes.byteLength <= byteBudget || profile === profiles.at(-1)) {
+        // A very unusual high-detail image could still exceed the quota at the
+        // smallest practical size. Omit it rather than allowing one photo to
+        // make the SWMS too large to email or share from site.
+        if (bytes.byteLength > byteBudget) return null;
+        return { ...photo, mimeType: "image/jpeg", bytes: new Uint8Array(bytes) };
+      }
+    }
+  } catch {
+    // A bad image should never stop the signed SWMS being generated.
+  }
+  return null;
 }
 
 async function embedImage(pdf: PDFDocument, image: PdfImage | null): Promise<PDFImage | null> {
@@ -377,6 +443,13 @@ function clean(value: string): string {
     .normalize("NFKD")
     .replace(/[^\x20-\x7E]/g, "")
     .trim();
+}
+
+function truncate(value: string, width: number, size: number, font: PDFFont): string {
+  if (font.widthOfTextAtSize(value, size) <= width) return value;
+  let shortened = value;
+  while (shortened.length > 1 && font.widthOfTextAtSize(`${shortened}...`, size) > width) shortened = shortened.slice(0, -1);
+  return `${shortened}...`;
 }
 
 function dateTime(value: string): string {

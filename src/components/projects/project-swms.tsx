@@ -19,6 +19,22 @@ export function ProjectSwms({ project, template, record, photos, canEdit }: { pr
   const [exporting, startExport] = useTransition();
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const close = () => setMode(null);
+  const exportPdf = () => {
+    // Open this synchronously from the click so the browser permits the later
+    // download, while the project page stays exactly where the user is.
+    const downloadTab = window.open("about:blank", "_blank");
+    startExport(async () => {
+      setExportMessage(null);
+      const result = await exportProjectSwmsPdfAction(project.id);
+      setExportMessage(result.message ?? null);
+      if (result.ok && result.downloadUrl && downloadTab) {
+        downloadTab.location.replace(result.downloadUrl);
+        return;
+      }
+      downloadTab?.close();
+      if (result.ok) setExportMessage("SWMS PDF was saved to SharePoint. Please allow pop-ups for this site, then export again to download it.");
+    });
+  };
   return <div className="space-y-4">
     <Card className="overflow-hidden">
       <CardHeader
@@ -26,7 +42,7 @@ export function ProjectSwms({ project, template, record, photos, canEdit }: { pr
         description={record ? `Saved ${formatDate(record.updatedAt)} · ${record.templateName} ${record.templateVersion}` : "Capture the site's safety checks, hazards, installer sign-off and supporting photos."}
         action={<div className="flex flex-wrap gap-2">{record ? <><Button size="sm" variant="secondary" onClick={() => setMode("view")}><Eye className="size-4" />View</Button>{canEdit ? <Button size="sm" variant="primary" onClick={() => setMode("edit")}><Edit3 className="size-4" />Edit</Button> : null}</> : canEdit ? <Button size="sm" variant="primary" onClick={() => setMode("add")}><Plus className="size-4" />Add SWMS</Button> : null}</div>}
       />
-      {record ? <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle px-4 py-3 text-sm"><Badge tone="emerald"><CheckCircle2 className="size-3" />SWMS saved</Badge><span className="text-muted-foreground">{record.photoDocumentIds.length} linked photo{record.photoDocumentIds.length === 1 ? "" : "s"} in the project SharePoint folder.</span>{canEdit ? <><Button size="sm" variant="secondary" disabled={exporting} onClick={() => startExport(async () => { setExportMessage(null); const result = await exportProjectSwmsPdfAction(project.id); setExportMessage(result.message ?? null); if (result.ok && result.downloadUrl) window.location.assign(result.downloadUrl); })}><Download className="size-4" />{exporting ? "Exporting…" : "Export PDF"}</Button><Button size="sm" variant="ghost" disabled={deleting} onClick={() => { if (window.confirm("Delete this SWMS record? The project photos stay safely stored in SharePoint.")) startDelete(async () => { await deleteProjectSwmsAction(project.id); close(); }); }} className="text-[var(--tone-rose-fg)]"><Trash2 className="size-4" />{deleting ? "Deleting…" : "Delete"}</Button></> : null}{exportMessage ? <span className="w-full text-xs text-muted-foreground">{exportMessage}</span> : null}</div> : <div className="border-t border-border-subtle p-4"><EmptyState title="No SWMS yet" description={canEdit ? "Add the site details, safety checks, hazards, installer sign-off and photos before work begins." : "An authorised team member can add the project's SWMS."} /></div>}
+      {record ? <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle px-4 py-3 text-sm"><Badge tone="emerald"><CheckCircle2 className="size-3" />SWMS saved</Badge><span className="text-muted-foreground">{record.photoDocumentIds.length} linked photo{record.photoDocumentIds.length === 1 ? "" : "s"} in the project SharePoint folder.</span>{canEdit ? <><Button size="sm" variant="secondary" disabled={exporting} onClick={exportPdf}><Download className="size-4" />{exporting ? "Exporting…" : "Export PDF"}</Button><Button size="sm" variant="ghost" disabled={deleting} onClick={() => { if (window.confirm("Delete this SWMS record? The project photos stay safely stored in SharePoint.")) startDelete(async () => { await deleteProjectSwmsAction(project.id); close(); }); }} className="text-[var(--tone-rose-fg)]"><Trash2 className="size-4" />{deleting ? "Deleting…" : "Delete"}</Button></> : null}{exportMessage ? <span className="w-full text-xs text-muted-foreground">{exportMessage}</span> : null}</div> : <div className="border-t border-border-subtle p-4"><EmptyState title="No SWMS yet" description={canEdit ? "Add the site details, safety checks, hazards, installer sign-off and photos before work begins." : "An authorised team member can add the project's SWMS."} /></div>}
     </Card>
     {mode ? <SwmsDialog key={`${mode}-${record?.updatedAt ?? "new"}`} mode={mode} project={project} template={template} record={record} photos={photos} canEdit={canEdit} onClose={close} /> : null}
   </div>;
