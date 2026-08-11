@@ -79,6 +79,32 @@ export async function uploadProjectDocument(input: {
 }
 
 /**
+ * Replace one generated artefact at the top level of a project's folder.
+ *
+ * Generated files such as the current SWMS deliberately have one stable name:
+ * the newest export is the current signed-off document, not another near-duplicate
+ * a crew member has to distinguish in SharePoint. This is intentionally separate
+ * from user uploads above, which always preserve revisions with `rename`.
+ */
+export async function replaceProjectTopLevelDocument(input: {
+  driveId: string;
+  folderItemId: string;
+  fileName: string;
+  contentType: string;
+  bytes: ArrayBuffer;
+}): Promise<DriveItemRef> {
+  const name = safeFileName(input.fileName);
+  return graphFetch<DriveItemRef>(
+    `/drives/${input.driveId}/items/${input.folderItemId}:/${encodeURIComponent(name)}:/content?@microsoft.graph.conflictBehavior=replace`,
+    {
+      method: "PUT",
+      headers: { "content-type": input.contentType || "application/octet-stream" },
+      body: input.bytes,
+    },
+  );
+}
+
+/**
  * The URL to fetch an item's bytes from, valid for a few minutes.
  *
  * Falls back to `webUrl` — the SharePoint page for the file — when Graph does

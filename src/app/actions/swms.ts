@@ -6,12 +6,13 @@ import { requireCapability } from "@/lib/auth/session";
 import { hasDatabase } from "@/lib/db";
 import { createDocument } from "@/lib/data/pg/field";
 import { deleteProjectSwms, saveProjectSwms, saveSwmsTemplate } from "@/lib/data/pg/settings";
-import { getProjectSwms, getSwmsTemplate } from "@/lib/data/repository";
+import { getOrganisationLogoLocation, getOrganisationSettings, getProject, getProjectSwms, getSwmsTemplate } from "@/lib/data/repository";
 import { forgetReads } from "@/lib/data/request-scope";
 import { MAX_DOCUMENT_BYTES } from "@/lib/domain/documents";
 import { normaliseSwmsTemplate, normaliseSwmsValues, type SwmsRecord } from "@/lib/domain/swms";
+import { createSwmsPdf, type PdfImage } from "@/lib/documents/swms-pdf";
 
-export type SwmsActionState = { ok: boolean; message?: string; documentId?: string };
+export type SwmsActionState = { ok: boolean; message?: string; documentId?: string; downloadUrl?: string };
 
 const projectSchema = z.object({ projectId: z.uuid("Unknown project.") });
 
@@ -96,6 +97,154 @@ export async function deleteProjectSwmsAction(projectId: string): Promise<SwmsAc
   revalidatePath(`/projects/${projectId}`, "layout");
   revalidatePath(`/field/${projectId}`, "layout");
   return { ok: true, message: "SWMS deleted. Project photos remain safely stored in SharePoint." };
+}
+
+/**
+ * Export the saved SWMS as the single current PDF in the top level of the
+ * project's SharePoint folder. Re-exporting deliberately replaces that file;
+ * document metadata still records versions for the portal audit trail.
+ */
+export async function exportProjectSwmsPdfAction(projectId: string): Promise<SwmsActionState> {
+  const session = await requireCapability("field.record");
+  if (!hasDatabase) return { ok: false, message: "PDF export needs the production database." };
+  if (!z.uuid().safeParse(projectId).success) return { ok: false, message: "Unknown project." };
+
+  const [project, template, record] = await Promise.all([
+    getProject(session.org.id, projectId),
+    getSwmsTemplate(session.org.id),
+    getProjectSwms(session.org.id, projectId),
+  ]);
+  if (!project) return { ok: false, message: "That project no longer exists." };
+  if (!record) return { ok: false, message: "Save the SWMS before exporting it." };
+
+  const { graphConfigured } = await import("@/lib/integrations/graph/client");
+  if (!graphConfigured()) return { ok: false, message: "SharePoint is not configured on this deployment." };
+  const { db } = await import("@/lib/db");
+  const { documents } = await import("@/lib/db/schema/documents");
+  const { projects } = await import("@/lib/db/schema/projects");
+  const { and, eq, inArray } = await import("drizzle-orm");
+  const [storageProject] = await db()
+    .select({ driveId: projects.sharepointDriveId, folderItemId: projects.sharepointFolderItemId })
+    .from(projects)
+    .where(and(eq(projects.orgId, session.org.id), eq(projects.id, projectId)))
+    .limit(1);
+  if (!storageProject?.driveId || !storageProject.folderItemId) return { ok: false, message: "This project does not have a SharePoint folder yet." };
+
+  const photoRows = record.photoDocumentIds.length
+    ? await db()
+      .select({ id: documents.id, name: documents.name, storageKey: documents.storageKey, mimeType: documents.mimeType })
+      .from(documents)
+      .where(and(
+        eq(documents.orgId, session.org.id),
+        eq(documents.projectId, projectId),
+        eq(documents.kind, "photo"),
+        inArray(documents.id, record.photoDocumentIds),
+      ))
+    : [];
+
+  const [{ logoUrl }, logoLocation] = await Promise.all([
+    getOrganisationSettings(session.org.id),
+    getOrganisationLogoLocation(session.org.id),
+  ]);
+  const [logo, photos] = await Promise.all([
+    loadOrganisationLogo(logoLocation, logoUrl),
+    loadProjectPhotos(storageProject.driveId, photoRows),
+  ]);
+
+  let pdfBytes: Uint8Array;
+  try {
+    pdfBytes = await createSwmsPdf({ project, template, record, logo, photos });
+  } catch (error) {
+    return { ok: false, message: `The SWMS PDF could not be created: ${error instanceof Error ? error.message : String(error)}` };
+  }
+
+  const { replaceProjectTopLevelDocument, safeFileName } = await import("@/lib/integrations/sharepoint/upload");
+  const name = safeFileName(`${project.projectNumber} - SWMS.pdf`);
+  let item;
+  try {
+    item = await replaceProjectTopLevelDocument({
+      driveId: storageProject.driveId,
+      folderItemId: storageProject.folderItemId,
+      fileName: name,
+      contentType: "application/pdf",
+      bytes: toArrayBuffer(pdfBytes),
+    });
+  } catch (error) {
+    return { ok: false, message: `SharePoint could not save the SWMS PDF: ${error instanceof Error ? error.message : String(error)}` };
+  }
+
+  const document = await createDocument(session.org.id, {
+    projectId,
+    name,
+    kind: "swms",
+    storageKey: item.id,
+    mimeType: "application/pdf",
+    sizeBytes: pdfBytes.byteLength,
+    requiresAcknowledgement: true,
+    uploadedByUserId: isUuid(session.user.id) ? session.user.id : null,
+  });
+  const { recordEvent } = await import("@/lib/data/pg/workflow");
+  await recordEvent({
+    orgId: session.org.id,
+    projectId,
+    type: "document.uploaded",
+    summary: `${name} exported${document.version > 1 ? ` (v${document.version})` : ""}`,
+    actorUserId: isUuid(session.user.id) ? session.user.id : null,
+    payload: { documentId: document.id, kind: "swms", driveItemId: item.id },
+  });
+  forgetReads();
+  revalidatePath(`/projects/${projectId}`, "layout");
+  revalidatePath(`/field/${projectId}`, "layout");
+  return { ok: true, message: "SWMS PDF exported to SharePoint and downloaded.", documentId: document.id, downloadUrl: `/api/documents/${document.id}?download=1` };
+}
+
+const MAX_SWMS_PDF_PHOTO_BYTES = 20 * 1024 * 1024;
+
+async function loadOrganisationLogo(
+  location: { driveId: string; itemId: string } | null,
+  legacyUrl: string | null,
+): Promise<PdfImage | null> {
+  if (location) return loadSharePointImage(location.driveId, location.itemId, "Organisation logo");
+  if (!legacyUrl?.startsWith("http")) return null;
+  try {
+    const response = await fetch(legacyUrl);
+    if (!response.ok) return null;
+    return { name: "Organisation logo", mimeType: response.headers.get("content-type"), bytes: new Uint8Array(await response.arrayBuffer()) };
+  } catch {
+    return null;
+  }
+}
+
+async function loadProjectPhotos(
+  driveId: string,
+  rows: Array<{ id: string; name: string; storageKey: string; mimeType: string | null }>,
+): Promise<PdfImage[]> {
+  const photos: PdfImage[] = [];
+  let totalBytes = 0;
+  for (const row of rows) {
+    const image = await loadSharePointImage(driveId, row.storageKey, row.name, row.mimeType);
+    if (!image || totalBytes + image.bytes.byteLength > MAX_SWMS_PDF_PHOTO_BYTES) continue;
+    totalBytes += image.bytes.byteLength;
+    photos.push(image);
+  }
+  return photos;
+}
+
+async function loadSharePointImage(driveId: string, itemId: string, name: string, mimeType?: string | null): Promise<PdfImage | null> {
+  try {
+    const { getDocumentUrl } = await import("@/lib/integrations/sharepoint/upload");
+    const url = await getDocumentUrl(driveId, itemId);
+    if (!url) return null;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    return { name, mimeType: mimeType ?? response.headers.get("content-type"), bytes: new Uint8Array(await response.arrayBuffer()) };
+  } catch {
+    return null;
+  }
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 /** Uploads a photo into the existing project's SharePoint Site Photos folder. */
