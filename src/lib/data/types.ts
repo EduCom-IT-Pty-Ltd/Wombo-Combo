@@ -9,6 +9,7 @@ import type {
   TaskStatus,
 } from "@/lib/db/schema/enums";
 import type { QuoteLineInput } from "@/lib/domain/quote";
+import type { SwmsRecord, SwmsTemplate } from "@/lib/domain/swms";
 
 /**
  * View models returned by the repository layer. Deliberately *not* the raw table
@@ -116,6 +117,8 @@ export interface ProjectTemplate {
   description: string | null;
   startingStatus: ProjectStatus;
 }
+
+export type { SwmsRecord, SwmsTemplate };
 
 export interface Site {
   id: string;

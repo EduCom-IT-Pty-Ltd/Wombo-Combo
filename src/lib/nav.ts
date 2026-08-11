@@ -26,6 +26,7 @@ export type IconName =
   | "shield"
   | "settings"
   | "book"
+  | "clipboard"
   | "more";
 
 export const NAV_ITEMS: NavItem[] = [
@@ -40,6 +41,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/qa", label: "QA & Compliance", shortLabel: "QA", icon: "shield", capability: "qa.view" },
   { href: "/hr", label: "People", icon: "users", capability: "hr.view" },
   { href: "/labour", label: "Labour", icon: "labour", capability: "labour.manage" },
+  { href: "/swms-template", label: "SWMS template", icon: "clipboard", capability: "admin.manage" },
   { href: "/admin", label: "Settings", icon: "settings", capability: "admin.manage" },
   // No capability: help is for everyone, including a role somebody has stripped
   // back to almost nothing.
@@ -107,6 +109,7 @@ export const PROJECT_TABS: ProjectTab[] = [
   { segment: "qa", label: "QA", capability: "qa.view" },
   { segment: "costing", label: "Costing", capability: "finance.profit.view" },
   { segment: "activity", label: "Activity", capability: "project.view" },
+  { segment: "swms", label: "SWMS", capability: "document.view" },
 ];
 
 /**

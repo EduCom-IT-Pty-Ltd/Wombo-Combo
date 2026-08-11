@@ -11,6 +11,7 @@ import {
   Settings,
   ShieldCheck,
   Users,
+  ClipboardCheck,
 } from "lucide-react";
 import type { IconName } from "@/lib/nav";
 
@@ -27,6 +28,7 @@ const ICONS = {
   shield: ShieldCheck,
   settings: Settings,
   book: BookOpen,
+  clipboard: ClipboardCheck,
   more: MoreHorizontal,
 } as const satisfies Record<IconName, unknown>;
 

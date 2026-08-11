@@ -18,10 +18,13 @@ import type {
   ProjectTemplate,
   OrganisationSettings,
   SchedulePhaseView,
+  SwmsRecord,
+  SwmsTemplate,
 } from "../types";
 import type { RolePermissionOverrides } from "@/lib/domain/permissions";
 import type { StatusFieldTemplate, StatusSetting, StatusTaskTemplate } from "@/lib/domain/status-settings";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
+import { normaliseSwmsTemplate, normaliseSwmsValues } from "@/lib/domain/swms";
 
 /**
  * Organisation configuration, stored in `organizations.settings`.
@@ -45,6 +48,7 @@ interface OrgSettings {
   projectTemplates?: ProjectTemplate[];
   rolePermissions?: RolePermissionOverrides;
   logoUrl?: string | null;
+  swmsTemplate?: SwmsTemplate;
 }
 
 /**
@@ -119,6 +123,15 @@ export async function listProjectTemplates(orgId: string): Promise<ProjectTempla
   return (await readSettings(orgId)).projectTemplates ?? [];
 }
 
+/** The organisation-wide SWMS layout. It is JSON configuration by design. */
+export async function getSwmsTemplate(orgId: string): Promise<SwmsTemplate> {
+  return normaliseSwmsTemplate((await readSettings(orgId)).swmsTemplate);
+}
+
+export async function saveSwmsTemplate(orgId: string, value: SwmsTemplate): Promise<void> {
+  await writeSetting(orgId, "swmsTemplate", normaliseSwmsTemplate(value));
+}
+
 export async function getRolePermissions(orgId: string): Promise<RolePermissionOverrides> {
   return (await readSettings(orgId)).rolePermissions ?? {};
 }
@@ -172,6 +185,43 @@ export async function saveProjectCostingOptions(
       updatedAt: new Date(),
     })
     .where(and(eq(projects.orgId, orgId), eq(projects.id, projectId)));
+}
+
+/** One saved SWMS per project, in the project's extensible JSON fields. */
+export async function getProjectSwms(orgId: string, projectId: string): Promise<SwmsRecord | null> {
+  const fields = (await readProjectCustomFields(orgId, projectId)) as { swms?: Partial<SwmsRecord> };
+  if (!fields.swms || typeof fields.swms !== "object") return null;
+  const value = fields.swms;
+  if (typeof value.createdAt !== "string" || typeof value.updatedAt !== "string") return null;
+  const template = await getSwmsTemplate(orgId);
+  return {
+    templateName: typeof value.templateName === "string" ? value.templateName : template.name,
+    templateVersion: typeof value.templateVersion === "string" ? value.templateVersion : template.versionLabel,
+    values: normaliseSwmsValues(value.values, template),
+    photoDocumentIds: Array.isArray(value.photoDocumentIds) ? value.photoDocumentIds.filter((id): id is string => typeof id === "string") : [],
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+    createdByUserId: typeof value.createdByUserId === "string" ? value.createdByUserId : null,
+    updatedByUserId: typeof value.updatedByUserId === "string" ? value.updatedByUserId : null,
+  };
+}
+
+export async function saveProjectSwms(orgId: string, projectId: string, value: SwmsRecord): Promise<boolean> {
+  const updated = await db()
+    .update(projects)
+    .set({ customFields: sql`${projects.customFields} || ${JSON.stringify({ swms: value })}::jsonb`, updatedAt: new Date() })
+    .where(and(eq(projects.orgId, orgId), eq(projects.id, projectId)))
+    .returning({ id: projects.id });
+  return updated.length > 0;
+}
+
+export async function deleteProjectSwms(orgId: string, projectId: string): Promise<boolean> {
+  const updated = await db()
+    .update(projects)
+    .set({ customFields: sql`${projects.customFields} - 'swms'`, updatedAt: new Date() })
+    .where(and(eq(projects.orgId, orgId), eq(projects.id, projectId)))
+    .returning({ id: projects.id });
+  return updated.length > 0;
 }
 
 /** Call-Ups, joined to the project and site labels the calendar renders. */

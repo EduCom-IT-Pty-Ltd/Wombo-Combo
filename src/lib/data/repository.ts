@@ -34,6 +34,8 @@ import type {
   TimeEntry,
   Variation,
   WorkflowField,
+  SwmsRecord,
+  SwmsTemplate,
 } from "./types";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
 import type { RolePermissionOverrides } from "@/lib/domain/permissions";
@@ -185,6 +187,18 @@ export async function listProjectTemplates(orgId: string): Promise<ProjectTempla
     if (hasDatabase) return pgSettings.listProjectTemplates(orgId);
     return [...(await readLocalStore()).projectTemplates].sort((a, b) => a.name.localeCompare(b.name));
   });
+}
+
+export async function getSwmsTemplate(orgId: string): Promise<SwmsTemplate> {
+  return once(`swmsTemplate:${orgId}`, async () => {
+    if (hasDatabase) return pgSettings.getSwmsTemplate(orgId);
+    const { DEFAULT_SWMS_TEMPLATE } = await import("@/lib/domain/swms");
+    return structuredClone(DEFAULT_SWMS_TEMPLATE);
+  });
+}
+
+export async function getProjectSwms(orgId: string, projectId: string): Promise<SwmsRecord | null> {
+  return once(`projectSwms:${orgId}:${projectId}`, async () => hasDatabase ? pgSettings.getProjectSwms(orgId, projectId) : null);
 }
 
 /** PORTED. */
