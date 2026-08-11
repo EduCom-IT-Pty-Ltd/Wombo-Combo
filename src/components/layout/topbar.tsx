@@ -40,7 +40,7 @@ export function TopBar({
           `min-w-0` lets a long org name truncate rather than shove the theme
           toggle and avatar off the right edge of a phone. */}
       <div className="flex min-w-0 items-center gap-2 lg:hidden">
-        {logoUrl ? <Image src={logoUrl} alt="" width={28} height={28} className="size-7 shrink-0 rounded-lg object-contain" /> : <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm">WC</span>}
+        {logoUrl ? <Image src={logoUrl} alt="" width={28} height={28} unoptimized className="size-7 shrink-0 rounded-lg object-contain" /> : <span className="grid size-7 shrink-0 rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm">WC</span>}
         <span className="truncate text-sm font-semibold">{orgName}</span>
       </div>
 

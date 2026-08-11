@@ -18,7 +18,7 @@ export function Sidebar({ items, orgName, logoUrl }: { items: NavItem[]; orgName
   return (
     <aside className="neumorphic-shell hidden w-60 shrink-0 flex-col border-r border-border-subtle bg-surface/95 shadow-[8px_0_30px_rgb(15_23_42/0.025)] backdrop-blur lg:flex">
       <div className="flex h-14 items-center gap-2 border-b border-border-subtle px-4">
-        {logoUrl ? <Image src={logoUrl} alt="" width={28} height={28} className="size-7 rounded-lg object-contain" /> : <span className="grid size-7 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-[0_4px_12px_rgb(49_95_231/0.28)]">WC</span>}
+        {logoUrl ? <Image src={logoUrl} alt="" width={28} height={28} unoptimized className="size-7 rounded-lg object-contain" /> : <span className="grid size-7 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-[0_4px_12px_rgb(49_95_231/0.28)]">WC</span>}
         <span className="truncate text-sm font-semibold">{orgName}</span>
       </div>
 

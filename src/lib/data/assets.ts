@@ -34,6 +34,13 @@ export interface AssetResult {
   message?: string;
 }
 
+/** Shared validation for small branding images, regardless of storage backend. */
+export function validateImageAsset(file: File): string | null {
+  if (!MIME_EXTENSIONS[file.type]) return "Image must be a PNG, JPG, WebP or SVG.";
+  if (file.size > MAX_ASSET_BYTES) return "Image must be 2 MB or smaller.";
+  return null;
+}
+
 export function blobConfigured(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 }
@@ -46,9 +53,9 @@ export function blobConfigured(): boolean {
  * stale from a CDN cache.
  */
 export async function storeAsset(prefix: string, file: File): Promise<AssetResult> {
-  const extension = MIME_EXTENSIONS[file.type];
-  if (!extension) return { ok: false, message: "Image must be a PNG, JPG, WebP or SVG." };
-  if (file.size > MAX_ASSET_BYTES) return { ok: false, message: "Image must be 2 MB or smaller." };
+  const validationError = validateImageAsset(file);
+  if (validationError) return { ok: false, message: validationError };
+  const extension = MIME_EXTENSIONS[file.type]!;
 
   const name = `${prefix}-${randomUUID()}.${extension}`;
 

@@ -25,6 +25,7 @@ import type { RolePermissionOverrides } from "@/lib/domain/permissions";
 import type { StatusFieldTemplate, StatusSetting, StatusTaskTemplate } from "@/lib/domain/status-settings";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
 import { normaliseSwmsTemplate, normaliseSwmsValues } from "@/lib/domain/swms";
+import type { OrganisationLogoLocation } from "@/lib/integrations/sharepoint/branding";
 
 /**
  * Organisation configuration, stored in `organizations.settings`.
@@ -48,6 +49,7 @@ interface OrgSettings {
   projectTemplates?: ProjectTemplate[];
   rolePermissions?: RolePermissionOverrides;
   logoUrl?: string | null;
+  logoSharePoint?: OrganisationLogoLocation;
   swmsTemplate?: SwmsTemplate;
 }
 
@@ -720,7 +722,15 @@ export async function setXeroAccountCode(orgId: string, code: string): Promise<v
  * Organisation profile. `logoUrl` is not a column — it lives in `settings`
  * alongside the other presentation-only values.
  */
-export async function saveOrganisation(orgId: string, value: OrganisationSettings): Promise<void> {
+export async function saveOrganisation(
+  orgId: string,
+  value: OrganisationSettings,
+  logoSharePoint?: OrganisationLogoLocation,
+): Promise<void> {
+  const logoSettings = {
+    logoUrl: value.logoUrl,
+    ...(logoSharePoint ? { logoSharePoint } : {}),
+  };
   await db()
     .update(organizations)
     .set({
@@ -729,10 +739,17 @@ export async function saveOrganisation(orgId: string, value: OrganisationSetting
       currency: value.currency,
       timezone: value.timezone,
       projectNumberPrefix: value.projectNumberPrefix,
-      settings: sql`${organizations.settings} || ${JSON.stringify({ logoUrl: value.logoUrl })}::jsonb`,
+      settings: sql`${organizations.settings} || ${JSON.stringify(logoSettings)}::jsonb`,
       updatedAt: new Date(),
     })
     .where(eq(organizations.id, orgId));
+}
+
+/** The stable SharePoint identifiers behind the public in-app logo route. */
+export async function getOrganisationLogoLocation(orgId: string): Promise<OrganisationLogoLocation | null> {
+  const value = (await readSettings(orgId)).logoSharePoint;
+  if (!value || typeof value.driveId !== "string" || typeof value.itemId !== "string") return null;
+  return value;
 }
 
 export async function getStatusSettings(orgId: string): Promise<StatusSetting[] | null> {

@@ -773,6 +773,14 @@ export async function getOrganisationSettings(orgId: string): Promise<Organisati
   });
 }
 
+/** Stable SharePoint location for the organisation logo, if it has one. */
+export async function getOrganisationLogoLocation(orgId: string) {
+  return once(`organisationLogoLocation:${orgId}`, async () => {
+    if (!hasDatabase) return null;
+    return pgSettings.getOrganisationLogoLocation(orgId);
+  });
+}
+
 /** PORTED. */
 export async function getRolePermissions(orgId: string): Promise<RolePermissionOverrides> {
   return once(`rolePermissions:${orgId}`, async () => {

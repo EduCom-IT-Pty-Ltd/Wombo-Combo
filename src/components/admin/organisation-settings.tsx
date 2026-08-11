@@ -26,10 +26,10 @@ export function OrganisationSettingsForm({ settings, isDemo }: { settings: Organ
           <div className="rounded-xl border border-dashed border-border-strong bg-surface-muted/40 p-3">
             <p className="text-xs font-bold text-muted-foreground">Organisation logo</p>
             <div className="mt-3 grid aspect-square place-items-center overflow-hidden rounded-xl border border-border-subtle bg-surface shadow-sm">
-              {settings.logoUrl ? <Image src={settings.logoUrl} alt={`${settings.name} logo`} width={160} height={160} className="max-h-full max-w-full object-contain p-3" /> : <Building2 className="size-10 text-primary" />}
+              {settings.logoUrl ? <Image src={settings.logoUrl} alt={`${settings.name} logo`} width={160} height={160} unoptimized className="max-h-full max-w-full object-contain p-3" /> : <Building2 className="size-10 text-primary" />}
             </div>
             <label className="mt-3 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border-strong bg-surface px-3 text-xs font-bold transition hover:border-primary hover:text-primary"><ImagePlus className="size-4" /> Upload logo<input name="logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="sr-only" /></label>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">PNG, JPG, WebP or SVG · max 2 MB</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">PNG, JPG, WebP or SVG · max 2 MB · saved in the SharePoint library root beside Projects</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t border-border-subtle px-4 py-3 sm:px-5"><Button type="submit" variant="primary" disabled={pending}>{pending ? "Saving…" : "Save organisation"}</Button>{state.message ? <p className={state.ok ? "text-xs text-[var(--tone-emerald-fg)]" : "text-xs text-[var(--tone-rose-fg)]"}>{state.message}</p> : null}{isDemo ? <p className="ml-auto text-xs text-muted-foreground">Saved locally for testing only</p> : null}</div>
