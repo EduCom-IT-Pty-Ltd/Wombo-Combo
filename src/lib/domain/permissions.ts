@@ -154,7 +154,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const PERMISSION_AREAS: Array<{ name: string; description: string; view: Capability[]; edit: Capability[] }> = [
   { name: "Projects", description: "Project details, status flow and activity", view: ["project.view"], edit: ["project.create", "project.edit", "project.transition", "project.transition.override"] },
   { name: "Customers", description: "Customer profiles, contacts and defaults", view: ["customer.view"], edit: ["customer.manage"] },
-  { name: "Materials & price lists", description: "Materials, customer pricing and production templates", view: ["quote.view"], edit: ["quote.edit", "quote.approve", "quote.send"] },
+  { name: "Materials & price lists", description: "Materials, customer pricing and platform catalogue display", view: ["quote.view"], edit: ["quote.edit", "quote.approve", "quote.send"] },
   { name: "Calendar & Call-Ups", description: "Calendar and project Call-Ups", view: ["schedule.view"], edit: ["schedule.manage"] },
   { name: "Field", description: "On-site clock, materials, notes and variations", view: ["field.clock"], edit: ["field.record"] },
   { name: "Documents", description: "Project documents and uploads", view: ["document.view"], edit: ["document.upload"] },

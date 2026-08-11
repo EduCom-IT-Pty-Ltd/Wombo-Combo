@@ -9,7 +9,7 @@ import { Button } from "@/components/ui";
 
 type PricedMaterial = CatalogueMaterial & { quotePriceCentsPerM2: number };
 
-export function QuoteActions({ projectId, quote, materials }: { projectId: string; quote: QuoteSummary; materials: PricedMaterial[] }) {
+export function QuoteActions({ projectId, quote, materials, visibleMaterialIds }: { projectId: string; quote: QuoteSummary; materials: PricedMaterial[]; visibleMaterialIds: string[] }) {
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -19,7 +19,8 @@ export function QuoteActions({ projectId, quote, materials }: { projectId: strin
   }));
   const [quantities, setQuantities] = useState<Record<string, string>>(initialQuantities);
   const selected = materials.filter((material) => quantities[material.id] !== undefined);
-  const available = materials.filter((material) => quantities[material.id] === undefined);
+  const visibleIds = new Set(visibleMaterialIds);
+  const available = materials.filter((material) => quantities[material.id] === undefined && visibleIds.has(material.id));
 
   function save() {
     startTransition(async () => {

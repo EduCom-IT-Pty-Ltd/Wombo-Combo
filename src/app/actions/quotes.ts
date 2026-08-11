@@ -5,7 +5,7 @@ import { requireCapability } from "@/lib/auth/session";
 import { hasDatabase } from "@/lib/db";
 import * as pgQuotes from "@/lib/data/pg/quotes";
 import { createLocalMaterialQuote, deleteLocalMaterialQuote, updateLocalMaterialQuote } from "@/lib/data/local-store";
-import { getProject, listCatalogueMaterials, listCustomerPriceLists, listQuotes } from "@/lib/data/repository";
+import { getMaterialCataloguePresentation, getProject, listCatalogueMaterials, listCustomerPriceLists, listQuotes } from "@/lib/data/repository";
 import { marginPctOf } from "@/lib/domain/money";
 import type { QuoteLineInput } from "@/lib/domain/quote";
 
@@ -28,13 +28,14 @@ type Selection = { materialId: string; quantity: number };
  * customer-specific one — and rederiving it later from cost would quietly
  * reprice a quote the customer has already seen.
  */
-async function buildLines(orgId: string, projectId: string, selections: Selection[]): Promise<QuoteLineInput[]> {
+async function buildLines(orgId: string, projectId: string, selections: Selection[], existingMaterialIds = new Set<string>()): Promise<QuoteLineInput[]> {
   const project = await getProject(orgId, projectId);
   if (!project) throw new Error("Project not found.");
 
-  const [materials, priceLists] = await Promise.all([
+  const [materials, priceLists, presentation] = await Promise.all([
     listCatalogueMaterials(orgId),
     listCustomerPriceLists(orgId),
+    getMaterialCataloguePresentation(orgId),
   ]);
   const priceList = project.customer.priceListId
     ? priceLists.find((list) => list.id === project.customer.priceListId) ?? null
@@ -43,6 +44,9 @@ async function buildLines(orgId: string, projectId: string, selections: Selectio
   return selections.map(({ materialId, quantity }) => {
     const material = materials.find((item) => item.id === materialId);
     if (!material) throw new Error("Material not found.");
+    if (presentation.hiddenMaterialIds.includes(material.id) && !existingMaterialIds.has(material.id)) {
+      throw new Error(`${material.name} is hidden from platform quotes.`);
+    }
     // A parent row exists to group variations and has no price of its own.
     if (!material.variation && materials.some((item) => item.name === material.name && item.variation)) {
       throw new Error(`Select a variation of ${material.name}.`);
@@ -111,8 +115,8 @@ export async function updateMaterialQuote(input: { quoteId: string; projectId: s
   const session = await requireCapability("quote.edit");
   const selections = cleanSelections(input.selections);
   if (!input.quoteId || !input.projectId || !selections.length) return { ok: false, message: "Keep at least one material line on the quote." };
-  const belongsToProject = (await listQuotes(session.org.id, input.projectId)).some((quote) => quote.id === input.quoteId);
-  if (!belongsToProject) return { ok: false, message: "Quote not found." };
+  const existing = (await listQuotes(session.org.id, input.projectId)).find((quote) => quote.id === input.quoteId);
+  if (!existing) return { ok: false, message: "Quote not found." };
 
   try {
     if (!hasDatabase) {
@@ -122,7 +126,7 @@ export async function updateMaterialQuote(input: { quoteId: string; projectId: s
       return { ok: true, message: `Updated ${quote.reference}` };
     }
 
-    const lines = await buildLines(session.org.id, input.projectId, selections);
+    const lines = await buildLines(session.org.id, input.projectId, selections, new Set(existing.lines.flatMap((line) => line.catalogueMaterialId ? [line.catalogueMaterialId] : [])));
     const quote = await pgQuotes.replaceQuoteLines(session.org.id, input.quoteId, lines);
     if (!quote) return { ok: false, message: "That quote has been issued and can no longer be edited." };
     revalidateQuote(input.projectId);

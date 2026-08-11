@@ -25,6 +25,8 @@ import type { RolePermissionOverrides } from "@/lib/domain/permissions";
 import type { StatusFieldTemplate, StatusSetting, StatusTaskTemplate } from "@/lib/domain/status-settings";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
 import { normaliseSwmsTemplate, normaliseSwmsValues } from "@/lib/domain/swms";
+import { EMPTY_MATERIAL_CATALOGUE_PRESENTATION, normaliseMaterialCataloguePresentation } from "@/lib/domain/material-catalogue";
+import type { MaterialCataloguePresentation } from "@/lib/domain/material-catalogue";
 import type { OrganisationLogoLocation } from "@/lib/integrations/sharepoint/branding";
 
 /**
@@ -51,6 +53,7 @@ interface OrgSettings {
   logoUrl?: string | null;
   logoSharePoint?: OrganisationLogoLocation;
   swmsTemplate?: SwmsTemplate;
+  materialCataloguePresentation?: MaterialCataloguePresentation;
 }
 
 /**
@@ -119,6 +122,15 @@ export async function listCustomerPriceLists(orgId: string): Promise<CustomerPri
 
 export async function listProductionTemplates(orgId: string): Promise<ProductionTemplate[]> {
   return (await readSettings(orgId)).productionTemplates ?? [];
+}
+
+/** UI-only grouping and visibility for the Xero-owned catalogue. */
+export async function getMaterialCataloguePresentation(orgId: string): Promise<MaterialCataloguePresentation> {
+  return normaliseMaterialCataloguePresentation((await readSettings(orgId)).materialCataloguePresentation ?? EMPTY_MATERIAL_CATALOGUE_PRESENTATION);
+}
+
+export async function saveMaterialCataloguePresentation(orgId: string, value: MaterialCataloguePresentation): Promise<void> {
+  await writeSetting(orgId, "materialCataloguePresentation", normaliseMaterialCataloguePresentation(value));
 }
 
 export async function listProjectTemplates(orgId: string): Promise<ProjectTemplate[]> {

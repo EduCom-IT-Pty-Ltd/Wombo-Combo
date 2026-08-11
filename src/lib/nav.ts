@@ -36,7 +36,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/field", label: "Field", shortLabel: "My Day", icon: "hardhat", capability: "field.clock", mobileOrder: 0 },
   { href: "/customers", label: "Customers", icon: "users", capability: "customer.view" },
   { href: "/materials", label: "Materials", icon: "materials", capability: "quote.edit" },
-  { href: "/production-templates", label: "Production templates", icon: "production", capability: "quote.edit" },
   { href: "/finance", label: "Finance", icon: "receipt", capability: "finance.profit.view" },
   { href: "/qa", label: "QA & Compliance", shortLabel: "QA", icon: "shield", capability: "qa.view" },
   { href: "/hr", label: "People", icon: "users", capability: "hr.view" },

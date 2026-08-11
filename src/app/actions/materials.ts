@@ -6,14 +6,16 @@ import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
 import { hasDatabase } from "@/lib/db";
 import * as pgSettings from "@/lib/data/pg/settings";
-import { listCustomerPriceLists } from "@/lib/data/repository";
+import { listCatalogueMaterials, listCustomerPriceLists } from "@/lib/data/repository";
 import {
   createLocalPriceList,
   deleteLocalCatalogueMaterial,
   deleteLocalPriceList,
+  saveLocalMaterialCataloguePresentation,
   updateLocalPriceList,
 } from "@/lib/data/local-store";
-import type { CustomerPriceList } from "@/lib/data/types";
+import type { CustomerPriceList, MaterialCataloguePresentation } from "@/lib/data/types";
+import { normaliseMaterialCataloguePresentation } from "@/lib/domain/material-catalogue";
 
 /**
  * Materials are read-only here. Xero's item sync is the only thing that writes
@@ -28,8 +30,34 @@ export type MaterialActionState = { ok: boolean; message?: string };
 
 function revalidateMaterials() {
   revalidatePath("/materials");
-  revalidatePath("/production-templates");
   revalidatePath("/projects", "layout");
+}
+
+function parsePresentation(value: FormDataEntryValue | null): MaterialCataloguePresentation | null {
+  if (typeof value !== "string") return null;
+  try { return normaliseMaterialCataloguePresentation(JSON.parse(value)); } catch { return null; }
+}
+
+/**
+ * Saves only how existing Xero items appear inside this platform. It never
+ * writes to the material table, so Xero item IDs, codes and sync stay intact.
+ */
+export async function saveMaterialCataloguePresentation(_state: MaterialActionState, formData: FormData): Promise<MaterialActionState> {
+  const session = await requireCapability("quote.edit");
+  const requested = parsePresentation(formData.get("presentation"));
+  if (!requested) return { ok: false, message: "Could not read the catalogue display settings." };
+  const materialIds = new Set((await listCatalogueMaterials(session.org.id)).map((material) => material.id));
+  const value = {
+    hiddenMaterialIds: requested.hiddenMaterialIds.filter((id) => materialIds.has(id)),
+    groups: requested.groups.map((group) => ({
+      ...group,
+      entries: group.entries.filter((entry) => materialIds.has(entry.materialId)),
+    })).filter((group) => group.entries.length > 0),
+  };
+  if (hasDatabase) await pgSettings.saveMaterialCataloguePresentation(session.org.id, value);
+  else await saveLocalMaterialCataloguePresentation(value);
+  revalidateMaterials();
+  return { ok: true, message: "Platform catalogue display saved. Xero was not changed." };
 }
 
 function parsePriceListEntries(value: string) {

@@ -133,6 +133,14 @@ export async function listCatalogueMaterials(orgId: string): Promise<CatalogueMa
   });
 }
 
+/** Platform-only catalogue grouping and visibility. Material data remains Xero-owned. */
+export async function getMaterialCataloguePresentation(orgId: string): Promise<import("./types").MaterialCataloguePresentation> {
+  return once(`cataloguePresentation:${orgId}`, async () => {
+    if (hasDatabase) return pgSettings.getMaterialCataloguePresentation(orgId);
+    return (await readLocalStore()).materialCataloguePresentation;
+  });
+}
+
 /** PORTED. */
 export async function listCustomerPriceLists(orgId: string): Promise<CustomerPriceList[]> {
   return once(`customerPriceLists:${orgId}`, async () => {

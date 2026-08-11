@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { addPriceList, deleteMaterial, deletePriceList, type MaterialActionState, updatePriceList } from "@/app/actions/materials";
 import { Button, Card, CardHeader } from "@/components/ui";
 import { XeroSyncButton } from "@/components/materials/xero-sync-button";
+import { CataloguePresentationManager } from "@/components/materials/catalogue-presentation-manager";
 import { CSV_HEADINGS } from "@/lib/domain/catalogue-csv";
-import type { CatalogueMaterial, CustomerPriceList } from "@/lib/data/types";
+import type { CatalogueMaterial, CustomerPriceList, MaterialCataloguePresentation } from "@/lib/data/types";
 
 /**
  * The catalogue is read-only here on purpose.
@@ -27,7 +28,7 @@ function csvValue(value: string | number | null) { const text = value == null ? 
 function groupMaterials(materials: CatalogueMaterial[]) { return Array.from(materials.reduce((groups, material) => { const entries = groups.get(material.name) ?? []; entries.push(material); groups.set(material.name, entries); return groups; }, new Map<string, CatalogueMaterial[]>()).entries()); }
 function selectableMaterials(materials: CatalogueMaterial[]) { return groupMaterials(materials).flatMap(([, group]) => group.some((material) => material.variation) ? group.filter((material) => material.variation) : group.filter((material) => material.standardPriceCentsPerM2 > 0)); }
 
-export function MaterialsManager({ materials, priceLists }: { materials: CatalogueMaterial[]; priceLists: CustomerPriceList[] }) {
+export function MaterialsManager({ materials, priceLists, presentation }: { materials: CatalogueMaterial[]; priceLists: CustomerPriceList[]; presentation: MaterialCataloguePresentation }) {
   const [listState, listAction, listPending] = useActionState(addPriceList, initial);
   const [prices, setPrices] = useState<Record<string, string>>({});
   const entries = Object.entries(prices).filter(([, value]) => Number(value) > 0).map(([id, value]) => `${id}:${value}`).join("\n");
@@ -38,7 +39,9 @@ export function MaterialsManager({ materials, priceLists }: { materials: Catalog
     const link = document.createElement("a"); link.href = url; link.download = "materials.csv"; link.click(); URL.revokeObjectURL(url);
   }
 
+  const visibleMaterials = materials.filter((material) => !presentation.hiddenMaterialIds.includes(material.id));
   return <div className="grid gap-4 xl:grid-cols-2">
+    <CataloguePresentationManager materials={materials} presentation={presentation} />
     <Card>
       <CardHeader title="Material catalogue" description="Mirrored from Xero's items. Cost and sell price are maintained in Xero, per square metre." />
       <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3">
@@ -50,7 +53,7 @@ export function MaterialsManager({ materials, priceLists }: { materials: Catalog
     </Card>
     <Card>
       <CardHeader title="Customer price lists" description="Enter only the prices that differ. Blank prices use the standard material price." />
-      <form action={listAction} className="space-y-3 border-b border-border-subtle p-4"><input name="name" required placeholder="Price list name" className={input} /><input type="hidden" name="entries" value={entries} /><div className="space-y-2">{selectableMaterials(materials).map((material) => <label key={material.id} className="flex items-center gap-3"><span className="min-w-0 flex-1 truncate text-sm">{materialLabel(material)}</span><input type="number" min="0" step="0.01" placeholder={`Standard $${(material.standardPriceCentsPerM2 / 100).toFixed(2)}`} value={prices[material.id] ?? ""} onChange={(event) => setPrices((current) => ({ ...current, [material.id]: event.target.value }))} className="h-10 w-36 rounded-lg border border-border-strong bg-surface px-2 text-sm" /></label>)}</div><Button type="submit" variant="primary" disabled={listPending || !selectableMaterials(materials).length}>{listPending ? "Saving…" : "Create price list"}</Button>{listState.message ? <p className="text-xs text-muted-foreground">{listState.message}</p> : null}</form><div className="divide-y divide-border-subtle">{priceLists.map((list) => <PriceListEditor key={list.id} list={list} materials={selectableMaterials(materials)} />)}</div>
+      <form action={listAction} className="space-y-3 border-b border-border-subtle p-4"><input name="name" required placeholder="Price list name" className={input} /><input type="hidden" name="entries" value={entries} /><div className="space-y-2">{selectableMaterials(visibleMaterials).map((material) => <label key={material.id} className="flex items-center gap-3"><span className="min-w-0 flex-1 truncate text-sm">{materialLabel(material)}</span><input type="number" min="0" step="0.01" placeholder={`Standard $${(material.standardPriceCentsPerM2 / 100).toFixed(2)}`} value={prices[material.id] ?? ""} onChange={(event) => setPrices((current) => ({ ...current, [material.id]: event.target.value }))} className="h-10 w-36 rounded-lg border border-border-strong bg-surface px-2 text-sm" /></label>)}</div><Button type="submit" variant="primary" disabled={listPending || !selectableMaterials(visibleMaterials).length}>{listPending ? "Saving…" : "Create price list"}</Button>{listState.message ? <p className="text-xs text-muted-foreground">{listState.message}</p> : null}</form><div className="divide-y divide-border-subtle">{priceLists.map((list) => <PriceListEditor key={list.id} list={list} materials={selectableMaterials(visibleMaterials)} />)}</div>
     </Card>
   </div>;
 }

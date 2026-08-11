@@ -9,6 +9,7 @@ import type {
   TaskStatus,
 } from "@/lib/db/schema/enums";
 import type { QuoteLineInput } from "@/lib/domain/quote";
+import type { MaterialCataloguePresentation } from "@/lib/domain/material-catalogue";
 import type { SwmsRecord, SwmsTemplate } from "@/lib/domain/swms";
 
 /**
@@ -71,6 +72,8 @@ export interface CatalogueMaterial {
    */
   xeroItemId?: string | null;
 }
+
+export type { MaterialCataloguePresentation };
 
 export interface CustomerPriceList {
   id: string;

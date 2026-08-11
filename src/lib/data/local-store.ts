@@ -8,6 +8,7 @@ import * as seed from "./demo-data";
 import type {
   Customer,
   CatalogueMaterial,
+  MaterialCataloguePresentation,
   CustomerPriceList,
   LabourSettings,
   ProjectCostingOptions,
@@ -29,6 +30,7 @@ import type { AutomationEffect, AutomationTrigger } from "@/lib/domain/automatio
 import type { RolePermissionOverrides } from "@/lib/domain/permissions";
 import type { ProjectStatus } from "@/lib/domain/status";
 import { DEFAULT_STATUS_FIELD_TEMPLATES, DEFAULT_STATUS_SETTINGS, DEFAULT_STATUS_TASK_TEMPLATES, type StatusFieldTemplate, type StatusSetting, type StatusTaskTemplate, type WorkflowFieldValue } from "@/lib/domain/status-settings";
+import { EMPTY_MATERIAL_CATALOGUE_PRESENTATION, normaliseMaterialCataloguePresentation } from "@/lib/domain/material-catalogue";
 
 /**
  * A deliberately small, file-backed store for local demo use. It keeps the
@@ -58,6 +60,7 @@ export type LocalStore = {
   statusFieldTemplates: StatusFieldTemplate[];
   workflowFieldValues: WorkflowFieldValue[];
   catalogueMaterials: CatalogueMaterial[];
+  materialCataloguePresentation: MaterialCataloguePresentation;
   customerPriceLists: CustomerPriceList[];
   labourSettings: LabourSettings;
   projectCostingOptions: Record<string, ProjectCostingOptions>;
@@ -96,6 +99,7 @@ function freshStore(): LocalStore {
     statusFieldTemplates: DEFAULT_STATUS_FIELD_TEMPLATES,
     workflowFieldValues: seed.workflowFieldValues,
     catalogueMaterials: [],
+    materialCataloguePresentation: EMPTY_MATERIAL_CATALOGUE_PRESENTATION,
     customerPriceLists: [],
     labourSettings: { standardLabourEnabled: false, standardLabourCostCentsPerEmployee: 0, subcontractorMaterialRates: [] },
     projectCostingOptions: {},
@@ -151,7 +155,7 @@ async function loadStore(): Promise<LocalStore> {
     const statusFieldTemplates = (store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES)).map((template) => ({ ...template, required: template.required ?? false }));
     const people = (store.people ?? structuredClone(seed.people)).map((person) => ({ ...person, role: LEGACY_ROLE_MAP[person.role] ?? person.role }));
     const organisation = { ...DEFAULT_ORGANISATION, ...(store.organisation ?? {}) };
-    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, customerPriceLists: store.customerPriceLists ?? [], labourSettings: { standardLabourEnabled: store.labourSettings?.standardLabourEnabled ?? false, standardLabourCostCentsPerEmployee: store.labourSettings?.standardLabourCostCentsPerEmployee ?? 0, subcontractorMaterialRates: store.labourSettings?.subcontractorMaterialRates ?? [] }, projectCostingOptions: store.projectCostingOptions ?? {}, productionTemplates, projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
+    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, materialCataloguePresentation: normaliseMaterialCataloguePresentation(store.materialCataloguePresentation), customerPriceLists: store.customerPriceLists ?? [], labourSettings: { standardLabourEnabled: store.labourSettings?.standardLabourEnabled ?? false, standardLabourCostCentsPerEmployee: store.labourSettings?.standardLabourCostCentsPerEmployee ?? 0, subcontractorMaterialRates: store.labourSettings?.subcontractorMaterialRates ?? [] }, projectCostingOptions: store.projectCostingOptions ?? {}, productionTemplates, projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
@@ -162,6 +166,7 @@ export async function readOrganisationSettings() { return (await readLocalStore(
 export async function saveOrganisationSettings(settings: OrganisationSettings) { await updateLocalStore((store) => { store.organisation = settings; }); }
 export async function readRolePermissions() { return (await readLocalStore()).rolePermissions; }
 export async function saveRolePermissions(permissions: RolePermissionOverrides) { await updateLocalStore((store) => { store.rolePermissions = permissions; }); }
+export async function saveLocalMaterialCataloguePresentation(value: MaterialCataloguePresentation) { await updateLocalStore((store) => { store.materialCataloguePresentation = normaliseMaterialCataloguePresentation(value); }); }
 
 export async function readStatusSettings(): Promise<StatusSetting[]> {
   return (await readLocalStore()).statusSettings;
@@ -483,7 +488,7 @@ export async function createLocalPriceList(input: { name: string; entries: Custo
 
 /** The catalogue is mirrored from Xero, so removing a row is the only write. */
 export async function deleteLocalCatalogueMaterial(id: string) {
-  await updateLocalStore((store) => { store.catalogueMaterials = store.catalogueMaterials.filter((item) => item.id !== id); for (const list of store.customerPriceLists) list.entries = list.entries.filter((entry) => entry.materialId !== id); for (const template of store.productionTemplates) template.materials = template.materials.filter((entry) => entry.materialId !== id); });
+  await updateLocalStore((store) => { store.catalogueMaterials = store.catalogueMaterials.filter((item) => item.id !== id); store.materialCataloguePresentation = { hiddenMaterialIds: store.materialCataloguePresentation.hiddenMaterialIds.filter((materialId) => materialId !== id), groups: store.materialCataloguePresentation.groups.map((group) => ({ ...group, entries: group.entries.filter((entry) => entry.materialId !== id) })) }; for (const list of store.customerPriceLists) list.entries = list.entries.filter((entry) => entry.materialId !== id); for (const template of store.productionTemplates) template.materials = template.materials.filter((entry) => entry.materialId !== id); });
 }
 export async function updateLocalPriceList(id: string, input: { name: string; entries: CustomerPriceList["entries"] }) {
   await updateLocalStore((store) => { const list = store.customerPriceLists.find((item) => item.id === id); if (!list) throw new Error("Price list not found"); Object.assign(list, input); });
@@ -562,6 +567,7 @@ export async function createLocalMaterialQuote(args: { projectId: string; materi
     const lines = args.materialIds.map(({ materialId, quantity }) => {
       const material = store.catalogueMaterials.find((item) => item.id === materialId);
       if (!material) throw new Error("Material not found");
+      if (store.materialCataloguePresentation.hiddenMaterialIds.includes(material.id)) throw new Error(`${material.name} is hidden from platform quotes`);
       if (!material.variation && store.catalogueMaterials.some((item) => item.name === material.name && item.variation)) throw new Error(`Select a variation of ${material.name}`);
       const sell = priceList?.entries.find((entry) => entry.materialId === material.id)?.priceCentsPerM2 ?? material.standardPriceCentsPerM2;
       return { id: `ql-${randomUUID()}`, catalogueMaterialId: material.id, kind: "material" as const, description: material.variation ? `${material.name} — ${material.variation}` : material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
@@ -582,9 +588,11 @@ export async function updateLocalMaterialQuote(args: { quoteId: string; material
     const project = store.projects.find((item) => item.id === quote.projectId);
     if (!project) return null;
     const priceList = project.customer.priceListId ? store.customerPriceLists.find((list) => list.id === project.customer.priceListId) : null;
+    const existingMaterialIds = new Set(quote.lines.flatMap((line) => line.catalogueMaterialId ? [line.catalogueMaterialId] : []));
     const lines = args.materialIds.map(({ materialId, quantity }) => {
       const material = store.catalogueMaterials.find((item) => item.id === materialId);
       if (!material) throw new Error("Material not found");
+      if (store.materialCataloguePresentation.hiddenMaterialIds.includes(material.id) && !existingMaterialIds.has(material.id)) throw new Error(`${material.name} is hidden from platform quotes`);
       if (!material.variation && store.catalogueMaterials.some((item) => item.name === material.name && item.variation)) throw new Error(`Select a variation of ${material.name}`);
       const sell = priceList?.entries.find((entry) => entry.materialId === material.id)?.priceCentsPerM2 ?? material.standardPriceCentsPerM2;
       return { id: `ql-${randomUUID()}`, catalogueMaterialId: material.id, kind: "material" as const, description: material.variation ? `${material.name} — ${material.variation}` : material.name, quantity, unit: "m²", unitCostCents: material.costCentsPerM2, costCurrency: "AUD", fxRate: 1, marginPct: 28, unitSellCentsOverride: sell };
