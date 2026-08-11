@@ -8,7 +8,7 @@ import * as pgWorkflow from "./pg/workflow";
 import * as pgQuotes from "./pg/quotes";
 import * as pgField from "./pg/field";
 import * as pgSettings from "./pg/settings";
-import { readLocalStore, readStatusFieldTemplates, readStatusSettings as readLocalStatusSettings, readStatusTaskTemplates } from "./local-store";
+import { getLocalProjectType, getLocalRetroScope, readLocalStore, readStatusFieldTemplates, readStatusSettings as readLocalStatusSettings, readStatusTaskTemplates } from "./local-store";
 import type {
   Assignment,
   Customer,
@@ -36,6 +36,8 @@ import type {
   WorkflowField,
   SwmsRecord,
   SwmsTemplate,
+  ProjectType,
+  RetroScopeRecord,
 } from "./types";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
 import type { RolePermissionOverrides } from "@/lib/domain/permissions";
@@ -207,6 +209,14 @@ export async function getSwmsTemplate(orgId: string): Promise<SwmsTemplate> {
 
 export async function getProjectSwms(orgId: string, projectId: string): Promise<SwmsRecord | null> {
   return once(`projectSwms:${orgId}:${projectId}`, async () => hasDatabase ? pgSettings.getProjectSwms(orgId, projectId) : null);
+}
+
+export async function getProjectType(orgId: string, projectId: string): Promise<ProjectType> {
+  return once(`projectType:${orgId}:${projectId}`, async () => hasDatabase ? pgSettings.getProjectType(orgId, projectId) : getLocalProjectType(projectId));
+}
+
+export async function getProjectRetroScope(orgId: string, projectId: string): Promise<RetroScopeRecord | null> {
+  return once(`retroScope:${orgId}:${projectId}`, async () => hasDatabase ? pgSettings.getProjectRetroScope(orgId, projectId) : getLocalRetroScope(projectId));
 }
 
 /** PORTED. */

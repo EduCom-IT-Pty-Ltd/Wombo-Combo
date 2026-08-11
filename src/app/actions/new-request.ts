@@ -27,6 +27,7 @@ const schema = z.object({
   initialNotes: z.string().trim().optional(),
   projectTemplateId: z.string().optional(),
   poNumber: z.string().trim().max(120).optional(),
+  projectType: z.enum(["build", "retro"]).default("build"),
 });
 
 /**
@@ -85,6 +86,7 @@ export async function createProjectRequest(
       initialNotes: parsed.data.initialNotes || null,
       requestedStartOn: parsed.data.requestedStartOn ? new Date(parsed.data.requestedStartOn) : null,
       poNumber,
+      projectType: parsed.data.projectType,
       projectNumberPrefix: session.org.projectNumberPrefix,
     });
 
@@ -113,6 +115,7 @@ export async function createProjectRequest(
     const project = await createLocalProject({
       ...parsed.data,
       poNumber: poNumber ?? undefined,
+      projectType: parsed.data.projectType,
       projectNumberPrefix: session.org.projectNumberPrefix,
       actorId: session.user.id,
     });

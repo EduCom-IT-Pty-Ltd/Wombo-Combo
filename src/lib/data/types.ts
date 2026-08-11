@@ -11,6 +11,7 @@ import type {
 import type { QuoteLineInput } from "@/lib/domain/quote";
 import type { MaterialCataloguePresentation } from "@/lib/domain/material-catalogue";
 import type { SwmsRecord, SwmsTemplate } from "@/lib/domain/swms";
+import type { ProjectType, RetroScopeRecord } from "@/lib/domain/retro-scope";
 
 /**
  * View models returned by the repository layer. Deliberately *not* the raw table
@@ -121,7 +122,7 @@ export interface ProjectTemplate {
   startingStatus: ProjectStatus;
 }
 
-export type { SwmsRecord, SwmsTemplate };
+export type { SwmsRecord, SwmsTemplate, ProjectType, RetroScopeRecord };
 
 export interface Site {
   id: string;

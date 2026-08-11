@@ -13,6 +13,8 @@ import type {
   LabourSettings,
   ProjectCostingOptions,
   ProductionTemplate,
+  ProjectType,
+  RetroScopeRecord,
   ProjectTemplate,
   SchedulePhase,
   LeaveEntry,
@@ -71,6 +73,8 @@ export type LocalStore = {
   archivedProjects: ProjectDetail[];
   archivedCustomers: Customer[];
   schedulePhases: SchedulePhase[];
+  projectTypes: Record<string, ProjectType>;
+  retroScopes: Record<string, RetroScopeRecord>;
 };
 
 const storePath = join(process.cwd(), ".local-data", "test-data.json");
@@ -110,6 +114,8 @@ function freshStore(): LocalStore {
     archivedProjects: [],
     archivedCustomers: [],
     schedulePhases: seed.schedulePhases,
+    projectTypes: {},
+    retroScopes: {},
   });
 }
 
@@ -155,7 +161,7 @@ async function loadStore(): Promise<LocalStore> {
     const statusFieldTemplates = (store.statusFieldTemplates ?? structuredClone(DEFAULT_STATUS_FIELD_TEMPLATES)).map((template) => ({ ...template, required: template.required ?? false }));
     const people = (store.people ?? structuredClone(seed.people)).map((person) => ({ ...person, role: LEGACY_ROLE_MAP[person.role] ?? person.role }));
     const organisation = { ...DEFAULT_ORGANISATION, ...(store.organisation ?? {}) };
-    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, materialCataloguePresentation: normaliseMaterialCataloguePresentation(store.materialCataloguePresentation), customerPriceLists: store.customerPriceLists ?? [], labourSettings: { standardLabourEnabled: store.labourSettings?.standardLabourEnabled ?? false, standardLabourCostCentsPerEmployee: store.labourSettings?.standardLabourCostCentsPerEmployee ?? 0, subcontractorMaterialRates: store.labourSettings?.subcontractorMaterialRates ?? [] }, projectCostingOptions: store.projectCostingOptions ?? {}, productionTemplates, projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases) };
+    return { ...freshStore(), ...store, people, organisation, rolePermissions: store.rolePermissions ?? {}, quotes: (store.quotes ?? []).filter((quote) => quote.id.startsWith("quote-")), statusSettings, statusTaskTemplates: store.statusTaskTemplates ?? structuredClone(DEFAULT_STATUS_TASK_TEMPLATES), statusFieldTemplates, workflowFieldValues: store.workflowFieldValues ?? structuredClone(seed.workflowFieldValues), catalogueMaterials, materialCataloguePresentation: normaliseMaterialCataloguePresentation(store.materialCataloguePresentation), customerPriceLists: store.customerPriceLists ?? [], labourSettings: { standardLabourEnabled: store.labourSettings?.standardLabourEnabled ?? false, standardLabourCostCentsPerEmployee: store.labourSettings?.standardLabourCostCentsPerEmployee ?? 0, subcontractorMaterialRates: store.labourSettings?.subcontractorMaterialRates ?? [] }, projectCostingOptions: store.projectCostingOptions ?? {}, productionTemplates, projectTemplates: store.projectTemplates ?? [], archivedProjects: store.archivedProjects ?? [], archivedCustomers: store.archivedCustomers ?? [], schedulePhases: store.schedulePhases ?? structuredClone(seed.schedulePhases), projectTypes: store.projectTypes ?? {}, retroScopes: store.retroScopes ?? {} };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return freshStore();
     throw error;
@@ -167,6 +173,10 @@ export async function saveOrganisationSettings(settings: OrganisationSettings) {
 export async function readRolePermissions() { return (await readLocalStore()).rolePermissions; }
 export async function saveRolePermissions(permissions: RolePermissionOverrides) { await updateLocalStore((store) => { store.rolePermissions = permissions; }); }
 export async function saveLocalMaterialCataloguePresentation(value: MaterialCataloguePresentation) { await updateLocalStore((store) => { store.materialCataloguePresentation = normaliseMaterialCataloguePresentation(value); }); }
+export async function getLocalProjectType(projectId: string): Promise<ProjectType> { return (await readLocalStore()).projectTypes[projectId] === "retro" ? "retro" : "build"; }
+export async function getLocalRetroScope(projectId: string): Promise<RetroScopeRecord | null> { return (await readLocalStore()).retroScopes[projectId] ?? null; }
+export async function saveLocalRetroScope(projectId: string, record: RetroScopeRecord) { await updateLocalStore((store) => { store.retroScopes[projectId] = record; }); }
+export async function deleteLocalRetroScope(projectId: string) { await updateLocalStore((store) => { delete store.retroScopes[projectId]; }); }
 
 export async function readStatusSettings(): Promise<StatusSetting[]> {
   return (await readLocalStore()).statusSettings;
@@ -631,6 +641,7 @@ export async function createLocalProject(input: {
   projectNumberPrefix: string;
   actorId: string;
   poNumber?: string;
+  projectType?: ProjectType;
 }): Promise<ProjectDetail> {
   return updateLocalStore((store) => {
     const customer = store.customers.find((item) => item.id === input.customerId);
@@ -683,6 +694,7 @@ export async function createLocalProject(input: {
       customer,
     };
     store.projects.push(project);
+    store.projectTypes[project.id] = input.projectType === "retro" ? "retro" : "build";
     if (input.poNumber) {
       for (const field of store.statusFieldTemplates.filter((item) => item.status === "approved")) {
         store.workflowFieldValues.push({ projectId: project.id, templateId: field.id, value: input.poNumber, updatedAt: now });

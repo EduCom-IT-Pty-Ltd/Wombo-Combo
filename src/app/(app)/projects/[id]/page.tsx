@@ -4,11 +4,15 @@ import { can } from "@/lib/domain/permissions";
 import { formatMoney } from "@/lib/domain/money";
 import {
   getProject,
+  getProjectRetroScope,
+  getProjectType,
+  listDocuments,
   listEvents,
   listPeople,
 } from "@/lib/data/repository";
 import { Card, CardHeader, EmptyState, Field } from "@/components/ui";
 import { formatDate, formatRelative } from "@/lib/utils";
+import { ProjectRetroScope } from "@/components/projects/project-retro-scope";
 
 export default async function ProjectOverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,9 +20,12 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
   const project = await getProject(session.org.id, id);
   if (!project) notFound();
 
-  const [events, people] = await Promise.all([
+  const [events, people, projectType, retroScope, documents] = await Promise.all([
     listEvents(session.org.id, id),
     listPeople(session.org.id),
+    getProjectType(session.org.id, id),
+    getProjectRetroScope(session.org.id, id),
+    listDocuments(session.org.id, id),
   ]);
 
   const pm = people.find((p) => p.id === project.projectManagerId);
@@ -28,11 +35,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
       <div className="space-y-4 lg:col-span-2">
         <Card>
           <CardHeader title="Scope of works" />
-          <div className="px-4 py-3">
-            <p className="text-sm leading-relaxed whitespace-pre-line text-foreground">
-              {project.scopeOfWorks ?? "No scope captured yet."}
-            </p>
-          </div>
+          {projectType === "retro" ? <ProjectRetroScope project={project} record={retroScope} photos={documents.filter((document) => document.kind === "photo" && (retroScope?.photoDocumentIds.includes(document.id) ?? false))} canEdit={can(session.role, "field.record", session.permissionOverrides)} assessorName={[session.user.firstName, session.user.lastName].filter(Boolean).join(" ") || session.user.email} /> : <div className="px-4 py-3"><p className="text-sm leading-relaxed whitespace-pre-line text-foreground">{project.scopeOfWorks ?? "No scope captured yet."}</p></div>}
         </Card>
 
         <Card>

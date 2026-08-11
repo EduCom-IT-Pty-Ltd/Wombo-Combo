@@ -7,6 +7,7 @@ import { defects } from "@/lib/db/schema/qa";
 import { assignments } from "@/lib/db/schema/scheduling";
 import type { ProjectStatus } from "@/lib/db/schema/enums";
 import type { ProjectDetail, ProjectSummary, Site } from "../types";
+import type { ProjectType } from "@/lib/domain/retro-scope";
 import { quotes } from "@/lib/db/schema/quoting";
 import { getCustomer } from "./customers";
 
@@ -377,6 +378,8 @@ export async function createProject(
     requestedStartOn?: Date | null;
     /** Some jobs arrive with the PO already issued — see project templates. */
     poNumber?: string | null;
+    /** Build is the default; Retrofit adds a separate on-site scope capture. */
+    projectType?: ProjectType;
     projectNumberPrefix: string;
   },
 ): Promise<ProjectDetail> {
@@ -395,6 +398,7 @@ export async function createProject(
       initialNotes: input.initialNotes ?? null,
       requestedStartOn: input.requestedStartOn ?? null,
       poNumber,
+      customFields: { projectType: input.projectType === "retro" ? "retro" : "build" },
       // Same rule as editing the record: the first time a number appears is
       // when it was received. Leaving this null would render the project header
       // as "received —", a PO with no date against it.

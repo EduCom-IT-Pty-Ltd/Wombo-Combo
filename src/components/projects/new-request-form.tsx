@@ -22,12 +22,14 @@ export function NewRequestForm({ customers, templates, defaultCustomerId, isDemo
   const [templateId, setTemplateId] = useState(
     () => customers.find((customer) => customer.id === defaultCustomerId)?.defaultProjectTemplateId ?? "",
   );
+  const [projectType, setProjectType] = useState<"build" | "retro">("build");
 
   return (
     <form action={formAction}>
       <Card>
         <CardHeader title="Request details" />
         <div className="space-y-4 px-4 py-4">
+          <div className="rounded-xl border border-border-subtle bg-surface-muted p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-bold">Project type</p><p className="text-xs text-muted-foreground">Build uses the standard workflow. Retro adds a detailed assessment scope after creation.</p></div><div className="inline-flex rounded-lg border border-border-subtle bg-surface p-1"><button type="button" onClick={() => setProjectType("build")} className={`min-h-10 rounded-md px-4 text-sm font-semibold transition ${projectType === "build" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>Build</button><button type="button" onClick={() => setProjectType("retro")} className={`min-h-10 rounded-md px-4 text-sm font-semibold transition ${projectType === "retro" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>Retro</button></div></div><input type="hidden" name="projectType" value={projectType} /></div>
           <Text name="title" label="Project title" error={state.errors?.title} required />
 
           <div className="grid gap-4 sm:grid-cols-2">

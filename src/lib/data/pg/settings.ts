@@ -27,6 +27,7 @@ import type { ProjectStatus } from "@/lib/db/schema/enums";
 import { normaliseSwmsTemplate, normaliseSwmsValues } from "@/lib/domain/swms";
 import { EMPTY_MATERIAL_CATALOGUE_PRESENTATION, normaliseMaterialCataloguePresentation } from "@/lib/domain/material-catalogue";
 import type { MaterialCataloguePresentation } from "@/lib/domain/material-catalogue";
+import { normaliseRetroScopeValues, type ProjectType, type RetroScopeRecord } from "@/lib/domain/retro-scope";
 import type { OrganisationLogoLocation } from "@/lib/integrations/sharepoint/branding";
 
 /**
@@ -233,6 +234,45 @@ export async function deleteProjectSwms(orgId: string, projectId: string): Promi
   const updated = await db()
     .update(projects)
     .set({ customFields: sql`${projects.customFields} - 'swms'`, updatedAt: new Date() })
+    .where(and(eq(projects.orgId, orgId), eq(projects.id, projectId)))
+    .returning({ id: projects.id });
+  return updated.length > 0;
+}
+
+/** Build is the established workflow; only Retrofit projects have a saved site scope. */
+export async function getProjectType(orgId: string, projectId: string): Promise<ProjectType> {
+  const fields = (await readProjectCustomFields(orgId, projectId)) as { projectType?: unknown };
+  return fields.projectType === "retro" ? "retro" : "build";
+}
+
+/** Retrofit assessment record, held alongside the other project extension data. */
+export async function getProjectRetroScope(orgId: string, projectId: string): Promise<RetroScopeRecord | null> {
+  const fields = (await readProjectCustomFields(orgId, projectId)) as { retroScope?: Partial<RetroScopeRecord> };
+  const value = fields.retroScope;
+  if (!value || typeof value !== "object" || typeof value.createdAt !== "string" || typeof value.updatedAt !== "string") return null;
+  return {
+    values: normaliseRetroScopeValues(value.values),
+    photoDocumentIds: Array.isArray(value.photoDocumentIds) ? value.photoDocumentIds.filter((id): id is string => typeof id === "string") : [],
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+    createdByUserId: typeof value.createdByUserId === "string" ? value.createdByUserId : null,
+    updatedByUserId: typeof value.updatedByUserId === "string" ? value.updatedByUserId : null,
+  };
+}
+
+export async function saveProjectRetroScope(orgId: string, projectId: string, value: RetroScopeRecord): Promise<boolean> {
+  const updated = await db()
+    .update(projects)
+    .set({ customFields: sql`${projects.customFields} || ${JSON.stringify({ retroScope: value })}::jsonb`, updatedAt: new Date() })
+    .where(and(eq(projects.orgId, orgId), eq(projects.id, projectId)))
+    .returning({ id: projects.id });
+  return updated.length > 0;
+}
+
+export async function deleteProjectRetroScope(orgId: string, projectId: string): Promise<boolean> {
+  const updated = await db()
+    .update(projects)
+    .set({ customFields: sql`${projects.customFields} - 'retroScope'`, updatedAt: new Date() })
     .where(and(eq(projects.orgId, orgId), eq(projects.id, projectId)))
     .returning({ id: projects.id });
   return updated.length > 0;
