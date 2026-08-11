@@ -20,19 +20,21 @@ export function ProjectSwms({ project, template, record, photos, canEdit }: { pr
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const close = () => setMode(null);
   const exportPdf = () => {
-    // Open this synchronously from the click so the browser permits the later
-    // download, while the project page stays exactly where the user is.
-    const downloadTab = window.open("about:blank", "_blank");
     startExport(async () => {
       setExportMessage(null);
       const result = await exportProjectSwmsPdfAction(project.id);
       setExportMessage(result.message ?? null);
-      if (result.ok && result.downloadUrl && downloadTab) {
-        downloadTab.location.replace(result.downloadUrl);
+      if (result.ok && result.downloadUrl) {
+        // An attachment response in an invisible frame triggers the device
+        // download without replacing this project page or leaving a blank tab.
+        const frame = document.createElement("iframe");
+        frame.className = "hidden";
+        frame.title = "SWMS PDF download";
+        frame.src = result.downloadUrl;
+        document.body.append(frame);
+        window.setTimeout(() => frame.remove(), 60_000);
         return;
       }
-      downloadTab?.close();
-      if (result.ok) setExportMessage("SWMS PDF was saved to SharePoint. Please allow pop-ups for this site, then export again to download it.");
     });
   };
   return <div className="space-y-4">
