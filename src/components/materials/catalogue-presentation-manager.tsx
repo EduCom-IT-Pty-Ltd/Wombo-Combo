@@ -18,6 +18,7 @@ export function CataloguePresentationManager({ materials, presentation }: { mate
   const [hiddenMaterialIds, setHiddenMaterialIds] = useState(presentation.hiddenMaterialIds);
   const [groups, setGroups] = useState(presentation.groups);
   const [groupName, setGroupName] = useState("");
+  const [showVisibility, setShowVisibility] = useState(false);
   const materialById = useMemo(() => new Map(materials.map((material) => [material.id, material])), [materials]);
   const groupedIds = new Set(groups.flatMap((group) => group.entries.map((entry) => entry.materialId)));
   const visibleMaterials = materials.filter((material) => !hiddenMaterialIds.includes(material.id));
@@ -44,17 +45,10 @@ export function CataloguePresentationManager({ materials, presentation }: { mate
   }
 
   return <Card className="xl:col-span-2">
-    <CardHeader title="Platform catalogue display" description="Choose which synced Xero items appear in this platform, then optionally map them into quote categories. These controls never edit or sync anything back to Xero." />
+    <CardHeader title="Platform catalogue display" description="Choose which synced Xero items appear in this platform, then optionally map them into quote categories. These controls never edit or sync anything back to Xero." action={<Button type="button" size="sm" variant="secondary" onClick={() => setShowVisibility(true)}>Visible products · {visibleMaterials.length}</Button>} />
     <form action={action} className="space-y-5 p-4">
       <input type="hidden" name="presentation" value={JSON.stringify({ hiddenMaterialIds, groups })} />
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <section className="rounded-xl border border-border-subtle bg-surface-muted/50 p-3">
-          <div className="mb-3 flex items-center justify-between gap-3"><div><h3 className="font-semibold">Visible in platform</h3><p className="text-xs text-muted-foreground">Hidden products stay in Xero and can be shown again at any time.</p></div><span className="text-xs font-semibold text-muted-foreground">{visibleMaterials.length} shown · {hiddenMaterialIds.length} hidden</span></div>
-          <div className="max-h-80 divide-y divide-border-subtle overflow-y-auto rounded-lg border border-border-subtle bg-surface">
-            {materials.map((material) => { const hidden = hiddenMaterialIds.includes(material.id); return <div key={material.id} className="flex items-center justify-between gap-3 px-3 py-2.5"><div className="min-w-0"><p className="truncate text-sm font-medium">{labelFor(material)}</p><p className="truncate text-xs text-muted-foreground">{material.sku || "No item code"}{hidden ? " · Hidden from platform" : ""}</p></div><Button type="button" size="sm" variant={hidden ? "secondary" : "ghost"} onClick={() => toggleMaterial(material.id)}>{hidden ? "Show" : "Hide"}</Button></div>; })}
-            {!materials.length ? <p className="p-4 text-center text-sm text-muted-foreground">No synced materials yet.</p> : null}
-          </div>
-        </section>
+      <div>
         <section className="rounded-xl border border-border-subtle bg-surface-muted/50 p-3">
           <div className="mb-3"><h3 className="font-semibold">Quote categories</h3><p className="text-xs text-muted-foreground">For example, map Wall Wrap 2.0, 2.5 and 3.0 under one “Wall Wrap” choice.</p></div>
           <div className="mb-3 flex gap-2"><input value={groupName} onChange={(event) => setGroupName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addGroup(); } }} className={input} placeholder="New category, e.g. Wall Wrap" /><Button type="button" onClick={addGroup}>Add</Button></div>
@@ -62,6 +56,7 @@ export function CataloguePresentationManager({ materials, presentation }: { mate
         </section>
       </div>
       <div className="flex items-center gap-3"><Button type="submit" variant="primary" disabled={pending}>{pending ? "Saving…" : "Save platform display"}</Button>{state.message ? <p className={state.ok ? "text-xs text-emerald-600" : "text-xs text-destructive"}>{state.message}</p> : null}</div>
+      {showVisibility ? <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Visible platform products"><div className="flex max-h-[88dvh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl"><div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4"><div><h2 className="text-base font-bold">Visible in platform</h2><p className="mt-1 text-sm text-muted-foreground">Choose the synced Xero items available in platform material and quote pickers. Hiding a product never changes it in Xero.</p></div><Button type="button" size="sm" variant="ghost" onClick={() => setShowVisibility(false)}>Close</Button></div><div className="min-h-0 divide-y divide-border-subtle overflow-y-auto">{materials.map((material) => { const hidden = hiddenMaterialIds.includes(material.id); return <div key={material.id} className="flex items-center justify-between gap-3 px-5 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{labelFor(material)}</p><p className="truncate text-xs text-muted-foreground">{material.sku || "No item code"}{hidden ? " · Hidden from platform" : ""}</p></div><Button type="button" size="sm" variant={hidden ? "secondary" : "ghost"} onClick={() => toggleMaterial(material.id)}>{hidden ? "Show" : "Hide"}</Button></div>; })}{!materials.length ? <p className="p-6 text-center text-sm text-muted-foreground">No synced materials yet.</p> : null}</div><div className="flex items-center justify-between border-t border-border-subtle px-5 py-4"><p className="text-xs text-muted-foreground">{visibleMaterials.length} shown · {hiddenMaterialIds.length} hidden</p><Button type="button" variant="primary" onClick={() => setShowVisibility(false)}>Done</Button></div></div></div> : null}
     </form>
   </Card>;
 }
