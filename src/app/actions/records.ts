@@ -21,7 +21,7 @@ import {
 
 const projectSchema = z.object({
   id: z.string().min(1), projectNumber: z.string().trim().min(2), title: z.string().trim().min(2), customerId: z.string().min(1),
-  siteName: z.string().trim().optional(), contactName: z.string().trim().optional(), requestedStartOn: z.string().optional(),
+  siteName: z.string().trim().optional(), siteAddress: z.string().trim().max(300).optional(), contactName: z.string().trim().optional(), requestedStartOn: z.string().optional(),
   scopeOfWorks: z.string().trim().optional(), initialNotes: z.string().trim().optional(), poNumber: z.string().trim().max(120).optional(),
 });
 const customerSchema = z.object({

@@ -20,6 +20,7 @@ const schema = z.object({
   title: z.string().trim().min(3, "Give the project a title"),
   customerId: z.string().min(1, "Select a customer"),
   siteName: z.string().trim().optional(),
+  siteAddress: z.string().trim().max(300, "Site address is too long").optional(),
   contactName: z.string().trim().optional(),
   requestedStartOn: z.string().optional(),
   scopeOfWorks: z.string().trim().optional(),
@@ -71,8 +72,14 @@ export async function createProjectRequest(
     const project = await createPgProject(session.org.id, {
       title: parsed.data.title,
       customerId: parsed.data.customerId,
-      siteId: parsed.data.siteName
-        ? await createPgSite(session.org.id, parsed.data.customerId, parsed.data.siteName)
+      siteId: parsed.data.siteName || parsed.data.siteAddress
+        ? await createPgSite(
+          session.org.id,
+          parsed.data.customerId,
+          parsed.data.siteName || parsed.data.siteAddress || "Project site",
+          parsed.data.siteAddress,
+          parsed.data.contactName,
+        )
         : null,
       scopeOfWorks: parsed.data.scopeOfWorks || null,
       initialNotes: parsed.data.initialNotes || null,

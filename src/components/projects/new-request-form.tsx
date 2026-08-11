@@ -43,9 +43,11 @@ export function NewRequestForm({ customers, templates, defaultCustomerId, isDemo
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
+            <Text name="siteAddress" label="Site address" placeholder="Street address" error={state.errors?.siteAddress} />
             <Text name="contactName" label="Site contact" error={state.errors?.contactName} />
-            <Text name="requestedStartOn" label="Requested start" type="date" error={state.errors?.requestedStartOn} />
           </div>
+
+          <Text name="requestedStartOn" label="Requested start" type="date" error={state.errors?.requestedStartOn} />
 
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-muted-foreground">Project type</span>

@@ -615,6 +615,7 @@ export async function createLocalProject(input: {
   title: string;
   customerId: string;
   siteName?: string;
+  siteAddress?: string;
   contactName?: string;
   requestedStartOn?: string;
   scopeOfWorks?: string;
@@ -628,12 +629,12 @@ export async function createLocalProject(input: {
     if (!customer) throw new Error("Customer not found");
     const number = Math.max(0, ...store.projects.map((p) => Number(p.projectNumber.match(/(\d+)$/)?.[1]) || 0)) + 1;
     let site: Site | null = null;
-    if (input.siteName) {
+    if (input.siteName || input.siteAddress) {
       site = {
         id: `s-${randomUUID()}`,
         customerId: customer.id,
-        name: input.siteName,
-        address: "",
+        name: input.siteName || input.siteAddress || "Project site",
+        address: input.siteAddress || "",
         suburb: "",
         state: "",
         postcode: "",
@@ -693,6 +694,7 @@ export async function updateLocalProject(input: {
   title: string;
   customerId: string;
   siteName?: string;
+  siteAddress?: string;
   contactName?: string;
   requestedStartOn?: string;
   scopeOfWorks?: string;
@@ -724,14 +726,16 @@ export async function updateLocalProject(input: {
     project.poReceivedAt = input.poNumber?.trim() ? project.poReceivedAt ?? new Date().toISOString() : null;
     project.updatedAt = new Date().toISOString();
     const siteName = input.siteName?.trim() || "";
+    const siteAddress = input.siteAddress?.trim() || "";
     if (siteName && project.site) {
       project.site.name = siteName;
+      project.site.address = siteAddress;
       project.site.accessNotes = input.contactName?.trim() ? `Site contact: ${input.contactName.trim()}` : null;
       const site = store.sites.find((item) => item.id === project.site?.id);
       if (site) Object.assign(site, project.site, { customerId: customer.id });
       project.siteLabel = siteName;
     } else if (siteName) {
-      const site: Site = { id: `s-${randomUUID()}`, customerId: customer.id, name: siteName, address: "", suburb: "", state: "", postcode: "", accessNotes: input.contactName?.trim() ? `Site contact: ${input.contactName.trim()}` : null };
+      const site: Site = { id: `s-${randomUUID()}`, customerId: customer.id, name: siteName, address: siteAddress, suburb: "", state: "", postcode: "", accessNotes: input.contactName?.trim() ? `Site contact: ${input.contactName.trim()}` : null };
       store.sites.push(site);
       project.site = site;
       project.siteId = site.id;

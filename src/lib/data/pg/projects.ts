@@ -343,13 +343,25 @@ export async function allocateProjectNumber(orgId: string, prefix: string, year:
 }
 
 /**
- * Create the site captured on the new-request form. Only a name is collected
- * there, so the address fields stay empty until someone edits the site.
+ * Create the site captured on the new-project form. It remains project-owned
+ * until the customer/site relationship grows a dedicated selection workflow.
  */
-export async function createSite(orgId: string, customerId: string, name: string): Promise<string> {
+export async function createSite(
+  orgId: string,
+  customerId: string,
+  name: string,
+  addressLine1?: string,
+  contactName?: string,
+): Promise<string> {
   const [row] = await db()
     .insert(sites)
-    .values({ orgId, customerId, name })
+    .values({
+      orgId,
+      customerId,
+      name,
+      addressLine1: addressLine1?.trim() || null,
+      accessNotes: contactName?.trim() ? `Site contact: ${contactName.trim()}` : null,
+    })
     .returning({ id: sites.id });
   return row.id;
 }
@@ -419,6 +431,7 @@ export async function updateProjectRecord(
     title: string;
     customerId: string;
     siteName?: string;
+    siteAddress?: string;
     contactName?: string;
     requestedStartOn?: string;
     scopeOfWorks?: string;
@@ -449,18 +462,19 @@ export async function updateProjectRecord(
   if (clash) throw new Error("Project ID already exists");
 
   const siteName = input.siteName?.trim() || "";
+  const siteAddress = input.siteAddress?.trim() || null;
   const accessNotes = input.contactName?.trim() ? `Site contact: ${input.contactName.trim()}` : null;
   let siteId = existing.siteId;
 
   if (siteName && existing.siteId) {
     await db()
       .update(sites)
-      .set({ name: siteName, accessNotes, customerId: customer.id, updatedAt: new Date() })
+      .set({ name: siteName, addressLine1: siteAddress, accessNotes, customerId: customer.id, updatedAt: new Date() })
       .where(and(eq(sites.orgId, orgId), eq(sites.id, existing.siteId)));
   } else if (siteName) {
     const [site] = await db()
       .insert(sites)
-      .values({ orgId, customerId: customer.id, name: siteName, accessNotes })
+      .values({ orgId, customerId: customer.id, name: siteName, addressLine1: siteAddress, accessNotes })
       .returning({ id: sites.id });
     siteId = site.id;
   } else {
