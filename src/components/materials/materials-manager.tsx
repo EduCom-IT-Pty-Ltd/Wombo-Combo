@@ -34,7 +34,7 @@ export function MaterialsManager({ materials, priceLists, presentation }: { mate
   const entries = Object.entries(prices).filter(([, value]) => Number(value) > 0).map(([id, value]) => `${id}:${value}`).join("\n");
 
   function exportCsv() {
-    const content = [csvHeadings.join(","), ...materials.map((material) => [material.name, material.variation, material.sku, material.description, (material.costCentsPerM2 / 100).toFixed(2), (material.standardPriceCentsPerM2 / 100).toFixed(2)].map(csvValue).join(","))].join("\n");
+    const content = [csvHeadings.join(","), ...visibleMaterials.map((material) => [material.name, material.variation, material.sku, material.description, (material.costCentsPerM2 / 100).toFixed(2), (material.standardPriceCentsPerM2 / 100).toFixed(2)].map(csvValue).join(","))].join("\n");
     const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a"); link.href = url; link.download = "materials.csv"; link.click(); URL.revokeObjectURL(url);
   }
@@ -46,10 +46,10 @@ export function MaterialsManager({ materials, priceLists, presentation }: { mate
       <CardHeader title="Material catalogue" description="Mirrored from Xero's items. Cost and sell price are maintained in Xero, per square metre." />
       <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3">
         <XeroSyncButton />
-        {materials.length ? <Button type="button" size="sm" variant="secondary" onClick={exportCsv}>Export CSV</Button> : null}
+        {visibleMaterials.length ? <Button type="button" size="sm" variant="secondary" onClick={exportCsv}>Export CSV</Button> : null}
         <span className="text-xs text-muted-foreground">Add or reprice a material in Xero, then sync to pull it through.</span>
       </div>
-      <MaterialCatalogue materials={materials} />
+      <MaterialCatalogue materials={visibleMaterials} />
     </Card>
     <Card>
       <CardHeader title="Customer price lists" description="Enter only the prices that differ. Blank prices use the standard material price." />
@@ -59,7 +59,7 @@ export function MaterialsManager({ materials, priceLists, presentation }: { mate
 }
 
 function MaterialCatalogue({ materials }: { materials: CatalogueMaterial[] }) {
-  if (!materials.length) return <p className="px-4 py-8 text-center text-sm text-muted-foreground">No materials yet. Connect Xero from Finance, then sync to pull your items in.</p>;
+  if (!materials.length) return <p className="px-4 py-8 text-center text-sm text-muted-foreground">No visible materials. Use Visible products to show synced Xero items in the platform.</p>;
   return <div className="divide-y divide-border-subtle">{groupMaterials(materials).map(([name, group]) => <MaterialGroup key={name} name={name} materials={group} />)}</div>;
 }
 
