@@ -6,13 +6,15 @@ import { requireCapability } from "@/lib/auth/session";
 import { hasDatabase } from "@/lib/db";
 import { createDocument } from "@/lib/data/pg/field";
 import { deleteProjectRetroScope, saveProjectRetroScope } from "@/lib/data/pg/settings";
-import { getProjectRetroScope, getProjectType } from "@/lib/data/repository";
+import { getOrganisationLogoLocation, getOrganisationSettings, getProject, getProjectRetroScope, getProjectType } from "@/lib/data/repository";
 import { deleteLocalRetroScope, saveLocalRetroScope } from "@/lib/data/local-store";
 import { forgetReads } from "@/lib/data/request-scope";
 import { MAX_DOCUMENT_BYTES } from "@/lib/domain/documents";
 import { normaliseRetroScopeValues, type RetroScopeRecord } from "@/lib/domain/retro-scope";
+import { createRetroScopePdf } from "@/lib/documents/retro-scope-pdf";
+import type { PdfImage } from "@/lib/documents/swms-pdf";
 
-export type RetroScopeActionState = { ok: boolean; message?: string; documentId?: string };
+export type RetroScopeActionState = { ok: boolean; message?: string; documentId?: string; documentName?: string; downloadUrl?: string };
 const projectSchema = z.object({ projectId: z.uuid("Unknown project.") });
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
@@ -92,9 +94,67 @@ export async function uploadRetroScopePhotoAction(_state: RetroScopeActionState,
   try {
     const item = await uploadProjectDocument({ driveId: project.driveId, folderItemId: project.folderItemId, kind: "photo", fileName: name, contentType: file.type, bytes: await file.arrayBuffer() });
     const document = await createDocument(session.org.id, { projectId: parsed.data.projectId, name, kind: "photo", storageKey: item.id, mimeType: file.type, sizeBytes: file.size, requiresAcknowledgement: false, uploadedByUserId: isUuid(session.user.id) ? session.user.id : null });
+    // Uploading a photo must immediately link it to the scope. Previously the
+    // browser held the link only until a second Save click, so a successful
+    // SharePoint upload could look as if it had disappeared from the scope.
+    const existing = await getProjectRetroScope(session.org.id, parsed.data.projectId);
+    const submittedPhotoIds = json(formData.get("photoDocumentIds"));
+    const requestedIds = Array.isArray(submittedPhotoIds) ? submittedPhotoIds.filter((id): id is string => typeof id === "string" && isUuid(id)) : [];
+    const now = new Date().toISOString();
+    const record: RetroScopeRecord = {
+      values: normaliseRetroScopeValues(json(formData.get("values"))),
+      photoDocumentIds: [...new Set(await verifiedProjectPhotoIds(session.org.id, parsed.data.projectId, [...(existing?.photoDocumentIds ?? []), ...requestedIds, document.id]))],
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      createdByUserId: existing?.createdByUserId ?? (isUuid(session.user.id) ? session.user.id : null),
+      updatedByUserId: isUuid(session.user.id) ? session.user.id : null,
+    };
+    if (!await saveProjectRetroScope(session.org.id, parsed.data.projectId, record)) return { ok: false, message: "The photo uploaded, but the scope could not be linked to this project." };
     invalidate(parsed.data.projectId);
-    return { ok: true, message: "Scope photo added to the project SharePoint folder.", documentId: document.id };
+    return { ok: true, message: "Scope photo uploaded and linked.", documentId: document.id, documentName: name };
   } catch (error) {
     return { ok: false, message: `Could not upload the scope photo: ${error instanceof Error ? error.message : String(error)}` };
   }
 }
+
+/** Export the completed Retrofit scope as the one current PDF in the project root. */
+export async function exportProjectRetroScopePdfAction(projectId: string): Promise<RetroScopeActionState> {
+  const session = await requireCapability("field.record");
+  if (!hasDatabase) return { ok: false, message: "PDF export needs the production database." };
+  if (!z.uuid().safeParse(projectId).success) return { ok: false, message: "Unknown project." };
+  if (await getProjectType(session.org.id, projectId) !== "retro") return { ok: false, message: "A retrofit scope is only available on Retro projects." };
+  const [project, record] = await Promise.all([getProject(session.org.id, projectId), getProjectRetroScope(session.org.id, projectId)]);
+  if (!project) return { ok: false, message: "That project no longer exists." };
+  if (!record) return { ok: false, message: "Save the retrofit scope before exporting it." };
+  const { graphConfigured } = await import("@/lib/integrations/graph/client");
+  if (!graphConfigured()) return { ok: false, message: "SharePoint is not configured on this deployment." };
+  const { db } = await import("@/lib/db");
+  const { projects } = await import("@/lib/db/schema/projects");
+  const { documents } = await import("@/lib/db/schema/documents");
+  const { and, eq, inArray } = await import("drizzle-orm");
+  const [storageProject] = await db().select({ driveId: projects.sharepointDriveId, folderItemId: projects.sharepointFolderItemId }).from(projects).where(and(eq(projects.orgId, session.org.id), eq(projects.id, projectId))).limit(1);
+  if (!storageProject?.driveId || !storageProject.folderItemId) return { ok: false, message: "This project does not have a SharePoint folder yet." };
+  const photoRows = record.photoDocumentIds.length ? await db().select({ name: documents.name, storageKey: documents.storageKey, mimeType: documents.mimeType }).from(documents).where(and(eq(documents.orgId, session.org.id), eq(documents.projectId, projectId), eq(documents.kind, "photo"), inArray(documents.id, record.photoDocumentIds))) : [];
+  const [{ logoUrl }, logoLocation] = await Promise.all([getOrganisationSettings(session.org.id), getOrganisationLogoLocation(session.org.id)]);
+  const [logo, photos] = await Promise.all([loadLogo(logoLocation, logoUrl), loadPhotos(storageProject.driveId, photoRows)]);
+  let pdfBytes: Uint8Array;
+  try { pdfBytes = await createRetroScopePdf({ project, record, logo, photos }); } catch (error) { return { ok: false, message: `The retrofit scope PDF could not be created: ${error instanceof Error ? error.message : String(error)}` }; }
+  const { replaceProjectTopLevelDocument, safeFileName } = await import("@/lib/integrations/sharepoint/upload");
+  const name = safeFileName(`${project.projectNumber} - Retrofit Scope.pdf`);
+  let item;
+  try { item = await replaceProjectTopLevelDocument({ driveId: storageProject.driveId, folderItemId: storageProject.folderItemId, fileName: name, contentType: "application/pdf", bytes: toArrayBuffer(pdfBytes) }); } catch (error) { return { ok: false, message: `SharePoint could not save the retrofit scope PDF: ${error instanceof Error ? error.message : String(error)}` }; }
+  const document = await createDocument(session.org.id, { projectId, name, kind: "other", storageKey: item.id, mimeType: "application/pdf", sizeBytes: pdfBytes.byteLength, requiresAcknowledgement: false, uploadedByUserId: isUuid(session.user.id) ? session.user.id : null });
+  const { recordEvent } = await import("@/lib/data/pg/workflow");
+  await recordEvent({ orgId: session.org.id, projectId, type: "document.uploaded", summary: `${name} exported${document.version > 1 ? ` (v${document.version})` : ""}`, actorUserId: isUuid(session.user.id) ? session.user.id : null, payload: { documentId: document.id, kind: "retro_scope", driveItemId: item.id } });
+  invalidate(projectId);
+  return { ok: true, message: "Retrofit scope PDF exported to SharePoint and downloaded.", documentId: document.id, downloadUrl: `/api/documents/${document.id}?download=1` };
+}
+
+async function loadLogo(location: { driveId: string; itemId: string } | null, legacyUrl: string | null): Promise<PdfImage | null> {
+  if (location) return loadSharePointImage(location.driveId, location.itemId, "Organisation logo");
+  if (!legacyUrl?.startsWith("http")) return null;
+  try { const response = await fetch(legacyUrl); return response.ok ? { name: "Organisation logo", mimeType: response.headers.get("content-type"), bytes: new Uint8Array(await response.arrayBuffer()) } : null; } catch { return null; }
+}
+async function loadPhotos(driveId: string, rows: Array<{ name: string; storageKey: string; mimeType: string | null }>): Promise<PdfImage[]> { return (await Promise.all(rows.map((row) => loadSharePointImage(driveId, row.storageKey, row.name, row.mimeType)))).filter((item): item is PdfImage => item !== null); }
+async function loadSharePointImage(driveId: string, itemId: string, name: string, mimeType?: string | null): Promise<PdfImage | null> { try { const { getDocumentUrl } = await import("@/lib/integrations/sharepoint/upload"); const url = await getDocumentUrl(driveId, itemId); if (!url) return null; const response = await fetch(url); return response.ok ? { name, mimeType: mimeType ?? response.headers.get("content-type"), bytes: new Uint8Array(await response.arrayBuffer()) } : null; } catch { return null; } }
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer; }
