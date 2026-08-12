@@ -109,6 +109,7 @@ export const PROJECT_TABS: ProjectTab[] = [
   { segment: "costing", label: "Costing", capability: "finance.profit.view" },
   { segment: "activity", label: "Activity", capability: "project.view" },
   { segment: "swms", label: "SWMS", capability: "document.view" },
+  { segment: "certificate", label: "Certificate", capability: "qa.certify" },
 ];
 
 /**

@@ -35,7 +35,7 @@ export async function getOrganisation(orgId: string): Promise<OrganisationRecord
 }
 
 function toOrganisation(row: typeof organizations.$inferSelect): OrganisationRecord {
-  const settings = row.settings as { logoUrl?: string | null };
+  const settings = row.settings as { logoUrl?: string | null; certificateHeaderUrl?: string | null };
   return {
     id: row.id,
     workosOrgId: row.workosOrgId,
@@ -47,6 +47,7 @@ function toOrganisation(row: typeof organizations.$inferSelect): OrganisationRec
     // Not a column: the schema keeps presentation-only fields in `settings`
     // rather than growing the table for each one.
     logoUrl: settings?.logoUrl ?? null,
+    certificateHeaderUrl: settings?.certificateHeaderUrl ?? null,
   };
 }
 

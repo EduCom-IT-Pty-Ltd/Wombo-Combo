@@ -799,6 +799,14 @@ export async function getOrganisationLogoLocation(orgId: string) {
   });
 }
 
+/** Stable SharePoint location for the compliance-certificate header, if configured. */
+export async function getOrganisationCertificateHeaderLocation(orgId: string) {
+  return once(`organisationCertificateHeaderLocation:${orgId}`, async () => {
+    if (!hasDatabase) return null;
+    return pgSettings.getOrganisationCertificateHeaderLocation(orgId);
+  });
+}
+
 /** PORTED. */
 export async function getRolePermissions(orgId: string): Promise<RolePermissionOverrides> {
   return once(`rolePermissions:${orgId}`, async () => {

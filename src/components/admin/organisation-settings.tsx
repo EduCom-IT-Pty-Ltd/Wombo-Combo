@@ -30,6 +30,14 @@ export function OrganisationSettingsForm({ settings, isDemo }: { settings: Organ
             </div>
             <label className="mt-3 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border-strong bg-surface px-3 text-xs font-bold transition hover:border-primary hover:text-primary"><ImagePlus className="size-4" /> Upload logo<input name="logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="sr-only" /></label>
             <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">PNG, JPG, WebP or SVG · max 2 MB · saved in the SharePoint library root beside Projects</p>
+            <div className="mt-4 border-t border-border-subtle pt-3">
+              <p className="text-xs font-bold text-muted-foreground">Certificate header</p>
+              <div className="mt-2 grid h-16 place-items-center overflow-hidden rounded-lg border border-border-subtle bg-surface shadow-sm">
+                {settings.certificateHeaderUrl ? <Image src={settings.certificateHeaderUrl} alt="Certificate header" width={240} height={100} unoptimized className="h-full w-full object-contain" /> : <span className="text-[11px] text-muted-foreground">Not configured</span>}
+              </div>
+              <label className="mt-2 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border-strong bg-surface px-3 text-xs font-bold transition hover:border-primary hover:text-primary"><ImagePlus className="size-4" /> Upload certificate header<input name="certificateHeader" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" /></label>
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">Used only for generated compliance certificates · PNG, JPG or WebP · max 2 MB · stored beside the organisation logo in SharePoint</p>
+            </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t border-border-subtle px-4 py-3 sm:px-5"><Button type="submit" variant="primary" disabled={pending}>{pending ? "Saving…" : "Save organisation"}</Button>{state.message ? <p className={state.ok ? "text-xs text-[var(--tone-emerald-fg)]" : "text-xs text-[var(--tone-rose-fg)]"}>{state.message}</p> : null}{isDemo ? <p className="ml-auto text-xs text-muted-foreground">Saved locally for testing only</p> : null}</div>

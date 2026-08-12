@@ -53,6 +53,8 @@ interface OrgSettings {
   rolePermissions?: RolePermissionOverrides;
   logoUrl?: string | null;
   logoSharePoint?: OrganisationLogoLocation;
+  certificateHeaderUrl?: string | null;
+  certificateHeaderSharePoint?: OrganisationLogoLocation;
   swmsTemplate?: SwmsTemplate;
   materialCataloguePresentation?: MaterialCataloguePresentation;
 }
@@ -778,10 +780,13 @@ export async function saveOrganisation(
   orgId: string,
   value: OrganisationSettings,
   logoSharePoint?: OrganisationLogoLocation,
+  certificateHeaderSharePoint?: OrganisationLogoLocation,
 ): Promise<void> {
   const logoSettings = {
     logoUrl: value.logoUrl,
     ...(logoSharePoint ? { logoSharePoint } : {}),
+    certificateHeaderUrl: value.certificateHeaderUrl ?? null,
+    ...(certificateHeaderSharePoint ? { certificateHeaderSharePoint } : {}),
   };
   await db()
     .update(organizations)
@@ -800,6 +805,13 @@ export async function saveOrganisation(
 /** The stable SharePoint identifiers behind the public in-app logo route. */
 export async function getOrganisationLogoLocation(orgId: string): Promise<OrganisationLogoLocation | null> {
   const value = (await readSettings(orgId)).logoSharePoint;
+  if (!value || typeof value.driveId !== "string" || typeof value.itemId !== "string") return null;
+  return value;
+}
+
+/** Stable SharePoint identity for the organisation's compliance-certificate header. */
+export async function getOrganisationCertificateHeaderLocation(orgId: string): Promise<OrganisationLogoLocation | null> {
+  const value = (await readSettings(orgId)).certificateHeaderSharePoint;
   if (!value || typeof value.driveId !== "string" || typeof value.itemId !== "string") return null;
   return value;
 }

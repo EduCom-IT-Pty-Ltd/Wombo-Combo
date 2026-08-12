@@ -9,7 +9,7 @@ import { storeAsset } from "@/lib/data/assets";
 import { saveOrganisation } from "@/lib/data/pg/settings";
 import { getOrganisation } from "@/lib/data/pg/org";
 import { graphConfigured } from "@/lib/integrations/graph/client";
-import { uploadOrganisationLogo, type OrganisationLogoLocation } from "@/lib/integrations/sharepoint/branding";
+import { uploadOrganisationCertificateHeader, uploadOrganisationLogo, type OrganisationLogoLocation } from "@/lib/integrations/sharepoint/branding";
 
 const profileSchema = z.object({
   name: z.string().trim().min(2, "Enter an organisation name."),
@@ -32,6 +32,8 @@ export async function updateOrganisation(_state: OrganisationActionState, formDa
     : await readOrganisationSettings();
   let logoUrl = current?.logoUrl ?? null;
   let logoSharePoint: OrganisationLogoLocation | undefined;
+  let certificateHeaderUrl = current?.certificateHeaderUrl ?? null;
+  let certificateHeaderSharePoint: OrganisationLogoLocation | undefined;
 
   const logo = formData.get("logo");
   if (logo instanceof File && logo.size > 0) {
@@ -52,8 +54,25 @@ export async function updateOrganisation(_state: OrganisationActionState, formDa
     }
   }
 
-  const settings = { ...parsed.data, projectNumberPrefix: parsed.data.projectNumberPrefix.toUpperCase(), logoUrl };
-  if (hasDatabase) await saveOrganisation(session.org.id, settings, logoSharePoint);
+  const certificateHeader = formData.get("certificateHeader");
+  if (certificateHeader instanceof File && certificateHeader.size > 0) {
+    if (hasDatabase) {
+      if (!graphConfigured()) return { ok: false, message: "Certificate header uploads need the configured SharePoint connection." };
+      try {
+        certificateHeaderSharePoint = await uploadOrganisationCertificateHeader(certificateHeader);
+        certificateHeaderUrl = `/api/organisation/certificate-header?v=${encodeURIComponent(certificateHeaderSharePoint.itemId)}`;
+      } catch (error) {
+        return { ok: false, message: `Certificate header could not be uploaded to SharePoint: ${error instanceof Error ? error.message : String(error)}` };
+      }
+    } else {
+      const stored = await storeAsset("certificate-header", certificateHeader);
+      if (!stored.ok) return { ok: false, message: stored.message ?? "Certificate header could not be saved." };
+      certificateHeaderUrl = stored.url!;
+    }
+  }
+
+  const settings = { ...parsed.data, projectNumberPrefix: parsed.data.projectNumberPrefix.toUpperCase(), logoUrl, certificateHeaderUrl };
+  if (hasDatabase) await saveOrganisation(session.org.id, settings, logoSharePoint, certificateHeaderSharePoint);
   else await saveOrganisationSettings(settings);
   revalidatePath("/", "layout");
   revalidatePath("/admin", "layout");

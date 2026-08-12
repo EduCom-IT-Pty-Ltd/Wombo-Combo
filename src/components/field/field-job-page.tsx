@@ -18,6 +18,7 @@ import ProjectQaPage from "@/app/(app)/projects/[id]/qa/page";
 import ProjectCostingPage from "@/app/(app)/projects/[id]/costing/page";
 import ProjectActivityPage from "@/app/(app)/projects/[id]/activity/page";
 import ProjectSwmsPage from "@/app/(app)/projects/[id]/swms/page";
+import ProjectCertificatePage from "@/app/(app)/projects/[id]/certificate/page";
 
 const projectPages = {
   overview: ProjectOverviewPage,
@@ -29,6 +30,7 @@ const projectPages = {
   costing: ProjectCostingPage,
   activity: ProjectActivityPage,
   swms: ProjectSwmsPage,
+  certificate: ProjectCertificatePage,
 };
 
 /** The project workspace, rendered inside the Field area instead of Projects. */

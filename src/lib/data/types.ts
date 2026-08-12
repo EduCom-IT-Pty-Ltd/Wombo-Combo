@@ -54,6 +54,8 @@ export interface OrganisationSettings {
   timezone: string;
   projectNumberPrefix: string;
   logoUrl: string | null;
+  /** Dedicated letterhead used for compliance certificates. */
+  certificateHeaderUrl?: string | null;
 }
 
 export interface CatalogueMaterial {

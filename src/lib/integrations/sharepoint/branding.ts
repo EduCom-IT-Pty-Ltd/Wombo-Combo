@@ -15,12 +15,21 @@ export interface OrganisationLogoLocation {
  * SharePoint document library. Project folders are deliberately untouched.
  */
 export async function uploadOrganisationLogo(file: File): Promise<OrganisationLogoLocation> {
+  return uploadOrganisationBrandingImage(file, "Organisation-logo");
+}
+
+/** Store the certificate letterhead beside the organisation logo, not in a job folder. */
+export async function uploadOrganisationCertificateHeader(file: File): Promise<OrganisationLogoLocation> {
+  return uploadOrganisationBrandingImage(file, "Certificate-header");
+}
+
+async function uploadOrganisationBrandingImage(file: File, prefix: string): Promise<OrganisationLogoLocation> {
   const validationError = validateImageAsset(file);
   if (validationError) throw new Error(validationError);
 
   const driveId = await getDefaultDriveId();
   const root = await graphFetch<DriveItemRef>(`/drives/${driveId}/root`);
-  const fileName = safeFileName(`Organisation-logo-${randomUUID()}-${file.name}`);
+  const fileName = safeFileName(`${prefix}-${randomUUID()}-${file.name}`);
   const item = await graphFetch<DriveItemRef>(
     `/drives/${driveId}/items/${root.id}:/${encodeURIComponent(fileName)}:/content?@microsoft.graph.conflictBehavior=rename`,
     {
