@@ -46,11 +46,14 @@ export async function saveProjectRetroScopeAction(_state: RetroScopeActionState,
   if (await getProjectType(session.org.id, parsed.data.projectId) !== "retro") return { ok: false, message: "A retrofit scope is only available on Retro projects." };
   const existing = await getProjectRetroScope(session.org.id, parsed.data.projectId);
   const requested = json(formData.get("photoDocumentIds"));
-  const photoIds = Array.isArray(requested) ? requested.filter((id): id is string => typeof id === "string" && isUuid(id)) : existing?.photoDocumentIds ?? [];
+  const photoIds = Array.isArray(requested) ? requested.filter((id): id is string => typeof id === "string" && isUuid(id)) : [];
   const now = new Date().toISOString();
   const record: RetroScopeRecord = {
     values: normaliseRetroScopeValues(json(formData.get("values"))),
-    photoDocumentIds: hasDatabase ? [...new Set(await verifiedProjectPhotoIds(session.org.id, parsed.data.projectId, photoIds))] : photoIds,
+    // This screen only adds photos; it does not offer a remove control. Merge
+    // existing links so an intermittent client form update can never make an
+    // already attached SharePoint photo disappear from a saved scope.
+    photoDocumentIds: hasDatabase ? [...new Set(await verifiedProjectPhotoIds(session.org.id, parsed.data.projectId, [...(existing?.photoDocumentIds ?? []), ...photoIds]))] : [...new Set([...(existing?.photoDocumentIds ?? []), ...photoIds])],
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     createdByUserId: existing?.createdByUserId ?? (isUuid(session.user.id) ? session.user.id : null),
@@ -61,6 +64,29 @@ export async function saveProjectRetroScopeAction(_state: RetroScopeActionState,
   } else await saveLocalRetroScope(parsed.data.projectId, record);
   invalidate(parsed.data.projectId);
   return { ok: true, message: "Retro scope saved." };
+}
+
+/** Links a photo already belonging to this project to an existing retrofit scope. */
+export async function attachProjectRetroScopePhotoAction(projectId: string, documentId: string): Promise<RetroScopeActionState> {
+  const session = await requireCapability("field.record");
+  if (!hasDatabase) return { ok: false, message: "Existing project photos are available with the production database." };
+  if (!z.uuid().safeParse(projectId).success || !z.uuid().safeParse(documentId).success) return { ok: false, message: "Unknown project photo." };
+  if (await getProjectType(session.org.id, projectId) !== "retro") return { ok: false, message: "A retrofit scope is only available on Retro projects." };
+
+  const existing = await getProjectRetroScope(session.org.id, projectId);
+  if (!existing) return { ok: false, message: "Save the scope first, then add existing project photos." };
+  const photoDocumentIds = [...new Set(await verifiedProjectPhotoIds(session.org.id, projectId, [...existing.photoDocumentIds, documentId]))];
+  if (!photoDocumentIds.includes(documentId)) return { ok: false, message: "That photo does not belong to this project." };
+
+  const record: RetroScopeRecord = {
+    ...existing,
+    photoDocumentIds,
+    updatedAt: new Date().toISOString(),
+    updatedByUserId: isUuid(session.user.id) ? session.user.id : null,
+  };
+  if (!await saveProjectRetroScope(session.org.id, projectId, record)) return { ok: false, message: "That project no longer exists." };
+  invalidate(projectId);
+  return { ok: true, message: "Project photo linked to the scope." };
 }
 
 export async function deleteProjectRetroScopeAction(projectId: string): Promise<RetroScopeActionState> {

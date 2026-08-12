@@ -48,12 +48,12 @@ export async function saveProjectSwmsAction(_state: SwmsActionState, formData: F
   const submittedPhotoIds = json(formData.get("photoDocumentIds"));
   const requestedPhotoIds = Array.isArray(submittedPhotoIds)
     ? submittedPhotoIds.filter((id): id is string => typeof id === "string" && isUuid(id))
-    : existing?.photoDocumentIds ?? [];
+    : [];
 
   // A document id is not enough authority on its own. Keep the SWMS limited to
   // image documents that belong to this same tenant and project, so a crafted
   // form submission cannot attach another project's SharePoint upload.
-  const photoDocumentIds = await verifiedProjectPhotoIds(session.org.id, parsed.data.projectId, requestedPhotoIds);
+  const photoDocumentIds = await verifiedProjectPhotoIds(session.org.id, parsed.data.projectId, [...(existing?.photoDocumentIds ?? []), ...requestedPhotoIds]);
   const record: SwmsRecord = {
     templateName: template.name,
     templateVersion: template.versionLabel,
