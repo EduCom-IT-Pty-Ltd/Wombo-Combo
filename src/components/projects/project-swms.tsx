@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { Camera, CheckCircle2, Download, Edit3, Eye, Plus, Save, Trash2, X } from "lucide-react";
+import { Camera, CheckCircle2, Download, Edit3, Eye, Images, Plus, Save, Trash2, X } from "lucide-react";
 import { deleteProjectSwmsAction, exportProjectSwmsPdfAction, saveProjectSwmsAction, uploadSwmsPhotoAction, type SwmsActionState } from "@/app/actions/swms";
 import type { DocumentRecord, ProjectDetail } from "@/lib/data/types";
 import { emptySwmsValues, type SwmsRecord, type SwmsTemplate, type SwmsValues } from "@/lib/domain/swms";
@@ -81,7 +81,7 @@ function SwmsDialog({ mode, project, template, record, photos, canEdit, onClose 
           <ChecklistSection title="Photos" items={template.photoChecklist} values={values.photoChecklist} disabled={viewOnly} onChange={(id, checked) => update("photoChecklist", { ...values.photoChecklist, [id]: checked })} extra={<><label className="block text-sm font-semibold">Photo notes<textarea className={`${textClass} mt-2`} value={values.photoNotes} disabled={viewOnly} onChange={(event) => update("photoNotes", event.target.value)} /></label>{photoDocs.length ? <div className="mt-4 grid gap-2 sm:grid-cols-2">{photoDocs.map((photo) => <a key={photo.id} href={photo.url ?? "#"} target="_blank" rel="noreferrer" className="flex min-h-11 items-center gap-2 rounded-lg border border-border-subtle px-3 text-sm font-semibold hover:border-primary hover:text-primary"><Camera className="size-4" />{photo.name}</a>)}</div> : null}</>} />
           {!viewOnly ? <div className="flex flex-wrap items-center gap-3 border-t border-border-subtle pt-4"><Button type="submit" variant="primary" disabled={pending}><Save className="size-4" />{pending ? "Saving…" : "Save SWMS"}</Button><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>{state.message ? <span className="text-sm font-semibold text-[var(--tone-rose-fg)]">{state.message}</span> : null}</div> : null}
         </form>
-        {!viewOnly ? <div className="mt-5 border-t border-border-subtle pt-5"><PhotoUpload projectId={project.id} onUploaded={(id) => setPhotoIds((current) => current.includes(id) ? current : [...current, id])} /></div> : null}
+        {!viewOnly ? <div className="mt-5 space-y-3 border-t border-border-subtle pt-5"><PhotoUpload projectId={project.id} onUploaded={(id) => setPhotoIds((current) => current.includes(id) ? current : [...current, id])} /><ExistingProjectPhotos photos={photos} selectedIds={photoIds} onSelect={(id) => setPhotoIds((current) => current.includes(id) ? current : [...current, id])} /></div> : null}
       </div>
     </div>
   </div>, document.body);
@@ -91,6 +91,15 @@ function PhotoUpload({ projectId, onUploaded }: { projectId: string; onUploaded:
   const [state, action, pending] = useActionState(uploadSwmsPhotoAction, initial);
   useEffect(() => { if (state.ok && state.documentId) onUploaded(state.documentId); }, [state, onUploaded]);
   return <form action={action} className="flex flex-wrap items-end gap-3 rounded-xl border border-dashed border-border-strong bg-surface-muted p-4"><input type="hidden" name="projectId" value={projectId} /><label className="min-w-48 flex-1 text-sm font-semibold">Add a SWMS photo<span className="mt-1 block text-xs font-normal text-muted-foreground">Stored in this project&apos;s SharePoint Site Photos folder. Up to 4 MB.</span><input required type="file" name="file" accept="image/*" capture="environment" className="mt-2 block w-full text-sm" /></label><Button type="submit" variant="secondary" disabled={pending}><Camera className="size-4" />{pending ? "Uploading…" : "Upload photo"}</Button>{state.message ? <span className={state.ok ? "w-full text-sm font-semibold text-emerald-600" : "w-full text-sm font-semibold text-[var(--tone-rose-fg)]"}>{state.message}</span> : null}</form>;
+}
+
+function ExistingProjectPhotos({ photos, selectedIds, onSelect }: { photos: DocumentRecord[]; selectedIds: string[]; onSelect: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const available = photos.filter((photo) => !selectedIds.includes(photo.id));
+  return <div className="rounded-xl border border-border-subtle bg-surface-muted p-4">
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-semibold">Use an existing project photo</p><p className="mt-1 text-xs text-muted-foreground">Choose a photo already stored in this project&apos;s SharePoint Site Photos folder. It is linked when you save the SWMS.</p></div><Button type="button" size="sm" variant="secondary" onClick={() => setOpen((value) => !value)}><Images className="size-4" />{open ? "Close photos" : "Choose existing"}</Button></div>
+    {open ? <div className="mt-4 max-h-60 space-y-2 overflow-y-auto border-t border-border-subtle pt-3">{available.length ? available.map((photo) => <div key={photo.id} className="flex min-h-11 items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-2"><Camera className="size-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate text-sm font-semibold">{photo.name}</span><Button type="button" size="sm" variant="ghost" onClick={() => onSelect(photo.id)}>Insert</Button></div>) : <p className="py-2 text-sm text-muted-foreground">No other project photos are available to add.</p>}</div> : null}
+  </div>;
 }
 
 function ChecklistSection({ title, items, values, disabled, onChange, extra }: { title: string; items: Array<{ id: string; label: string }>; values: Record<string, boolean>; disabled: boolean; onChange: (id: string, checked: boolean) => void; extra?: React.ReactNode }) {

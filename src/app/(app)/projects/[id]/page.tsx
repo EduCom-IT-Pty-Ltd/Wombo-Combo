@@ -35,7 +35,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
       <div className="space-y-4 lg:col-span-2">
         <Card>
           <CardHeader title="Scope of works" />
-          {projectType === "retro" ? <ProjectRetroScope project={project} record={retroScope} photos={documents.filter((document) => document.kind === "photo" && (retroScope?.photoDocumentIds.includes(document.id) ?? false))} canEdit={can(session.role, "field.record", session.permissionOverrides)} assessorName={[session.user.firstName, session.user.lastName].filter(Boolean).join(" ") || session.user.email} /> : <div className="px-4 py-3"><p className="text-sm leading-relaxed whitespace-pre-line text-foreground">{project.scopeOfWorks ?? "No scope captured yet."}</p></div>}
+          {projectType === "retro" ? <ProjectRetroScope project={project} record={retroScope} photos={documents.filter((document) => document.kind === "photo")} canEdit={can(session.role, "field.record", session.permissionOverrides)} assessorName={[session.user.firstName, session.user.lastName].filter(Boolean).join(" ") || session.user.email} /> : <div className="px-4 py-3"><p className="text-sm leading-relaxed whitespace-pre-line text-foreground">{project.scopeOfWorks ?? "No scope captured yet."}</p></div>}
         </Card>
 
         <Card>

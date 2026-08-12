@@ -9,6 +9,8 @@ export default async function ProjectSwmsPage({ params }: { params: Promise<{ id
   const session = await getSession();
   const [project, template, record, documents] = await Promise.all([getProject(session.org.id, id), getSwmsTemplate(session.org.id), getProjectSwms(session.org.id, id), listDocuments(session.org.id, id)]);
   if (!project) notFound();
-  const photos = documents.filter((document) => document.kind === "photo" && (record?.photoDocumentIds.includes(document.id) ?? false));
+  // Pass every project photo through. The SWMS form decides which ones are
+  // linked, so a user can safely attach an existing SharePoint project photo.
+  const photos = documents.filter((document) => document.kind === "photo");
   return <ProjectSwms project={project} template={template} record={record} photos={photos} canEdit={can(session.role, "field.record", session.permissionOverrides)} />;
 }
