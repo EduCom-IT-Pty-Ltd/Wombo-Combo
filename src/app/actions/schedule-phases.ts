@@ -5,6 +5,9 @@ import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
 import { hasDatabase } from "@/lib/db";
 import * as pgSettings from "@/lib/data/pg/settings";
+import { listPeople, listSchedulePhases } from "@/lib/data/repository";
+import { forgetReads } from "@/lib/data/request-scope";
+import { recordEvent } from "@/lib/data/pg/workflow";
 import { createLocalSchedulePhase, deleteLocalSchedulePhase, updateLocalSchedulePhase } from "@/lib/data/local-store";
 
 const phaseSchema = z.object({
@@ -15,7 +18,27 @@ const phaseSchema = z.object({
 });
 export type SchedulePhaseActionState = { ok: boolean; message?: string };
 
-function revalidateSchedule(projectId: string) { revalidatePath(`/projects/${projectId}/schedule`); revalidatePath("/schedule"); }
+const isUuid = (value: string) => z.uuid().safeParse(value).success;
+
+function actorUserId(userId: string) {
+  // The WorkOS bootstrap recovery user intentionally has a synthetic id, which
+  // cannot be written to the people foreign key. Everyone else is a person row.
+  return isUuid(userId) ? userId : null;
+}
+
+function callUpSummary(action: "created" | "updated" | "deleted", phase: { title: string; date: string; userId: string }, people: Awaited<ReturnType<typeof listPeople>>) {
+  const assignee = people.find((person) => person.id === phase.userId);
+  const assignment = assignee ? ` · assigned to ${assignee.name}` : "";
+  return `Call-Up ${action}: ${phase.title} · ${phase.date}${assignment}`;
+}
+
+function revalidateSchedule(projectId: string) {
+  forgetReads();
+  revalidatePath(`/projects/${projectId}`, "layout");
+  revalidatePath(`/field/${projectId}`, "layout");
+  revalidatePath("/calendar");
+  revalidatePath("/field");
+}
 
 export async function addSchedulePhase(_state: SchedulePhaseActionState, formData: FormData): Promise<SchedulePhaseActionState> {
   const session = await requireCapability("schedule.manage");
@@ -24,8 +47,20 @@ export async function addSchedulePhase(_state: SchedulePhaseActionState, formDat
   if (!projectId || !parsed.success) return { ok: false, message: "Enter a Call-Up, assign a user, and choose a date." };
   const value = { ...parsed.data, description: parsed.data.description || null };
   try {
-    if (hasDatabase) await pgSettings.createSchedulePhase(session.org.id, { projectId, ...value });
-    else await createLocalSchedulePhase({ projectId, ...value });
+    if (hasDatabase) {
+      const people = await listPeople(session.org.id);
+      await pgSettings.createSchedulePhase(session.org.id, { projectId, ...value });
+      await recordEvent({
+        orgId: session.org.id,
+        projectId,
+        type: "schedule.call_up_created",
+        summary: callUpSummary("created", value, people),
+        actorUserId: actorUserId(session.user.id),
+        payload: { title: value.title, date: value.date, assignedUserId: value.userId },
+      });
+    } else {
+      await createLocalSchedulePhase({ projectId, ...value });
+    }
   } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not add phase." }; }
   revalidateSchedule(projectId); return { ok: true, message: "Call-Up added." };
 }
@@ -37,15 +72,55 @@ export async function updateSchedulePhase(_state: SchedulePhaseActionState, form
   if (!projectId || !id || !parsed.success) return { ok: false, message: "Check the Call-Up details." };
   const value = { ...parsed.data, description: parsed.data.description || null };
   try {
-    if (hasDatabase) await pgSettings.updateSchedulePhase(session.org.id, id, value);
-    else await updateLocalSchedulePhase(id, value);
+    const [existing, people] = await Promise.all([
+      listSchedulePhases(session.org.id, { projectId }).then((phases) => phases.find((phase) => phase.id === id) ?? null),
+      hasDatabase ? listPeople(session.org.id) : Promise.resolve([]),
+    ]);
+    if (!existing) return { ok: false, message: "That Call-Up no longer exists on this project." };
+
+    if (hasDatabase) {
+      await pgSettings.updateSchedulePhase(session.org.id, id, value);
+      await recordEvent({
+        orgId: session.org.id,
+        projectId,
+        type: "schedule.call_up_updated",
+        summary: callUpSummary("updated", value, people),
+        actorUserId: actorUserId(session.user.id),
+        payload: { title: value.title, date: value.date, assignedUserId: value.userId, previous: { title: existing.title, date: existing.date, assignedUserId: existing.userId } },
+      });
+    } else {
+      await updateLocalSchedulePhase(id, value);
+    }
   } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Could not update phase." }; }
   revalidateSchedule(projectId); return { ok: true, message: "Call-Up updated." };
 }
 
-export async function deleteSchedulePhase(id: string, projectId: string) {
+export async function deleteSchedulePhase(id: string, projectId: string): Promise<SchedulePhaseActionState> {
   const session = await requireCapability("schedule.manage");
-  if (hasDatabase) await pgSettings.deleteSchedulePhase(session.org.id, id);
-  else await deleteLocalSchedulePhase(id);
+  if (!id || !projectId) return { ok: false, message: "That Call-Up could not be found." };
+
+  try {
+    const existing = (await listSchedulePhases(session.org.id, { projectId })).find((phase) => phase.id === id);
+    if (!existing) return { ok: false, message: "That Call-Up no longer exists on this project." };
+
+    if (hasDatabase) {
+      const people = await listPeople(session.org.id);
+      await pgSettings.deleteSchedulePhase(session.org.id, id);
+      await recordEvent({
+        orgId: session.org.id,
+        projectId,
+        type: "schedule.call_up_deleted",
+        summary: callUpSummary("deleted", existing, people),
+        actorUserId: actorUserId(session.user.id),
+        payload: { title: existing.title, date: existing.date, assignedUserId: existing.userId },
+      });
+    } else {
+      await deleteLocalSchedulePhase(id);
+    }
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not delete Call-Up." };
+  }
+
   revalidateSchedule(projectId);
+  return { ok: true, message: "Call-Up deleted." };
 }
