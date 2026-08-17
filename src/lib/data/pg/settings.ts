@@ -27,7 +27,7 @@ import type { ProjectStatus } from "@/lib/db/schema/enums";
 import { normaliseSwmsTemplate, normaliseSwmsValues } from "@/lib/domain/swms";
 import { EMPTY_MATERIAL_CATALOGUE_PRESENTATION, normaliseMaterialCataloguePresentation } from "@/lib/domain/material-catalogue";
 import type { MaterialCataloguePresentation } from "@/lib/domain/material-catalogue";
-import { normaliseRetroScopeValues, type ProjectType, type RetroScopeRecord } from "@/lib/domain/retro-scope";
+import { normaliseRetroScopeSketch, normaliseRetroScopeValues, type ProjectType, type RetroScopeRecord } from "@/lib/domain/retro-scope";
 import type { OrganisationLogoLocation } from "@/lib/integrations/sharepoint/branding";
 
 /**
@@ -255,6 +255,7 @@ export async function getProjectRetroScope(orgId: string, projectId: string): Pr
   return {
     values: normaliseRetroScopeValues(value.values),
     photoDocumentIds: Array.isArray(value.photoDocumentIds) ? value.photoDocumentIds.filter((id): id is string => typeof id === "string") : [],
+    sketch: normaliseRetroScopeSketch(value.sketch),
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
     createdByUserId: typeof value.createdByUserId === "string" ? value.createdByUserId : null,

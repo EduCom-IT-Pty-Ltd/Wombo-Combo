@@ -10,7 +10,7 @@ import { getOrganisationLogoLocation, getOrganisationSettings, getProject, getPr
 import { deleteLocalRetroScope, saveLocalRetroScope } from "@/lib/data/local-store";
 import { forgetReads } from "@/lib/data/request-scope";
 import { MAX_DOCUMENT_BYTES } from "@/lib/domain/documents";
-import { normaliseRetroScopeValues, type RetroScopeRecord } from "@/lib/domain/retro-scope";
+import { normaliseRetroScopeSketch, normaliseRetroScopeValues, type RetroScopeRecord } from "@/lib/domain/retro-scope";
 import { createRetroScopePdf } from "@/lib/documents/retro-scope-pdf";
 import type { PdfImage } from "@/lib/documents/swms-pdf";
 
@@ -50,6 +50,7 @@ export async function saveProjectRetroScopeAction(_state: RetroScopeActionState,
   const now = new Date().toISOString();
   const record: RetroScopeRecord = {
     values: normaliseRetroScopeValues(json(formData.get("values"))),
+    sketch: normaliseRetroScopeSketch(json(formData.get("sketch"))),
     // This screen only adds photos; it does not offer a remove control. Merge
     // existing links so an intermittent client form update can never make an
     // already attached SharePoint photo disappear from a saved scope.
@@ -129,6 +130,7 @@ export async function uploadRetroScopePhotoAction(_state: RetroScopeActionState,
     const now = new Date().toISOString();
     const record: RetroScopeRecord = {
       values: normaliseRetroScopeValues(json(formData.get("values"))),
+      sketch: normaliseRetroScopeSketch(json(formData.get("sketch"))) ?? existing?.sketch ?? null,
       photoDocumentIds: [...new Set(await verifiedProjectPhotoIds(session.org.id, parsed.data.projectId, [...(existing?.photoDocumentIds ?? []), ...requestedIds, document.id]))],
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,

@@ -28,10 +28,22 @@ export interface RetroScopeValues {
 export interface RetroScopeRecord {
   values: RetroScopeValues;
   photoDocumentIds: string[];
+  /** A small editable floor-plan sketch that belongs to this scope only. */
+  sketch: RetroScopeSketch | null;
   createdAt: string;
   updatedAt: string;
   createdByUserId: string | null;
   updatedByUserId: string | null;
+}
+
+export interface RetroScopePoint { x: number; y: number; }
+export interface RetroScopeStroke { id: string; points: RetroScopePoint[]; }
+export interface RetroScopeMeasurement { id: string; start: RetroScopePoint; end: RetroScopePoint; label: string; }
+export interface RetroScopeLabel { id: string; point: RetroScopePoint; text: string; }
+export interface RetroScopeSketch {
+  strokes: RetroScopeStroke[];
+  measurements: RetroScopeMeasurement[];
+  labels: RetroScopeLabel[];
 }
 
 export function emptyRetroScopeValues(defaults: Partial<Pick<RetroScopeValues, "customerName" | "phone" | "email" | "address" | "assessedBy">> = {}): RetroScopeValues {
@@ -57,6 +69,39 @@ export function emptyRetroScopeValues(defaults: Partial<Pick<RetroScopeValues, "
 }
 
 const text = (value: unknown, fallback = "") => typeof value === "string" ? value : fallback;
+const coordinate = (value: unknown, maximum: number) => typeof value === "number" && Number.isFinite(value) ? Math.min(maximum, Math.max(0, value)) : 0;
+const point = (value: unknown): RetroScopePoint | null => {
+  if (!value || typeof value !== "object") return null;
+  const input = value as Partial<RetroScopePoint>;
+  if (typeof input.x !== "number" || typeof input.y !== "number") return null;
+  return { x: coordinate(input.x, 1000), y: coordinate(input.y, 700) };
+};
+const identifier = (value: unknown, fallback: string) => typeof value === "string" && value.length <= 120 ? value : fallback;
+
+/** Keeps the JSON record compact and safe to render in the mobile sketcher/PDF. */
+export function normaliseRetroScopeSketch(value: unknown): RetroScopeSketch | null {
+  if (!value || typeof value !== "object") return null;
+  const input = value as Partial<RetroScopeSketch>;
+  const strokes = Array.isArray(input.strokes) ? input.strokes.slice(0, 120).flatMap((stroke, index) => {
+    if (!stroke || typeof stroke !== "object") return [];
+    const item = stroke as Partial<RetroScopeStroke>;
+    const points = Array.isArray(item.points) ? item.points.slice(0, 600).map(point).filter((item): item is RetroScopePoint => item !== null) : [];
+    return points.length > 1 ? [{ id: identifier(item.id, `stroke-${index}`), points }] : [];
+  }) : [];
+  const measurements = Array.isArray(input.measurements) ? input.measurements.slice(0, 120).flatMap((measurement, index) => {
+    if (!measurement || typeof measurement !== "object") return [];
+    const item = measurement as Partial<RetroScopeMeasurement>;
+    const start = point(item.start); const end = point(item.end); const label = text(item.label).trim().slice(0, 100);
+    return start && end && label ? [{ id: identifier(item.id, `measurement-${index}`), start, end, label }] : [];
+  }) : [];
+  const labels = Array.isArray(input.labels) ? input.labels.slice(0, 120).flatMap((label, index) => {
+    if (!label || typeof label !== "object") return [];
+    const item = label as Partial<RetroScopeLabel>;
+    const at = point(item.point); const labelText = text(item.text).trim().slice(0, 100);
+    return at && labelText ? [{ id: identifier(item.id, `label-${index}`), point: at, text: labelText }] : [];
+  }) : [];
+  return strokes.length || measurements.length || labels.length ? { strokes, measurements, labels } : null;
+}
 
 export function normaliseRetroScopeValues(value: unknown, defaults: Partial<Pick<RetroScopeValues, "customerName" | "phone" | "email" | "address" | "assessedBy">> = {}): RetroScopeValues {
   const fallback = emptyRetroScopeValues(defaults);
