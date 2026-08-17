@@ -11,6 +11,7 @@ type Tool = "draw" | "measure" | "label" | "erase";
 type PendingText =
   | { kind: "measurement"; measurement: Omit<RetroScopeMeasurement, "id" | "label">; point: RetroScopePoint }
   | { kind: "label"; point: RetroScopePoint };
+type InlineEdit = { kind: "measurement" | "label"; id: string; point: RetroScopePoint; value: string };
 
 function id(kind: string) { return `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
 function distance(a: RetroScopePoint, b: RetroScopePoint) { return Math.hypot(a.x - b.x, a.y - b.y); }
@@ -26,8 +27,7 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
   const [stroke, setStroke] = useState<RetroScopeStroke | null>(null);
   const [measurement, setMeasurement] = useState<{ start: RetroScopePoint; end: RetroScopePoint } | null>(null);
   const [pendingText, setPendingText] = useState<PendingText | null>(null);
-  const [editingMeasurementId, setEditingMeasurementId] = useState<string | null>(null);
-  const [editingMeasurementLabel, setEditingMeasurementLabel] = useState("");
+  const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null);
   const svg = useRef<SVGSVGElement>(null);
 
   const update = (next: RetroScopeSketch) => onChange(next.strokes.length || next.measurements.length || next.labels.length ? next : null);
@@ -53,14 +53,18 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
   };
   const editMeasurement = (item: RetroScopeMeasurement) => {
     if (disabled || tool === "erase") return;
-    setEditingMeasurementId(item.id);
-    setEditingMeasurementLabel(item.label);
+    setInlineEdit({ kind: "measurement", id: item.id, point: { x: (item.start.x + item.end.x) / 2, y: (item.start.y + item.end.y) / 2 }, value: item.label });
   };
-  const saveMeasurement = () => {
-    const label = editingMeasurementLabel.trim().slice(0, 100);
-    if (!editingMeasurementId || !label) return;
-    update({ ...sketch, measurements: sketch.measurements.map((item) => item.id === editingMeasurementId ? { ...item, label } : item) });
-    setEditingMeasurementId(null);
+  const editLabel = (item: { id: string; point: RetroScopePoint; text: string }) => {
+    if (disabled || tool === "erase") return;
+    setInlineEdit({ kind: "label", id: item.id, point: item.point, value: item.text });
+  };
+  const saveInlineEdit = () => {
+    const value = inlineEdit?.value.trim().slice(0, 100);
+    if (!inlineEdit || !value) return;
+    if (inlineEdit.kind === "measurement") update({ ...sketch, measurements: sketch.measurements.map((item) => item.id === inlineEdit.id ? { ...item, label: value } : item) });
+    else update({ ...sketch, labels: sketch.labels.map((item) => item.id === inlineEdit.id ? { ...item, text: value } : item) });
+    setInlineEdit(null);
   };
   const start = (event: PointerEvent<SVGSVGElement>) => {
     if (disabled || pendingText) return;
@@ -117,12 +121,12 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
         <rect width={WIDTH} height={HEIGHT} fill="url(#retro-scope-grid)" className="text-muted-foreground" />
         {previewStrokes.map((item) => <g key={item.id}><polyline points={item.points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="currentColor" strokeOpacity="0" strokeWidth="28" strokeLinecap="round" strokeLinejoin="round" onPointerDown={(event) => { if (tool !== "erase" || disabled) return; event.stopPropagation(); eraseAt(pointFor(event)); }} /><polyline points={item.points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="currentColor" className="text-foreground" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" /></g>)}
         {previewMeasurements.map((item) => <g key={item.id} className="text-primary" onPointerDown={(event) => { if (disabled || item.id === "draft") return; event.stopPropagation(); const point = { x: (item.start.x + item.end.x) / 2, y: (item.start.y + item.end.y) / 2 }; if (tool === "erase") eraseAt(point); else if (item.label) editMeasurement(item); }}><line x1={item.start.x} y1={item.start.y} x2={item.end.x} y2={item.end.y} stroke="currentColor" strokeWidth="16" strokeOpacity="0" /><line x1={item.start.x} y1={item.start.y} x2={item.end.x} y2={item.end.y} stroke="currentColor" strokeWidth="5" /><circle cx={item.start.x} cy={item.start.y} r="7" fill="currentColor" /><circle cx={item.end.x} cy={item.end.y} r="7" fill="currentColor" />{item.label ? <SketchText point={{ x: (item.start.x + item.end.x) / 2, y: (item.start.y + item.end.y) / 2 }} text={item.label} /> : null}</g>)}
-        {sketch.labels.map((item) => <g key={item.id} onPointerDown={(event) => { if (tool !== "erase" || disabled) return; event.stopPropagation(); eraseAt(item.point); }}><SketchText point={item.point} text={item.text} /></g>)}
+        {sketch.labels.map((item) => <g key={item.id} onPointerDown={(event) => { if (disabled) return; event.stopPropagation(); if (tool === "erase") eraseAt(item.point); else editLabel(item); }}><SketchText point={item.point} text={item.text} /></g>)}
       </svg>
       {pendingText ? <label className="absolute z-10 w-44 -translate-x-1/2 -translate-y-1/2" style={{ left: `${(pendingText.point.x / WIDTH) * 100}%`, top: `${(pendingText.point.y / HEIGHT) * 100}%` }}><span className="sr-only">{pendingText.kind === "measurement" ? "Measurement" : "Label"}</span><input autoFocus className="h-11 w-full rounded-lg border border-primary bg-surface px-3 text-sm shadow-lg outline-none" placeholder={pendingText.kind === "measurement" ? "e.g. 4.2 m" : "Room or note"} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commitText(event.currentTarget.value); } if (event.key === "Escape") setPendingText(null); }} onBlur={(event) => commitText(event.currentTarget.value)} /></label> : null}
+      {inlineEdit ? <div className="absolute z-20 w-56 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-primary bg-surface p-2 shadow-xl" style={{ left: `${(inlineEdit.point.x / WIDTH) * 100}%`, top: `${(inlineEdit.point.y / HEIGHT) * 100}%` }}><label className="sr-only">Edit {inlineEdit.kind}</label><input autoFocus value={inlineEdit.value} onChange={(event) => setInlineEdit((current) => current ? { ...current, value: event.target.value } : current)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveInlineEdit(); } if (event.key === "Escape") setInlineEdit(null); }} className="h-11 w-full rounded-md border border-border-strong bg-surface-muted px-3 text-base text-foreground outline-none focus:border-primary" /><div className="mt-2 flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" onClick={() => setInlineEdit(null)}>Cancel</Button><Button type="button" size="sm" variant="primary" onClick={saveInlineEdit}>Save</Button></div></div> : null}
       {!disabled && !pendingText ? <p className="pointer-events-none absolute bottom-2 left-3 rounded bg-surface/90 px-2 py-1 text-[11px] font-semibold text-muted-foreground">{tool === "draw" ? "Drag to draw" : tool === "measure" ? "Drag a line, then enter its measurement" : tool === "erase" ? "Tap a line or label to erase it" : "Tap to place a label"}</p> : null}
     </div>
-    {!disabled && sketch.measurements.length ? <div className="mt-3 rounded-xl border border-border-subtle bg-surface-muted p-3"><p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Measurements</p><div className="mt-2 flex flex-wrap gap-2">{sketch.measurements.map((item) => <Button key={item.id} type="button" size="sm" variant={editingMeasurementId === item.id ? "primary" : "secondary"} onClick={() => editMeasurement(item)}><Ruler className="size-3.5" />{item.label}</Button>)}</div>{editingMeasurementId ? <div className="mt-3 flex flex-wrap items-end gap-2"><label className="min-w-44 flex-1 text-sm font-semibold">Edit measurement<input autoFocus value={editingMeasurementLabel} onChange={(event) => setEditingMeasurementLabel(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveMeasurement(); } if (event.key === "Escape") setEditingMeasurementId(null); }} className="mt-1 h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-foreground" /></label><Button type="button" size="sm" variant="primary" onClick={saveMeasurement}>Save measurement</Button><Button type="button" size="sm" variant="ghost" onClick={() => setEditingMeasurementId(null)}>Cancel</Button></div> : <p className="mt-2 text-xs text-muted-foreground">Tap a measurement on the sketch or choose one here to edit it.</p>}</div> : null}
     {!sketch.strokes.length && !sketch.measurements.length && !sketch.labels.length && !stroke && !measurement ? <p className="mt-3 text-sm text-muted-foreground">No sketch added yet.</p> : null}
   </section>;
 }
