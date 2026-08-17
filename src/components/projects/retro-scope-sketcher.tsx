@@ -1,14 +1,17 @@
 "use client";
 
 import { useRef, useState, type PointerEvent, type ReactNode } from "react";
-import { PenLine, Ruler, RotateCcw, Trash2, Type } from "lucide-react";
+import { Eraser, PenLine, Ruler, RotateCcw, Trash2, Type } from "lucide-react";
 import { Button } from "@/components/ui";
 import type { RetroScopeMeasurement, RetroScopePoint, RetroScopeSketch, RetroScopeStroke } from "@/lib/domain/retro-scope";
 
 const WIDTH = 1000;
 const HEIGHT = 700;
-type Tool = "draw" | "measure" | "label";
-type PendingText = { kind: "measurement"; measurement: Omit<RetroScopeMeasurement, "id" | "label">; point: RetroScopePoint } | { kind: "label"; point: RetroScopePoint };
+type Tool = "draw" | "measure" | "label" | "erase";
+type PendingText =
+  | { kind: "measurement"; measurement: Omit<RetroScopeMeasurement, "id" | "label">; point: RetroScopePoint }
+  | { kind: "edit-measurement"; measurementId: string; point: RetroScopePoint; value: string }
+  | { kind: "label"; point: RetroScopePoint };
 
 function id(kind: string) { return `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
 function distance(a: RetroScopePoint, b: RetroScopePoint) { return Math.hypot(a.x - b.x, a.y - b.y); }
@@ -27,8 +30,8 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
   const svg = useRef<SVGSVGElement>(null);
 
   const update = (next: RetroScopeSketch) => onChange(next.strokes.length || next.measurements.length || next.labels.length ? next : null);
-  const pointFor = (event: PointerEvent<SVGSVGElement>): RetroScopePoint => {
-    const bounds = event.currentTarget.getBoundingClientRect();
+  const pointFor = (event: PointerEvent<Element>): RetroScopePoint => {
+    const bounds = svg.current?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect();
     return {
       x: Math.min(WIDTH, Math.max(0, ((event.clientX - bounds.left) / bounds.width) * WIDTH)),
       y: Math.min(HEIGHT, Math.max(0, ((event.clientY - bounds.top) / bounds.height) * HEIGHT)),
@@ -39,6 +42,14 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
     if (sketch.measurements.length) return update({ ...sketch, measurements: sketch.measurements.slice(0, -1) });
     if (sketch.strokes.length) update({ ...sketch, strokes: sketch.strokes.slice(0, -1) });
   };
+  const eraseAt = (point: RetroScopePoint) => {
+    const label = sketch.labels.find((item) => distance(item.point, point) < 42);
+    if (label) return update({ ...sketch, labels: sketch.labels.filter((item) => item.id !== label.id) });
+    const measurementToErase = sketch.measurements.find((item) => distance(item.start, point) < 28 || distance(item.end, point) < 28 || distance({ x: (item.start.x + item.end.x) / 2, y: (item.start.y + item.end.y) / 2 }, point) < 36);
+    if (measurementToErase) return update({ ...sketch, measurements: sketch.measurements.filter((item) => item.id !== measurementToErase.id) });
+    const strokeToErase = sketch.strokes.find((item) => item.points.some((strokePoint) => distance(strokePoint, point) < 22));
+    if (strokeToErase) update({ ...sketch, strokes: sketch.strokes.filter((item) => item.id !== strokeToErase.id) });
+  };
   const start = (event: PointerEvent<SVGSVGElement>) => {
     if (disabled || pendingText) return;
     event.preventDefault();
@@ -47,6 +58,7 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
     if (tool === "draw") setStroke({ id: id("stroke"), points: [point] });
     if (tool === "measure") setMeasurement({ start: point, end: point });
     if (tool === "label") setPendingText({ kind: "label", point });
+    if (tool === "erase") eraseAt(point);
   };
   const move = (event: PointerEvent<SVGSVGElement>) => {
     if (disabled) return;
@@ -68,6 +80,7 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
     const clean = text.trim().slice(0, 100);
     if (pendingText && clean) {
       if (pendingText.kind === "label") update({ ...sketch, labels: [...sketch.labels, { id: id("label"), point: pendingText.point, text: clean }] });
+      else if (pendingText.kind === "edit-measurement") update({ ...sketch, measurements: sketch.measurements.map((item) => item.id === pendingText.measurementId ? { ...item, label: clean } : item) });
       else update({ ...sketch, measurements: [...sketch.measurements, { id: id("measurement"), ...pendingText.measurement, label: clean }] });
     }
     setPendingText(null);
@@ -82,6 +95,7 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
         <ToolButton active={tool === "draw"} onClick={() => setTool("draw")} label="Draw"><PenLine className="size-4" />Draw</ToolButton>
         <ToolButton active={tool === "measure"} onClick={() => setTool("measure")} label="Measure"><Ruler className="size-4" />Measure</ToolButton>
         <ToolButton active={tool === "label"} onClick={() => setTool("label")} label="Label"><Type className="size-4" />Label</ToolButton>
+        <ToolButton active={tool === "erase"} onClick={() => setTool("erase")} label="Eraser"><Eraser className="size-4" />Erase</ToolButton>
         <Button type="button" size="sm" variant="secondary" disabled={!sketch.strokes.length && !sketch.measurements.length && !sketch.labels.length} onClick={undo}><RotateCcw className="size-4" />Undo</Button>
         <Button type="button" size="sm" variant="ghost" disabled={!sketch.strokes.length && !sketch.measurements.length && !sketch.labels.length} onClick={() => { if (window.confirm("Clear this site sketch?")) onChange(null); }} className="text-[var(--tone-rose-fg)]"><Trash2 className="size-4" />Clear</Button>
       </div> : null}
@@ -90,12 +104,12 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
       <svg ref={svg} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className={`block aspect-[10/7] w-full ${disabled ? "" : "cursor-crosshair"}`} style={{ touchAction: disabled ? "auto" : "none" }} onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} role="img" aria-label="Editable site sketch">
         <defs><pattern id="retro-scope-grid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M 50 0 L 0 0 0 50" fill="none" stroke="currentColor" strokeOpacity="0.12" strokeWidth="1" /></pattern></defs>
         <rect width={WIDTH} height={HEIGHT} fill="url(#retro-scope-grid)" className="text-muted-foreground" />
-        {previewStrokes.map((item) => <polyline key={item.id} points={item.points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="currentColor" className="text-foreground" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />)}
-        {previewMeasurements.map((item) => <g key={item.id} className="text-primary"><line x1={item.start.x} y1={item.start.y} x2={item.end.x} y2={item.end.y} stroke="currentColor" strokeWidth="5" /><circle cx={item.start.x} cy={item.start.y} r="7" fill="currentColor" /><circle cx={item.end.x} cy={item.end.y} r="7" fill="currentColor" />{item.label ? <SketchText point={{ x: (item.start.x + item.end.x) / 2, y: (item.start.y + item.end.y) / 2 }} text={item.label} /> : null}</g>)}
-        {sketch.labels.map((item) => <SketchText key={item.id} point={item.point} text={item.text} />)}
+        {previewStrokes.map((item) => <g key={item.id}><polyline points={item.points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="currentColor" strokeOpacity="0" strokeWidth="28" strokeLinecap="round" strokeLinejoin="round" onPointerDown={(event) => { if (tool !== "erase" || disabled) return; event.stopPropagation(); eraseAt(pointFor(event)); }} /><polyline points={item.points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="currentColor" className="text-foreground" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" /></g>)}
+        {previewMeasurements.map((item) => <g key={item.id} className="text-primary" onPointerDown={(event) => { if (disabled || item.id === "draft") return; event.stopPropagation(); const point = { x: (item.start.x + item.end.x) / 2, y: (item.start.y + item.end.y) / 2 }; if (tool === "erase") eraseAt(point); else if (item.label) setPendingText({ kind: "edit-measurement", measurementId: item.id, point, value: item.label }); }}><line x1={item.start.x} y1={item.start.y} x2={item.end.x} y2={item.end.y} stroke="currentColor" strokeWidth="16" strokeOpacity="0" /><line x1={item.start.x} y1={item.start.y} x2={item.end.x} y2={item.end.y} stroke="currentColor" strokeWidth="5" /><circle cx={item.start.x} cy={item.start.y} r="7" fill="currentColor" /><circle cx={item.end.x} cy={item.end.y} r="7" fill="currentColor" />{item.label ? <SketchText point={{ x: (item.start.x + item.end.x) / 2, y: (item.start.y + item.end.y) / 2 }} text={item.label} /> : null}</g>)}
+        {sketch.labels.map((item) => <g key={item.id} onPointerDown={(event) => { if (tool !== "erase" || disabled) return; event.stopPropagation(); eraseAt(item.point); }}><SketchText point={item.point} text={item.text} /></g>)}
       </svg>
-      {pendingText ? <label className="absolute z-10 w-44 -translate-x-1/2 -translate-y-1/2" style={{ left: `${(pendingText.point.x / WIDTH) * 100}%`, top: `${(pendingText.point.y / HEIGHT) * 100}%` }}><span className="sr-only">{pendingText.kind === "measurement" ? "Measurement" : "Label"}</span><input autoFocus className="h-11 w-full rounded-lg border border-primary bg-surface px-3 text-sm shadow-lg outline-none" placeholder={pendingText.kind === "measurement" ? "e.g. 4.2 m" : "Room or note"} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commitText(event.currentTarget.value); } if (event.key === "Escape") setPendingText(null); }} onBlur={(event) => commitText(event.currentTarget.value)} /></label> : null}
-      {!disabled && !pendingText ? <p className="pointer-events-none absolute bottom-2 left-3 rounded bg-surface/90 px-2 py-1 text-[11px] font-semibold text-muted-foreground">{tool === "draw" ? "Drag to draw" : tool === "measure" ? "Drag a line, then enter its measurement" : "Tap to place a label"}</p> : null}
+      {pendingText ? <label className="absolute z-10 w-44 -translate-x-1/2 -translate-y-1/2" style={{ left: `${(pendingText.point.x / WIDTH) * 100}%`, top: `${(pendingText.point.y / HEIGHT) * 100}%` }}><span className="sr-only">{pendingText.kind === "measurement" || pendingText.kind === "edit-measurement" ? "Measurement" : "Label"}</span><input autoFocus defaultValue={pendingText.kind === "edit-measurement" ? pendingText.value : ""} className="h-11 w-full rounded-lg border border-primary bg-surface px-3 text-sm shadow-lg outline-none" placeholder={pendingText.kind === "measurement" || pendingText.kind === "edit-measurement" ? "e.g. 4.2 m" : "Room or note"} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commitText(event.currentTarget.value); } if (event.key === "Escape") setPendingText(null); }} onBlur={(event) => commitText(event.currentTarget.value)} /></label> : null}
+      {!disabled && !pendingText ? <p className="pointer-events-none absolute bottom-2 left-3 rounded bg-surface/90 px-2 py-1 text-[11px] font-semibold text-muted-foreground">{tool === "draw" ? "Drag to draw" : tool === "measure" ? "Drag a line, then enter its measurement" : tool === "erase" ? "Tap a line or label to erase it" : "Tap to place a label"}</p> : null}
     </div>
     {!sketch.strokes.length && !sketch.measurements.length && !sketch.labels.length && !stroke && !measurement ? <p className="mt-3 text-sm text-muted-foreground">No sketch added yet.</p> : null}
   </section>;
