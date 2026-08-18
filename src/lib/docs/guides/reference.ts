@@ -4,7 +4,7 @@ export const REFERENCE_GUIDES: DocGuide[] = [
   {
     slug: "automations-reference",
     title: "What happens automatically",
-    summary: "Every automatic task, status change and notification, and what sets each one off.",
+    summary: "What is live today, what is partly connected, and what is still planned.",
     audience: ["Everyone"],
     appHref: "/admin/automations",
     appLabel: "Automations",
@@ -15,32 +15,37 @@ export const REFERENCE_GUIDES: DocGuide[] = [
         blocks: [
           {
             kind: "text",
-            body: "Each row fires when its trigger happens. The live list is on **Settings → Automations**.",
+            body: "Settings → Automations is a visibility screen, not an on/off control. Each rule is marked **Live**, **Partially live** or **Planned**. The table below is the practical meaning of those labels today.",
           },
           {
             kind: "table",
-            columns: ["When this happens", "The portal does this"],
+            columns: ["When this happens", "Availability", "What the portal does today"],
             rows: [
-              ["A project is created", "Allocates the project number and creates the SharePoint folder."],
+              ["A project is created", "Live", "Allocates the project number and creates the SharePoint folder."],
               [
                 "A quote is accepted",
-                "Moves the job to PO Received, raises a task to request the purchase order, and notifies the customer.",
+                "Planned",
+                "The workflow is not automatically changed and no customer email is sent by this rule.",
               ],
-              ["A purchase order is received", "Moves the job to Scheduling Pending and notifies the project manager."],
-              ["A job is scheduled", "Notifies the installers and confirms the install date with the customer."],
+              ["A purchase order is received", "Planned", "The workflow is not automatically changed and no project-manager email is sent by this rule."],
+              ["A Call-Up is created, changed or deleted", "Live", "Emails the assigned staff member and writes the delivery result to the project's Activity. Customers are not emailed."],
+              ["A job is moved to Job Scheduled", "Partially live", "The workflow event is detected, but the general installer and customer notification rule is not active. Use Call-Ups to notify assigned staff."],
               [
                 "Installation is marked complete",
-                "Moves the job to QA, raises the QA inspection and its task, and notifies the project manager.",
+                "Partially live",
+                "Adds the “Complete QA inspection” task. The automatic status change, inspection and notification steps are not active.",
               ],
               [
                 "QA passes",
-                "Generates the completion certificate, moves the job to Ready to Invoice, and sends the certificate to the customer.",
+                "Planned",
+                "It does not automatically change the workflow, create a certificate or email the customer. Generate a certificate manually from the project when required.",
               ],
               [
                 "Final costing is signed off",
-                "Moves the job to Certificate Issued, queues the invoice export and notifies Finance.",
+                "Planned",
+                "It does not automatically export to Xero or email Finance.",
               ],
-              ["The invoice is paid", "Marks the project financially complete and closes it."],
+              ["The invoice is paid", "Planned", "It does not automatically close the project."],
             ],
           },
         ],
@@ -51,7 +56,7 @@ export const REFERENCE_GUIDES: DocGuide[] = [
         blocks: [
           {
             kind: "text",
-            body: "Every automatic action is written to the project's **Activity** tab, marked as an automation rather than attributed to a person. If you are ever unsure whether something was done by a colleague or by the system, that is where to look.",
+            body: "The project's **Activity** tab records who created, changed or deleted a Call-Up, as well as whether its staff notification was sent, skipped or failed. Other automatic effects are also identified there, so it is the place to check what happened and who did it.",
           },
         ],
       },
@@ -63,11 +68,11 @@ export const REFERENCE_GUIDES: DocGuide[] = [
             kind: "callout",
             tone: "info",
             title: "A failed automation never undoes your change",
-            body: "If a notification cannot send or a folder cannot be created, the failure is recorded and the rest continues. The status change a person just made always stands — the portal does not roll back your work because an email bounced.",
+            body: "If a Call-Up email cannot send or a folder cannot be created, the saved scheduling or project change still stands. The portal does not roll back a person's work because an email bounced.",
           },
           {
             kind: "text",
-            body: "The practical effect is that the odd follow-up may need doing by hand. The Activity trail shows which effect did not complete.",
+            body: "For a missed Call-Up email, first check that the assigned person's email address is correct in People, then follow up manually if needed. The Activity trail shows whether the notification was sent, skipped or failed.",
           },
         ],
       },
@@ -190,6 +195,10 @@ export const REFERENCE_GUIDES: DocGuide[] = [
               {
                 term: "My job is not on My Day",
                 body: "My Day shows Call-Ups assigned to you. If the job is not there, no Call-Up has been assigned to you for it yet — ask the scheduler.",
+              },
+              {
+                term: "I was assigned a Call-Up but did not receive an email",
+                body: "The Call-Up is still saved and appears on My Day. Ask the scheduler to check the email address on your People profile and the project's Activity tab, which shows whether the notification was sent, skipped or failed. Your email address does not need to be a Microsoft-tenant address.",
               },
               {
                 term: "A form will not submit",

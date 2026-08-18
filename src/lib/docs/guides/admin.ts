@@ -3,8 +3,8 @@ import type { DocGuide } from "../types";
 export const ADMIN_GUIDES: DocGuide[] = [
   {
     slug: "materials-and-production",
-    title: "Materials and production templates",
-    summary: "The catalogue that comes from Xero, customer price lists, and the templates estimators quote from.",
+    title: "Materials and price lists",
+    summary: "The Xero-synced catalogue, what appears in the portal, product groups and customer price lists.",
     audience: ["Manager", "Estimator", "Administrator"],
     appHref: "/materials",
     appLabel: "Materials",
@@ -15,7 +15,7 @@ export const ADMIN_GUIDES: DocGuide[] = [
         blocks: [
           {
             kind: "text",
-            body: "The catalogue is a mirror of your Xero items. Press **Sync from Xero** on the Materials screen and everything in Xero comes down with its code, name and price.",
+            body: "The catalogue is a mirror of your Xero items. Press **Sync from Xero** on the Materials screen and the portal refreshes its code, name and price from Xero.",
           },
           {
             kind: "callout",
@@ -25,21 +25,37 @@ export const ADMIN_GUIDES: DocGuide[] = [
           },
           {
             kind: "text",
-            body: "Deleting is the one exception. The sync only adds and updates, so removing a row here is the only way to clear an item that no longer exists in Xero.",
-          },
-          {
-            kind: "text",
             body: "**Export CSV** gives you the catalogue as a spreadsheet, for pricing reviews and for checking against Xero.",
           },
         ],
       },
       {
-        id: "variations",
-        heading: "Variations",
+        id: "platform-display",
+        heading: "What appears in the portal",
         blocks: [
           {
             kind: "text",
-            body: "A material can have variations — the same product in different thicknesses, colours or finishes, each with its own code and price. Variations are what lets a production template say *this job needs a wall batt* and leave the exact one to be chosen at quote time.",
+            body: "Use **Visible on platform** to control which synced items appear in the Material Catalogue, customer price lists and project quote picker. This is a portal-only presentation choice: it does not edit, delete or stop the item syncing in Xero. Hidden items remain visible only in the **Visible on platform** window, where they can be shown again.",
+          },
+          {
+            kind: "callout",
+            tone: "info",
+            title: "Hiding is not deleting",
+            body: "Hide old, duplicate or internal Xero items to make estimating easier. Their Xero codes, prices and sync behaviour stay intact.",
+          },
+        ],
+      },
+      {
+        id: "product-groups",
+        heading: "Product groups and variations",
+        blocks: [
+          {
+            kind: "text",
+            body: "Product groups simplify the quote picker without changing the underlying Xero items. For example, map the Xero items *Wall Wrap 2.0*, *Wall Wrap 2.5* and *Wall Wrap 3.0* into a **Wall Wrap** group. The estimator chooses **Wall Wrap**, then chooses the required variation; the quote still carries the correct Xero-linked item and code.",
+          },
+          {
+            kind: "text",
+            body: "Use a group only where a second choice is useful. A normal, standalone material can be selected directly. Where a material belongs to a variation group, the variation must be selected before it can be added to a quote.",
           },
         ],
       },
@@ -64,25 +80,12 @@ export const ADMIN_GUIDES: DocGuide[] = [
         ],
       },
       {
-        id: "production-templates",
-        heading: "Production templates",
+        id: "quoting-materials",
+        heading: "Using materials in a quote",
         blocks: [
           {
             kind: "text",
-            body: "A production template is a reusable model of the materials a type of job needs. It is what turns quoting from *type out twenty lines* into *pick a template and enter the square metres*.",
-          },
-          {
-            kind: "steps",
-            items: [
-              "Go to **Production templates** and name a new one — describe the job type, not a customer.",
-              "Add the materials it always needs.",
-              "For any material where the exact product varies job to job, allow a variation choice. The estimator is then asked to pick at quote time.",
-              "Save. It is immediately available to every estimator.",
-            ],
-          },
-          {
-            kind: "text",
-            body: "Templates stack on a quote, so build them narrow and combine them rather than making one enormous template per job type.",
+            body: "Quotes are built line by line from the visible catalogue. Add a material, choose its variation when required, enter the m², and review the per-m² price and line total. You can add, change or remove materials before saving the quote.",
           },
         ],
       },
@@ -116,6 +119,12 @@ export const ADMIN_GUIDES: DocGuide[] = [
             tone: "info",
             title: "The invite is what gives them access",
             body: "Adding a person to People creates the record. Until the invite is sent and accepted they cannot sign in. **Resend invite** is there for the one that got lost in a spam folder.",
+          },
+          {
+            kind: "callout",
+            tone: "info",
+            title: "Call-Up notices use this email address",
+            body: "When a Call-Up is created, changed or deleted, the assigned person is emailed at the address on their People profile. The address can be outside the organisation's Microsoft tenant. Keep it current; a missing or incorrect address does not stop the Call-Up saving, but the notice cannot be delivered.",
           },
         ],
       },
@@ -246,7 +255,7 @@ export const ADMIN_GUIDES: DocGuide[] = [
         blocks: [
           {
             kind: "text",
-            body: "A read-only list of everything the portal does on its own as a project moves. Worth reading once so the automatic tasks and status changes are recognisable when they appear. See [What happens automatically](/docs/automations-reference).",
+            body: "A read-only availability list. Each rule is marked **Live**, **Partially live** or **Planned** so the team can see exactly what the portal does today. It is not an on/off control. See [What happens automatically](/docs/automations-reference).",
           },
         ],
       },
@@ -327,6 +336,20 @@ export const ADMIN_GUIDES: DocGuide[] = [
           {
             kind: "text",
             body: "If a folder fails to create, the project's Documents tab offers **Retry**. See [Documents and SharePoint](/docs/documents).",
+          },
+        ],
+      },
+      {
+        id: "call-up-notifications",
+        heading: "Call-Up email notifications",
+        blocks: [
+          {
+            kind: "text",
+            body: "The portal emails the assigned staff member when a Call-Up is created, changed or deleted. These notices are for staff allocation only — they do not email the customer.",
+          },
+          {
+            kind: "text",
+            body: "The notification result is recorded in the project's Activity tab. An email failure never reverses the saved Call-Up, so the scheduler can follow up manually if required.",
           },
         ],
       },

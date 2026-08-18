@@ -21,7 +21,7 @@ function distance(a: RetroScopePoint, b: RetroScopePoint) { return Math.hypot(a.
  * in an SVG viewBox, so one drawing stays sharp and editable on both an iPhone
  * and the exported A4 scope PDF.
  */
-export function RetroScopeSketcher({ value, onChange, disabled }: { value: RetroScopeSketch | null; onChange: (value: RetroScopeSketch | null) => void; disabled: boolean }) {
+export function RetroScopeSketcher({ value, onChange, disabled, fullScreen = false }: { value: RetroScopeSketch | null; onChange: (value: RetroScopeSketch | null) => void; disabled: boolean; fullScreen?: boolean }) {
   const sketch = value ?? { strokes: [], measurements: [], labels: [] };
   const [tool, setTool] = useState<Tool>("draw");
   const [stroke, setStroke] = useState<RetroScopeStroke | null>(null);
@@ -103,8 +103,8 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
   const previewMeasurements = measurement ? [...sketch.measurements, { id: "draft", ...measurement, label: "" }] : sketch.measurements;
   const previewStrokes = stroke ? [...sketch.strokes, stroke] : sketch.strokes;
 
-  return <section className="rounded-xl border border-border-subtle p-4">
-    <div className="flex flex-wrap items-start justify-between gap-3">
+  return <section className={fullScreen ? "flex min-h-0 flex-1 flex-col border-y border-border-subtle sm:rounded-xl sm:border sm:p-4" : "rounded-xl border border-border-subtle p-4"}>
+    <div className={fullScreen ? "flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pt-4 sm:px-0 sm:pt-0" : "flex flex-wrap items-start justify-between gap-3"}>
       <div><h3 className="font-bold">Site sketch</h3><p className="mt-1 text-sm text-muted-foreground">Draw a quick floor plan, then add measurements and labels. It is saved as part of this Retrofit scope.</p></div>
       {!disabled ? <div className="flex flex-wrap gap-2" aria-label="Sketch tools">
         <ToolButton active={tool === "draw"} onClick={() => setTool("draw")} label="Draw"><PenLine className="size-4" />Draw</ToolButton>
@@ -115,8 +115,8 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
         <Button type="button" size="sm" variant="ghost" disabled={!sketch.strokes.length && !sketch.measurements.length && !sketch.labels.length} onClick={() => { if (window.confirm("Clear this site sketch?")) onChange(null); }} className="text-[var(--tone-rose-fg)]"><Trash2 className="size-4" />Clear</Button>
       </div> : null}
     </div>
-    <div className="relative mt-4 overflow-hidden rounded-xl border border-border-strong bg-surface-muted">
-      <svg ref={svg} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className={`block aspect-[10/7] w-full ${disabled ? "" : "cursor-crosshair"}`} style={{ touchAction: disabled ? "auto" : "none" }} onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} role="img" aria-label="Editable site sketch">
+    <div className={fullScreen ? "relative mt-4 min-h-0 flex-1 overflow-hidden border-y border-border-strong bg-surface-muted sm:rounded-xl sm:border" : "relative mt-4 overflow-hidden rounded-xl border border-border-strong bg-surface-muted"}>
+      <svg ref={svg} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className={`block w-full ${fullScreen ? "h-full min-h-[52dvh] sm:aspect-[10/7] sm:h-auto sm:min-h-0" : "aspect-[10/7]"} ${disabled ? "" : "cursor-crosshair"}`} style={{ touchAction: disabled ? "auto" : "none" }} onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} role="img" aria-label="Editable site sketch">
         <defs><pattern id="retro-scope-grid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M 50 0 L 0 0 0 50" fill="none" stroke="currentColor" strokeOpacity="0.12" strokeWidth="1" /></pattern></defs>
         <rect width={WIDTH} height={HEIGHT} fill="url(#retro-scope-grid)" className="text-muted-foreground" />
         {previewStrokes.map((item) => <g key={item.id}><polyline points={item.points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="currentColor" strokeOpacity="0" strokeWidth="28" strokeLinecap="round" strokeLinejoin="round" onPointerDown={(event) => { if (tool !== "erase" || disabled) return; event.stopPropagation(); eraseAt(pointFor(event)); }} /><polyline points={item.points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="currentColor" className="text-foreground" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" /></g>)}
@@ -127,7 +127,7 @@ export function RetroScopeSketcher({ value, onChange, disabled }: { value: Retro
       {inlineEdit ? <div className="absolute z-20 w-56 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-primary bg-surface p-2 shadow-xl" style={{ left: `${(inlineEdit.point.x / WIDTH) * 100}%`, top: `${(inlineEdit.point.y / HEIGHT) * 100}%` }}><label className="sr-only">Edit {inlineEdit.kind}</label><input autoFocus value={inlineEdit.value} onChange={(event) => setInlineEdit((current) => current ? { ...current, value: event.target.value } : current)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveInlineEdit(); } if (event.key === "Escape") setInlineEdit(null); }} className="h-11 w-full rounded-md border border-border-strong bg-surface-muted px-3 text-base text-foreground outline-none focus:border-primary" /><div className="mt-2 flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" onClick={() => setInlineEdit(null)}>Cancel</Button><Button type="button" size="sm" variant="primary" onClick={saveInlineEdit}>Save</Button></div></div> : null}
       {!disabled && !pendingText ? <p className="pointer-events-none absolute bottom-2 left-3 rounded bg-surface/90 px-2 py-1 text-[11px] font-semibold text-muted-foreground">{tool === "draw" ? "Drag to draw" : tool === "measure" ? "Drag a line, then enter its measurement" : tool === "erase" ? "Tap a line or label to erase it" : "Tap to place a label"}</p> : null}
     </div>
-    {!sketch.strokes.length && !sketch.measurements.length && !sketch.labels.length && !stroke && !measurement ? <p className="mt-3 text-sm text-muted-foreground">No sketch added yet.</p> : null}
+    {!sketch.strokes.length && !sketch.measurements.length && !sketch.labels.length && !stroke && !measurement ? <p className={fullScreen ? "shrink-0 px-4 py-3 text-sm text-muted-foreground sm:px-0" : "mt-3 text-sm text-muted-foreground"}>No sketch added yet.</p> : null}
   </section>;
 }
 

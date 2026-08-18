@@ -26,13 +26,13 @@ export const DAILY_GUIDES: DocGuide[] = [
               ["Quoting", "Labour, materials and supplier costs being estimated."],
               ["PO Received", "Quote accepted. Purchase order and deposit outstanding."],
               ["Scheduling Pending", "PO received. Queued for the scheduling board."],
-              ["Job Scheduled", "Installers allocated and notified."],
+              ["Job Scheduled", "Installers allocated. Call-Up emails are sent when each Call-Up is saved."],
               ["Installation in Progress", "Crew on site. Time, materials and photos being captured."],
-              ["Installation Complete", "Install signed off by the crew. QA task raised automatically."],
+              ["Installation Complete", "Install signed off by the crew. A QA checklist task is added automatically."],
               ["QA Complete", "Inspection checklist done. Defects tracked to closure."],
               ["Ready to Invoice", "Labour, materials and variations collated into profitability."],
-              ["Certificate Issued", "Costing locked. Queued for export to Xero."],
-              ["Complete", "Invoice paid and project financially closed."],
+              ["Certificate Issued", "Final costing reviewed before the invoice workflow."],
+              ["Complete", "Financially complete after the invoice is confirmed paid."],
             ],
           },
           {
@@ -51,7 +51,7 @@ export const DAILY_GUIDES: DocGuide[] = [
               "Open the project. The stepper sits above the tabs.",
               "Work through the **Stage checklist** for the current stage and fill in any **Project details** it asks for. Anything marked *Mandatory before progressing* has to be filled in first.",
               "Pick the stage you are moving to. Only stages you are actually allowed to move to are offered.",
-              "Confirm. The change is written to the Activity trail with your name against it, and any automations for that stage fire.",
+              "Confirm. The change is written to the Activity trail with your name against it. Any live automation for that stage runs; see [What happens automatically](/docs/automations-reference).",
             ],
           },
           {
@@ -257,7 +257,7 @@ export const DAILY_GUIDES: DocGuide[] = [
             items: [
               {
                 term: "Price list",
-                body: "A customer-specific set of material prices. Any material without an entry falls back to the standard price. See [Materials and production templates](/docs/materials-and-production).",
+                body: "A customer-specific set of material prices. Any material without an entry falls back to the standard price. See [Materials and price lists](/docs/materials-and-production).",
               },
               {
                 term: "Default project template",
@@ -300,9 +300,9 @@ export const DAILY_GUIDES: DocGuide[] = [
             kind: "steps",
             items: [
               "**Projects → New project**. From a customer's page, use **New project** there instead and the customer is filled in for you.",
-              "Choose **Standard project** or a template. A template starts the job at a particular stage with its own checklist already set up.",
+              "Choose **Build** (the default) or **Retro**, then choose a project template if one applies. A template starts the job at a particular stage with its own checklist already set up.",
               "Pick the customer, name the job, and capture the site address and any access notes.",
-              "Write the scope of works. This is what the crew reads on site, so write it for them.",
+              "For a Build project, write the scope of works for the crew. A Retro project uses the structured **Create Scope** assessment after it is saved.",
               "Set a requested start date if the customer has asked for one.",
               "Save.",
             ],
@@ -360,9 +360,80 @@ export const DAILY_GUIDES: DocGuide[] = [
     ],
   },
   {
+    slug: "safety-scopes-and-certificates",
+    title: "SWMS, retrofit scopes and certificates",
+    summary: "Capture site safety, retrofit assessments and compliance documents against the project.",
+    audience: ["Manager", "Staff", "QA inspector", "Owner"],
+    appHref: "/projects",
+    appLabel: "Projects",
+    sections: [
+      {
+        id: "swms",
+        heading: "Safe Work Method Statements",
+        blocks: [
+          {
+            kind: "text",
+            body: "Open the project's **SWMS** tab and select **Add SWMS**. The form starts with project details already filled where possible, then captures the scope, site report, hazards and controls, installer sign-off, notes and photo checklist.",
+          },
+          {
+            kind: "text",
+            body: "Upload a new photo or choose an existing project photo. Both stay in the project's SharePoint Site Photos folder and are linked to the saved SWMS. You can return to **View** or **Edit** it at any time.",
+          },
+          {
+            kind: "text",
+            body: "Use **Export PDF** after saving. The current PDF is stored in the project SharePoint folder and a copy downloads without taking you away from the project.",
+          },
+        ],
+      },
+      {
+        id: "retro-scope",
+        heading: "Retrofit assessment scope",
+        blocks: [
+          {
+            kind: "text",
+            body: "Retro projects have a **Create Scope** button in Overview. It captures the customer and property details, space and access, existing and recommended insulation, removal method, assessor notes and photos. Project and customer information is filled in for you where it is available.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Complete the scope details and attach photos from the project folder or upload new ones.",
+              "Choose **Next: Site sketch** to draw a simple floor plan with a finger or pointer.",
+              "Use draw, erase, undo, measurements and labels as required. Tap a saved measurement or label on the sketch to edit it in place.",
+              "Return with **Back to scope details**, then save the scope from the sketch step.",
+            ],
+          },
+          {
+            kind: "text",
+            body: "A saved scope can be viewed, edited, deleted or exported as a PDF. The export is stored in the project's SharePoint folder and downloads a copy for the device.",
+          },
+        ],
+      },
+      {
+        id: "certificate",
+        heading: "Certificate of Compliance",
+        blocks: [
+          {
+            kind: "text",
+            body: "Open the project's **Certificate** tab and choose **Export certificate**. It creates the standard compliance certificate using the organisation's certificate header and the project, customer, site address and issue-date details.",
+          },
+          {
+            kind: "callout",
+            tone: "info",
+            title: "Certificate header required",
+            body: "An Owner or Administrator must upload the Certificate Header in **Settings → Organisation** before certificates can be generated.",
+          },
+          {
+            kind: "text",
+            body: "The PDF is saved in SharePoint and downloaded. After the first export, **View PDF** opens the stored file in a new browser tab. Re-exporting replaces the current file while keeping the document history and Activity record.",
+          },
+        ],
+      },
+    ],
+  },
+  {
     slug: "quoting",
     title: "Building and sending a quote",
-    summary: "Production templates to a priced quote, then across to Xero as a draft.",
+    summary: "Build a priced material quote, then send it to Xero as a draft.",
     audience: ["Manager", "Estimator", "Owner"],
     appHref: "/projects",
     appLabel: "Projects",
@@ -373,7 +444,7 @@ export const DAILY_GUIDES: DocGuide[] = [
         blocks: [
           {
             kind: "text",
-            body: "You do not build a quote line by line. You pick one or more **production templates** — reusable models of the materials a type of job needs — and then set the quantity in square metres against each material. Pricing comes from the catalogue automatically.",
+            body: "Build a quote line by line from the visible material catalogue. Add the materials this job needs, choose a variation where the product is grouped, and set the quantity in square metres. Pricing comes from the catalogue automatically.",
           },
           {
             kind: "text",
@@ -389,7 +460,7 @@ export const DAILY_GUIDES: DocGuide[] = [
             kind: "steps",
             items: [
               "Open the project and go to the **Quote** tab.",
-              "Press **Add production** and choose a template. If the template leaves a product variation open, you are asked to choose which variation this job uses.",
+              "Press **Add material** and choose a visible material. If it belongs to a product group, choose the required variation too.",
               "Enter the quantity in m² against each material. The line total and the subtotal update as you type.",
               "Save the quote. It appears under **Generated quotes** with a reference.",
             ],
@@ -397,8 +468,8 @@ export const DAILY_GUIDES: DocGuide[] = [
           {
             kind: "callout",
             tone: "tip",
-            title: "Add more than one production",
-            body: "Templates stack. A job that needs two production models gets both added to the same quote, and you can remove one with the × on its chip without losing the other's quantities.",
+            title: "Keep each line specific",
+            body: "A quote can contain as many materials as it needs. Add each product separately so the quantity, customer price and Xero item code remain clear on every line.",
           },
         ],
       },
@@ -422,7 +493,7 @@ export const DAILY_GUIDES: DocGuide[] = [
         blocks: [
           {
             kind: "text",
-            body: "A saved quote can still be edited: change quantities, add a material that was not in the template, or remove a line. Adding a material to a saved quote is the escape hatch for the one-off item no template covers.",
+            body: "A saved quote can still be edited: change quantities, add another material or remove a line. The quote keeps the selected Xero-linked product, so the correct code stays with the line when it is exported.",
           },
         ],
       },
@@ -549,7 +620,7 @@ export const DAILY_GUIDES: DocGuide[] = [
           },
           {
             kind: "text",
-            body: "Once the job is scheduled, the installers and the customer are notified automatically — see [Automations](/docs/automations-reference).",
+            body: "Call-Up notices are sent when each Call-Up is saved: the assigned staff member receives an allocation email when it is created, an updated notice when it changes, and a cancellation notice when it is deleted. Customers are not emailed by this feature — see [Automations](/docs/automations-reference).",
           },
         ],
       },
@@ -682,11 +753,11 @@ export const DAILY_GUIDES: DocGuide[] = [
     sections: [
       {
         id: "raised",
-        heading: "Inspections are raised for you",
+        heading: "The QA task is added for you",
         blocks: [
           {
             kind: "text",
-            body: "When a job is marked **Installation Complete**, a QA inspection is raised automatically and the job appears in the inspection queue on the **QA & Compliance** screen. Nobody has to remember to create one.",
+            body: "When a job is marked **Installation Complete**, the portal adds the **Complete QA inspection** task to the project. Schedule the inspection from the project's QA area when the inspector and date are known.",
           },
         ],
       },
@@ -753,7 +824,7 @@ export const DAILY_GUIDES: DocGuide[] = [
         blocks: [
           {
             kind: "text",
-            body: "Passing QA generates the completion certificate as an artefact of the project — it is not a workflow stage of its own. It lands with the project's documents.",
+            body: "Use the project's **Certificate** tab to generate the compliance certificate when it is ready. It uses the organisation certificate header and current project details, saves the PDF in SharePoint, downloads a copy, and then offers **View PDF**. Re-exporting replaces the current SharePoint file cleanly and records the export in Activity.",
           },
         ],
       },
