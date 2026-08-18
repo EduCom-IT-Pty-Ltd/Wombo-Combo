@@ -71,11 +71,11 @@ async function getToken() {
   return cachedToken.value;
 }
 
-function recipientAddresses(project: ProjectDetail, assignee: Person | undefined) {
-  return [...new Set([
-    assignee?.email,
-    project.customer.primaryContactEmail,
-  ].filter((email): email is string => Boolean(email?.trim())).map((email) => email.trim().toLowerCase()))];
+function recipientAddresses(assignee: Person | undefined) {
+  // Call-Up notifications are internal allocation notices. Customer contact
+  // details deliberately never enter this recipient list.
+  const email = assignee?.email.trim();
+  return email ? [email.toLowerCase()] : [];
 }
 
 function emailContent(args: {
@@ -122,7 +122,7 @@ export async function sendCallUpNotification(args: {
 }): Promise<CallUpNotificationResult> {
   if (!mailConfigured()) return { status: "skipped", reason: "not_configured" };
 
-  const recipients = recipientAddresses(args.project, args.assignee);
+  const recipients = recipientAddresses(args.assignee);
   if (recipients.length === 0) return { status: "skipped", reason: "no_recipients" };
 
   try {
