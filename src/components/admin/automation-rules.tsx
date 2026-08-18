@@ -1,8 +1,8 @@
-import { ArrowRight, Zap } from "lucide-react";
+import { ArrowRight, CheckCircle2, CircleDashed, Clock3, Zap } from "lucide-react";
 import { AUTOMATION_RULES, type AutomationEffect, type AutomationTriggerKind } from "@/lib/domain/automation";
 import { STATUS_META, type ProjectStatus } from "@/lib/domain/status";
 import type { StatusSetting } from "@/lib/domain/status-settings";
-import { Card } from "@/components/ui";
+import { Badge, Card } from "@/components/ui";
 
 /**
  * Read-only: the rules come from the workflow specification, not from a form.
@@ -27,6 +27,53 @@ const AUDIENCE_LABELS = {
   project_manager: "the project manager",
   finance: "the finance team",
 } as const;
+
+type AutomationAvailability = "live" | "partial" | "planned";
+
+const AVAILABILITY: Record<string, { state: AutomationAvailability; detail: string }> = {
+  "new-project-scaffold": {
+    state: "live",
+    detail: "The project number and SharePoint project folder are created automatically when a new project is saved.",
+  },
+  "request-purchase-order": {
+    state: "planned",
+    detail: "Quote acceptance is not yet connected to this workflow.",
+  },
+  "po-unblocks-scheduling": {
+    state: "planned",
+    detail: "Recording a purchase order is not yet connected to this workflow.",
+  },
+  "notify-on-schedule": {
+    state: "partial",
+    detail: "The workflow is detected when a job is scheduled, but installer and customer notifications are not sent yet.",
+  },
+  "raise-qa-inspection": {
+    state: "partial",
+    detail: "A “Complete QA inspection” task is added automatically. The status change, inspection and notification steps are still planned.",
+  },
+  "issue-completion-certificate": {
+    state: "planned",
+    detail: "Passing QA is not yet connected to automatic certificate generation or customer notification.",
+  },
+  "export-to-xero": {
+    state: "planned",
+    detail: "Final costing is not yet connected to automatic Xero export or finance notification.",
+  },
+  "close-on-payment": {
+    state: "planned",
+    detail: "Invoice payments are not yet connected to automatically closing the project.",
+  },
+};
+
+function AvailabilityBadge({ state }: { state: AutomationAvailability }) {
+  if (state === "live") {
+    return <Badge tone="emerald"><CheckCircle2 className="size-3" />Live</Badge>;
+  }
+  if (state === "partial") {
+    return <Badge tone="amber"><CircleDashed className="size-3" />Partially live</Badge>;
+  }
+  return <Badge tone="slate"><Clock3 className="size-3" />Planned</Badge>;
+}
 
 function statusLabel(status: ProjectStatus, settings: StatusSetting[]) {
   return settings.find((setting) => setting.status === status)?.label ?? STATUS_META[status].label;
@@ -60,29 +107,42 @@ function describeEffect(effect: AutomationEffect, settings: StatusSetting[]): st
 export function AutomationRules({ statusSettings }: { statusSettings: StatusSetting[] }) {
   return (
     <Card>
-      <p className="border-b border-border-subtle px-4 py-3 text-xs text-muted-foreground">
-        These run on their own — there is nothing to switch on. They are listed so you know what the portal does behind
-        the scenes.
-      </p>
+      <div className="border-b border-border-subtle px-4 py-4">
+        <p className="text-sm font-semibold text-foreground">Automation availability</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          These rules are shown for visibility only. The labels below show what is working in the live portal today and
+          what is still planned.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <AvailabilityBadge state="live" />
+          <AvailabilityBadge state="partial" />
+          <AvailabilityBadge state="planned" />
+        </div>
+      </div>
       <ul className="divide-y divide-border-subtle">
-        {AUTOMATION_RULES.map((rule) => (
-          <li key={rule.id} className="px-4 py-4">
-            <p className="flex items-start gap-2 text-sm font-semibold text-foreground">
-              <Zap className="mt-0.5 size-4 shrink-0 text-primary" strokeWidth={1.75} aria-hidden />
-              <span>
-                When {TRIGGER_LABELS[rule.on]}
-              </span>
-            </p>
-            <ul className="mt-2 space-y-1.5 sm:pl-6">
-              {rule.effects.map((effect, index) => (
-                <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
-                  <ArrowRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                  <span>{describeEffect(effect, statusSettings)}</span>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
+        {AUTOMATION_RULES.map((rule) => {
+          const availability = AVAILABILITY[rule.id];
+          return (
+            <li key={rule.id} className="px-4 py-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="flex items-start gap-2 text-sm font-semibold text-foreground">
+                  <Zap className="mt-0.5 size-4 shrink-0 text-primary" strokeWidth={1.75} aria-hidden />
+                  <span>When {TRIGGER_LABELS[rule.on]}</span>
+                </p>
+                <AvailabilityBadge state={availability.state} />
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground sm:pl-6">{availability.detail}</p>
+              <ul className="mt-3 space-y-1.5 sm:pl-6">
+                {rule.effects.map((effect, index) => (
+                  <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <ArrowRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    <span>{describeEffect(effect, statusSettings)}</span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          );
+        })}
       </ul>
     </Card>
   );
