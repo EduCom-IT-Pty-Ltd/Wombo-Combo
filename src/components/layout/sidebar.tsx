@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import type { NavItem } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import { NavIcon } from "./icon";
+import { SupportTicketButton } from "./support-ticket-button";
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -46,6 +47,9 @@ export function Sidebar({ items, orgName, logoUrl }: { items: NavItem[]; orgName
           })}
         </ul>
       </nav>
+      <div className="shrink-0 border-t border-border-subtle p-2">
+        <SupportTicketButton />
+      </div>
     </aside>
   );
 }

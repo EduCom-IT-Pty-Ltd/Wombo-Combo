@@ -5,10 +5,26 @@ const GRAPH = "https://graph.microsoft.com/v1.0";
 
 type CallUpNotificationAction = "created" | "updated" | "cancelled";
 
+export type SupportTicketKind = "issue" | "feature_request";
+
 export type CallUpNotificationResult =
   | { status: "sent"; recipientCount: number }
   | { status: "skipped"; reason: "not_configured" | "no_recipients" }
   | { status: "failed"; message: string };
+
+export type SupportTicketResult =
+  | { status: "sent" }
+  | { status: "skipped"; reason: "not_configured" }
+  | { status: "failed"; message: string };
+
+// These recipients deliberately live only in this server-only module. They
+// cannot be viewed or changed from the portal, nor can a browser submit a
+// ticket to another address.
+const SUPPORT_TICKET_RECIPIENTS = [
+  "kpike@educomit.com.au",
+  "amorrisroe@educomit.com.au",
+  "ehodkinson@educomit.com.au",
+] as const;
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
@@ -146,6 +162,58 @@ export async function sendCallUpNotification(args: {
       throw new Error(`Microsoft Graph returned ${response.status}${detail ? `: ${detail.slice(0, 400)}` : ""}`);
     }
     return { status: "sent", recipientCount: recipients.length };
+  } catch (error) {
+    return { status: "failed", message: error instanceof Error ? error.message : "Microsoft Graph could not send the email." };
+  }
+}
+
+/**
+ * Sends a fixed-recipient internal portal ticket from the existing Graph
+ * notifications mailbox. The submitting user's address is Reply-To only, so
+ * staff can respond directly without exposing or trusting any recipient input.
+ */
+export async function sendSupportTicket(args: {
+  kind: SupportTicketKind;
+  message: string;
+  submitter: { name: string; email: string };
+}): Promise<SupportTicketResult> {
+  if (!mailConfigured()) return { status: "skipped", reason: "not_configured" };
+
+  const typeLabel = args.kind === "issue" ? "Issue" : "Feature request";
+  const subject = `[Portal ${typeLabel.toLowerCase()}] ${args.submitter.name}`;
+  const body = `
+    <div style="font-family:Arial,sans-serif;color:#172033;line-height:1.55;max-width:620px">
+      <h2 style="margin:0 0 16px">Portal ${escapeHtml(typeLabel)}</h2>
+      <table style="border-collapse:collapse;width:100%;margin:0 0 20px">
+        <tr><td style="padding:9px 12px;border:1px solid #dbe2ea;background:#f5f7fa;font-weight:700;width:34%">Submitted by</td><td style="padding:9px 12px;border:1px solid #dbe2ea">${escapeHtml(args.submitter.name)}</td></tr>
+        <tr><td style="padding:9px 12px;border:1px solid #dbe2ea;background:#f5f7fa;font-weight:700;width:34%">Email</td><td style="padding:9px 12px;border:1px solid #dbe2ea"><a href="mailto:${escapeHtml(args.submitter.email)}">${escapeHtml(args.submitter.email)}</a></td></tr>
+      </table>
+      <p style="margin:0 0 8px;font-weight:700">Details</p>
+      <div style="padding:12px;border:1px solid #dbe2ea;background:#f8fafc;white-space:pre-wrap">${escapeHtml(args.message)}</div>
+      <p style="margin:20px 0 0;color:#5b667a;font-size:13px">Reply to this email to respond directly to the portal user.</p>
+    </div>`;
+
+  try {
+    const token = await getToken();
+    const mailbox = process.env.MS_GRAPH_MAILBOX!;
+    const response = await fetch(`${GRAPH}/users/${encodeURIComponent(mailbox)}/sendMail`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: { contentType: "HTML", content: body },
+          toRecipients: SUPPORT_TICKET_RECIPIENTS.map((address) => ({ emailAddress: { address } })),
+          replyTo: args.submitter.email ? [{ emailAddress: { address: args.submitter.email, name: args.submitter.name } }] : undefined,
+        },
+        saveToSentItems: true,
+      }),
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`Microsoft Graph returned ${response.status}${detail ? `: ${detail.slice(0, 400)}` : ""}`);
+    }
+    return { status: "sent" };
   } catch (error) {
     return { status: "failed", message: error instanceof Error ? error.message : "Microsoft Graph could not send the email." };
   }
