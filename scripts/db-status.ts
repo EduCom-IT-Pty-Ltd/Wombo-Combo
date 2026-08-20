@@ -63,7 +63,10 @@ async function main() {
     ["projects", "sharepoint_folder_url"],
     ["projects", "custom_fields"],
     ["memberships", "color"],
+    ["customers", "portal_visible"],
+    ["customers", "portal_color"],
     ["xero_connections", "org_id"],
+    ["xero_connections", "short_code"],
   ];
 
   const present = new Set(
