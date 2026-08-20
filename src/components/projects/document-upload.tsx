@@ -6,6 +6,7 @@ import { Upload, X } from "lucide-react";
 import { uploadDocument, type DocumentUploadState } from "@/app/actions/documents";
 import { Button } from "@/components/ui";
 import { DOCUMENT_KIND_LABELS, DOCUMENT_KIND_OPTIONS, MAX_DOCUMENT_BYTES } from "@/lib/domain/documents";
+import { UploadFilePicker } from "./upload-file-picker";
 
 const initial: DocumentUploadState = { ok: false };
 // h-11 and text-base throughout: 44px targets, and iOS zooms the page on any
@@ -81,25 +82,19 @@ function UploadModal({
         <div className="space-y-4 overflow-y-auto p-5">
           <input type="hidden" name="projectId" value={projectId} />
 
-          <label className="block">
+          <div>
             <span className="mb-1 block text-xs font-medium text-muted-foreground">File</span>
-            <span className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border-strong bg-surface-muted px-3 text-sm font-semibold hover:border-primary hover:text-primary">
-              <Upload className="size-4" aria-hidden />
-              <span className="truncate">{file?.name ?? "Choose a file"}</span>
-              <input
-                required
-                name="file"
-                type="file"
-                className="sr-only"
-                onChange={(event) => {
-                  const chosen = event.target.files?.[0];
-                  // Checked here as well as on the server: over the body limit
-                  // the request never reaches the action, and what the framework
-                  // reports instead does not tell anyone what went wrong.
-                  setFile(chosen ? { name: chosen.name, tooBig: chosen.size > MAX_DOCUMENT_BYTES } : null);
-                }}
-              />
-            </span>
+            <UploadFilePicker
+              disabled={pending}
+              chooseLabel="Choose file"
+              cameraLabel="Take photo"
+              onFileChange={(chosen) => {
+                // Checked here as well as on the server: over the body limit
+                // the request never reaches the action, and what the framework
+                // reports instead does not tell anyone what went wrong.
+                setFile(chosen ? { name: chosen.name, tooBig: chosen.size > MAX_DOCUMENT_BYTES } : null);
+              }}
+            />
             <span
               className={`mt-1 block text-xs ${file?.tooBig ? "text-[var(--tone-rose-fg)]" : "text-muted-foreground"}`}
             >
@@ -107,7 +102,7 @@ function UploadModal({
                 ? "That file is over 4 MB — add it through the SharePoint folder link instead."
                 : "Up to 4 MB. Anything larger goes straight into the SharePoint folder."}
             </span>
-          </label>
+          </div>
 
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-muted-foreground">Kind</span>

@@ -8,6 +8,7 @@ import type { DocumentRecord, ProjectDetail } from "@/lib/data/types";
 import { emptySwmsValues, type SwmsRecord, type SwmsTemplate, type SwmsValues } from "@/lib/domain/swms";
 import { Badge, Button, Card, CardHeader, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
+import { UploadFilePicker } from "./upload-file-picker";
 
 const initial: SwmsActionState = { ok: false };
 const inputClass = "h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-foreground disabled:cursor-not-allowed disabled:opacity-75 sm:text-sm";
@@ -90,7 +91,7 @@ function SwmsDialog({ mode, project, template, record, photos, canEdit, onClose 
 function PhotoUpload({ projectId, onUploaded }: { projectId: string; onUploaded: (id: string) => void }) {
   const [state, action, pending] = useActionState(uploadSwmsPhotoAction, initial);
   useEffect(() => { if (state.ok && state.documentId) onUploaded(state.documentId); }, [state, onUploaded]);
-  return <form action={action} className="flex flex-wrap items-end gap-3 rounded-xl border border-dashed border-border-strong bg-surface-muted p-4"><input type="hidden" name="projectId" value={projectId} /><label className="min-w-48 flex-1 text-sm font-semibold">Add a SWMS photo<span className="mt-1 block text-xs font-normal text-muted-foreground">Stored in this project&apos;s SharePoint Site Photos folder. Up to 4 MB.</span><input required type="file" name="file" accept="image/*" capture="environment" className="mt-2 block w-full text-sm" /></label><Button type="submit" variant="secondary" disabled={pending}><Camera className="size-4" />{pending ? "Uploading…" : "Upload photo"}</Button>{state.message ? <span className={state.ok ? "w-full text-sm font-semibold text-emerald-600" : "w-full text-sm font-semibold text-[var(--tone-rose-fg)]"}>{state.message}</span> : null}</form>;
+  return <form action={action} className="space-y-3 rounded-xl border border-dashed border-border-strong bg-surface-muted p-4"><input type="hidden" name="projectId" value={projectId} /><div><p className="text-sm font-semibold">Add a SWMS photo</p><p className="mt-1 text-xs text-muted-foreground">Stored in the project SharePoint Site Photos folder. Up to 4 MB.</p></div><UploadFilePicker accept="image/*" disabled={pending} chooseLabel="Choose photo" cameraLabel="Take photo" /><div className="flex flex-wrap items-center gap-3"><Button type="submit" variant="secondary" disabled={pending}><Camera className="size-4" />{pending ? "Uploading…" : "Upload photo"}</Button>{state.message ? <span className={state.ok ? "text-sm font-semibold text-emerald-600" : "text-sm font-semibold text-[var(--tone-rose-fg)]"}>{state.message}</span> : null}</div></form>;
 }
 
 function ExistingProjectPhotos({ photos, selectedIds, onSelect }: { photos: DocumentRecord[]; selectedIds: string[]; onSelect: (id: string) => void }) {
