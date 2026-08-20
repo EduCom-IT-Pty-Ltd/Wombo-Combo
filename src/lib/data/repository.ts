@@ -85,6 +85,14 @@ export async function getPerson(orgId: string, id: string): Promise<Person | nul
 export async function listCustomers(orgId: string): Promise<Customer[]> {
   return once(`customers:${orgId}`, async () => {
     if (hasDatabase) return pgCustomers.listCustomers(orgId);
+    return [...(await readLocalStore()).customers].filter((customer) => customer.portalVisible !== false).sort((a, b) => a.name.localeCompare(b.name));
+  });
+}
+
+/** Active customers including locally hidden rows, for the display manager only. */
+export async function listCustomersForPortalPresentation(orgId: string): Promise<Customer[]> {
+  return once(`customers.presentation:${orgId}`, async () => {
+    if (hasDatabase) return pgCustomers.listCustomersForPortalPresentation(orgId);
     return [...(await readLocalStore()).customers].sort((a, b) => a.name.localeCompare(b.name));
   });
 }
@@ -100,10 +108,11 @@ export interface CustomerOption {
  * enriches each row with a contact, a site count and lifetime value; a dropdown
  * needs none of that.
  */
-export async function listCustomerOptions(orgId: string): Promise<CustomerOption[]> {
-  return once(`customerOptions:${orgId}`, async () => {
-    if (hasDatabase) return pgCustomers.listCustomerOptions(orgId);
-    return (await listCustomers(orgId)).map(({ id, name, defaultProjectTemplateId }) => ({
+export async function listCustomerOptions(orgId: string, includeCustomerIds: string[] = []): Promise<CustomerOption[]> {
+  const include = [...new Set(includeCustomerIds)].sort();
+  return once(`customerOptions:${orgId}:${include.join(",")}`, async () => {
+    if (hasDatabase) return pgCustomers.listCustomerOptions(orgId, include);
+    return (await readLocalStore()).customers.filter((customer) => customer.portalVisible !== false || include.includes(customer.id)).map(({ id, name, defaultProjectTemplateId }) => ({
       id,
       name,
       defaultProjectTemplateId: defaultProjectTemplateId ?? null,
@@ -481,7 +490,7 @@ async function loadSchedulePhases(orgId: string, opts: { projectId?: string; use
     .filter((phase) => (!opts.projectId || phase.projectId === opts.projectId) && (!opts.userId || phase.userId === opts.userId))
     .map((phase) => {
       const project = store.projects.find((item) => item.id === phase.projectId) ?? store.archivedProjects.find((item) => item.id === phase.projectId);
-      return project ? { ...phase, projectNumber: project.projectNumber, projectTitle: project.title, siteLabel: project.siteLabel } : null;
+      return project ? { ...phase, projectNumber: project.projectNumber, projectTitle: project.title, siteLabel: project.siteLabel, customerId: project.customerId, customerColor: project.customer.color ?? null } : null;
     })
     .filter((phase): phase is SchedulePhaseView => phase !== null)
     .sort((a, b) => a.date.localeCompare(b.date) || a.projectTitle.localeCompare(b.projectTitle));
@@ -751,7 +760,11 @@ async function loadSearchIndex(orgId: string, includeCustomers: boolean) {
     const store = await readLocalStore();
     return {
       projects: store.projects.map(({ id, title, projectNumber, customerName, siteLabel }) => ({ id, title, projectNumber, customerName, siteLabel })),
-      customers: includeCustomers ? store.customers.map(({ id, name, primaryContactName }) => ({ id, name, primaryContactName })) : [],
+      customers: includeCustomers
+        ? store.customers
+            .filter((customer) => customer.portalVisible !== false)
+            .map(({ id, name, primaryContactName }) => ({ id, name, primaryContactName }))
+        : [],
     };
   }
   const [projects, customers] = await Promise.all([

@@ -44,6 +44,11 @@ export interface Customer {
   lifetimeValueCents: number;
   priceListId?: string | null;
   defaultProjectTemplateId?: string | null;
+  /** Local portal presentation; never written back to Xero. */
+  portalVisible?: boolean;
+  /** Local Call-Up calendar colour. */
+  color?: string | null;
+  xeroContactId?: string | null;
 }
 
 /** Local organisation profile until the production organisation table is wired up. */
@@ -238,6 +243,8 @@ export interface SchedulePhaseView extends SchedulePhase {
   projectNumber: string;
   projectTitle: string;
   siteLabel: string | null;
+  customerId: string;
+  customerColor: string | null;
 }
 
 export interface LeaveEntry {

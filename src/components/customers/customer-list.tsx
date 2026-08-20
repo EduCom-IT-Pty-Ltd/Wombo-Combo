@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, List, Search } from "lucide-react";
 import { formatMoney } from "@/lib/domain/money";
+import { customerColorFor } from "@/lib/domain/customer-colors";
 import { Card, EmptyState } from "@/components/ui";
 import type { Customer } from "@/lib/data/types";
 
@@ -149,7 +150,14 @@ function CustomerRows({ customers, currency, showFinancials }: { customers: Cust
           className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-surface-muted"
         >
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{customer.name}</p>
+            <p className="flex items-center gap-2 truncate text-sm font-medium">
+              <span
+                aria-hidden="true"
+                className="size-2.5 shrink-0 rounded-full ring-2 ring-background"
+                style={{ backgroundColor: customerColorFor(customer.id, customer.color) }}
+              />
+              <span className="truncate">{customer.name}</span>
+            </p>
             <p className="truncate text-xs text-muted-foreground">
               {[
                 customer.accountType,

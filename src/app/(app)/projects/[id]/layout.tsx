@@ -32,7 +32,9 @@ export default async function ProjectLayout({
   const tabs = PROJECT_TABS.filter((t) => can(session.role, t.capability, session.permissionOverrides));
   const [statusSettings, customers, archived] = await Promise.all([
     getStatusSettings(session.org.id),
-    listCustomerOptions(session.org.id),
+    // Keep the project&apos;s current customer in this editor even when it has been
+    // deliberately hidden from new portal project pickers.
+    listCustomerOptions(session.org.id, [project.customerId]),
     isProjectArchived(session.org.id, project.id),
   ]);
   const workflowStatuses = statusSettings.filter((setting) => setting.inProgressFlow).map((setting) => setting.status);

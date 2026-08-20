@@ -481,7 +481,8 @@ export async function createLocalCustomer(input: {
       activeProjects: 0,
       lifetimeValueCents: 0,
       priceListId: input.priceListId || null,
-      defaultProjectTemplateId: input.defaultProjectTemplateId || null,
+    defaultProjectTemplateId: input.defaultProjectTemplateId || null,
+    portalVisible: true,
     };
     store.customers.push(customer);
     return customer;
@@ -850,6 +851,20 @@ export async function updateLocalCustomer(input: {
       project.customerName = customer.name;
       project.customer = customer;
       project.updatedAt = new Date().toISOString();
+    }
+  });
+}
+
+/** Local-demo equivalent of the database-only portal presentation controls. */
+export async function saveLocalCustomerPortalPresentation(entries: Array<{ id: string; portalVisible: boolean; color: string | null }>) {
+  await updateLocalStore((store) => {
+    const byId = new Map(entries.map((entry) => [entry.id, entry]));
+    for (const customer of store.customers) {
+      const entry = byId.get(customer.id);
+      if (!entry) continue;
+      customer.portalVisible = entry.portalVisible;
+      customer.color = entry.color;
+      for (const project of [...store.projects, ...store.archivedProjects].filter((project) => project.customerId === customer.id)) project.customer = customer;
     }
   });
 }

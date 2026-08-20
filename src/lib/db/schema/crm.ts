@@ -17,6 +17,10 @@ export const customers = pgTable(
     /** Defaults applied when a project is raised for this customer. */
     priceListId: text("price_list_id"),
     defaultProjectTemplateId: text("default_project_template_id"),
+    /** Local presentation only. Hiding never changes the Xero contact. */
+    portalVisible: boolean("portal_visible").notNull().default(true),
+    /** Calendar and field Call-Up colour, also local to this portal. */
+    portalColor: text("portal_color"),
     active: boolean("active").notNull().default(true),
     ...timestamps,
   },

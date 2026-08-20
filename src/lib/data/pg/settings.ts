@@ -295,12 +295,15 @@ export async function listSchedulePhases(
       phase: schedulePhases,
       projectNumber: projects.projectNumber,
       projectTitle: projects.title,
+      customerId: projects.customerId,
+      customerColor: customers.portalColor,
       siteName: sites.name,
       siteSuburb: sites.suburb,
       siteState: sites.state,
     })
     .from(schedulePhases)
     .innerJoin(projects, eq(projects.id, schedulePhases.projectId))
+    .innerJoin(customers, and(eq(customers.id, projects.customerId), eq(customers.orgId, orgId)))
     .leftJoin(sites, eq(sites.id, projects.siteId))
     .where(and(...conditions))
     .orderBy(asc(schedulePhases.date), asc(projects.title));
@@ -317,6 +320,8 @@ export async function listSchedulePhases(
     inspectionId: row.phase.inspectionId,
     projectNumber: row.projectNumber,
     projectTitle: row.projectTitle,
+    customerId: row.customerId,
+    customerColor: row.customerColor,
     siteLabel: row.siteName
       ? [row.siteName, [row.siteSuburb, row.siteState].filter(Boolean).join(" ")].filter(Boolean).join(" · ")
       : null,

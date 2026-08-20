@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contacts, customers, sites } from "@/lib/db/schema/crm";
 import { projects } from "@/lib/db/schema/projects";
@@ -26,11 +26,16 @@ import type { Customer } from "../types";
 const FINISHED_PROJECT_STATUSES: ProjectStatus[] = ["closed", "lost", "cancelled"];
 
 export async function listCustomers(orgId: string): Promise<Customer[]> {
-  return loadCustomers(orgId, true);
+  return loadCustomers(orgId, true, true);
 }
 
 export async function listArchivedCustomers(orgId: string): Promise<Customer[]> {
-  return loadCustomers(orgId, false);
+  return loadCustomers(orgId, false, false);
+}
+
+/** All active customers, including ones intentionally hidden from portal views. */
+export async function listCustomersForPortalPresentation(orgId: string): Promise<Customer[]> {
+  return loadCustomers(orgId, true, false);
 }
 
 /**
@@ -42,7 +47,11 @@ export async function listArchivedCustomers(orgId: string): Promise<Customer[]> 
  */
 export async function listCustomerOptions(
   orgId: string,
+  includeCustomerIds: string[] = [],
 ): Promise<Array<{ id: string; name: string; defaultProjectTemplateId: string | null }>> {
+  const visibility = includeCustomerIds.length
+    ? or(eq(customers.portalVisible, true), inArray(customers.id, includeCustomerIds))
+    : eq(customers.portalVisible, true);
   return db()
     .select({
       id: customers.id,
@@ -50,7 +59,7 @@ export async function listCustomerOptions(
       defaultProjectTemplateId: customers.defaultProjectTemplateId,
     })
     .from(customers)
-    .where(and(eq(customers.orgId, orgId), eq(customers.active, true)))
+    .where(and(eq(customers.orgId, orgId), eq(customers.active, true), visibility))
     .orderBy(asc(customers.name));
 }
 
@@ -75,11 +84,13 @@ export async function isCustomerArchived(orgId: string, id: string): Promise<boo
   return row ? !row.active : false;
 }
 
-async function loadCustomers(orgId: string, active: boolean): Promise<Customer[]> {
+async function loadCustomers(orgId: string, active: boolean, visibleOnly: boolean): Promise<Customer[]> {
+  const conditions = [eq(customers.orgId, orgId), eq(customers.active, active)];
+  if (visibleOnly) conditions.push(eq(customers.portalVisible, true));
   const rows = await db()
     .select()
     .from(customers)
-    .where(and(eq(customers.orgId, orgId), eq(customers.active, active)))
+    .where(and(...conditions))
     .orderBy(asc(customers.name));
   return enrich(orgId, rows);
 }
@@ -134,6 +145,9 @@ async function enrich(orgId: string, rows: (typeof customers.$inferSelect)[]): P
       lifetimeValueCents: stats?.lifetimeValueCents ?? 0,
       priceListId: row.priceListId,
       defaultProjectTemplateId: row.defaultProjectTemplateId,
+      portalVisible: row.portalVisible,
+      color: row.portalColor,
+      xeroContactId: row.xeroContactId,
     };
   });
 }
@@ -390,6 +404,9 @@ export async function importXeroCustomers(
           billingAddress: input.billingAddress,
           paymentTermsDays: input.paymentTermsDays == null ? null : String(input.paymentTermsDays),
           xeroContactId: input.xeroContactId,
+          // Contacts mirrored from Xero start hidden. Making one available in
+          // this portal is a deliberate local presentation decision.
+          portalVisible: false,
         })),
       )
       .onConflictDoUpdate({
@@ -535,6 +552,29 @@ export async function archiveXeroLinkedCustomers(orgId: string, ids: string[]): 
   return rows.length;
 }
 
+/**
+ * Updates portal-only customer settings in one database statement. Neither the
+ * Xero ID nor any Xero-owned contact data is part of this operation.
+ */
+export async function saveCustomerPortalPresentation(
+  orgId: string,
+  entries: Array<{ id: string; portalVisible: boolean; color: string | null }>,
+): Promise<void> {
+  if (!entries.length) return;
+  await db().execute(sql`
+    update ${customers} as customer
+    set
+      portal_visible = incoming.portal_visible,
+      portal_color = incoming.portal_color,
+      updated_at = now()
+    from jsonb_to_recordset(${JSON.stringify(entries)}::jsonb)
+      as incoming(id uuid, portal_visible boolean, portal_color text)
+    where customer.org_id = ${orgId}
+      and customer.id = incoming.id
+      and customer.active = true
+  `);
+}
+
 /** Search index for the top bar: one query, none of the list-page aggregates. */
 export async function listCustomersForSearch(
   orgId: string,
@@ -552,7 +592,7 @@ export async function listCustomersForSearch(
       contacts,
       and(eq(contacts.customerId, customers.id), eq(contacts.isPrimary, true)),
     )
-    .where(and(eq(customers.orgId, orgId), eq(customers.active, true)))
+    .where(and(eq(customers.orgId, orgId), eq(customers.active, true), eq(customers.portalVisible, true)))
     .orderBy(asc(customers.name))
     .limit(limit);
 
