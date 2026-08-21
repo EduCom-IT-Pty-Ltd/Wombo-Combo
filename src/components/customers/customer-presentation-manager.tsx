@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Eye, EyeOff, Palette, X } from "lucide-react";
+import { Eye, EyeOff, Palette, Search, X } from "lucide-react";
 import { saveCustomerPortalPresentationAction, type CustomerPresentationActionState } from "@/app/actions/customer-presentation";
 import { customerColorFor } from "@/lib/domain/customer-colors";
 import type { Customer } from "@/lib/data/types";
@@ -16,6 +16,7 @@ type CustomerDisplay = { id: string; portalVisible: boolean; color: string | nul
 export function CustomerPresentationManager({ customers }: { customers: Customer[] }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(saveCustomerPortalPresentationAction, initial);
+  const [query, setQuery] = useState("");
   const [entries, setEntries] = useState<CustomerDisplay[]>(() => customers.map((customer) => ({
     id: customer.id,
     portalVisible: customer.portalVisible !== false,
@@ -23,6 +24,11 @@ export function CustomerPresentationManager({ customers }: { customers: Customer
   })));
   const visibleCount = entries.filter((entry) => entry.portalVisible).length;
   const customersById = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
+  const filteredEntries = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    if (!normalizedQuery) return entries;
+    return entries.filter((entry) => customersById.get(entry.id)?.name.toLocaleLowerCase().includes(normalizedQuery));
+  }, [customersById, entries, query]);
 
   useEffect(() => {
     if (state.ok) setOpen(false);
@@ -50,8 +56,15 @@ export function CustomerPresentationManager({ customers }: { customers: Customer
             </div>
             <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setOpen(false)} aria-label="Close customer display"><X className="size-4" /></Button>
           </div>
+          <div className="shrink-0 border-b border-border-subtle px-5 py-3">
+            <label className="relative block">
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <span className="sr-only">Search customers</span>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customers…" className="h-11 w-full rounded-lg border border-border-strong bg-surface pl-10 pr-3 text-base text-foreground placeholder:text-muted-foreground" autoComplete="off" />
+            </label>
+          </div>
           <div className="min-h-0 flex-1 divide-y divide-border-subtle overflow-y-auto">
-            {entries.map((entry) => {
+            {filteredEntries.map((entry) => {
               const customer = customersById.get(entry.id);
               if (!customer) return null;
               return <div key={entry.id} className="flex items-center gap-3 px-5 py-3">
@@ -61,6 +74,7 @@ export function CustomerPresentationManager({ customers }: { customers: Customer
               </div>;
             })}
             {!entries.length ? <p className="p-6 text-center text-sm text-muted-foreground">No active customers are available yet.</p> : null}
+            {entries.length && !filteredEntries.length ? <p className="p-6 text-center text-sm text-muted-foreground">No customers match your search.</p> : null}
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border-subtle px-5 py-4">
             <p className="text-xs text-muted-foreground"><Palette className="mr-1 inline size-3.5" />{visibleCount} shown · {entries.length - visibleCount} hidden</p>
