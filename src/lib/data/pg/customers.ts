@@ -84,6 +84,16 @@ export async function isCustomerArchived(orgId: string, id: string): Promise<boo
   return row ? !row.active : false;
 }
 
+/** Whether this is a Xero-owned contact rather than a portal-only legacy row. */
+export async function isXeroManagedCustomer(orgId: string, id: string): Promise<boolean> {
+  const [row] = await db()
+    .select({ xeroContactId: customers.xeroContactId })
+    .from(customers)
+    .where(and(eq(customers.orgId, orgId), eq(customers.id, id)))
+    .limit(1);
+  return Boolean(row?.xeroContactId);
+}
+
 async function loadCustomers(orgId: string, active: boolean, visibleOnly: boolean): Promise<Customer[]> {
   const conditions = [eq(customers.orgId, orgId), eq(customers.active, active)];
   if (visibleOnly) conditions.push(eq(customers.portalVisible, true));

@@ -124,7 +124,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             <Field label="ABN">{customer.abn ?? "—"}</Field>
             <Field label="Payment terms">{customer.paymentTermsDays} days</Field>
             <Field label="Sites">{customer.siteCount}</Field>
-            <Field label="Default project"><CustomerProjectTemplateSelect customerId={customer.id} initialTemplateId={customer.defaultProjectTemplateId} templates={projectTemplates.map((template) => ({ id: template.id, name: template.name }))} /></Field>
+            {!customer.xeroContactId ? <Field label="Default project"><CustomerProjectTemplateSelect customerId={customer.id} initialTemplateId={customer.defaultProjectTemplateId} templates={projectTemplates.map((template) => ({ id: template.id, name: template.name }))} /></Field> : null}
           </dl>
         </Card>
       </div>

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
 import { hasDatabase } from "@/lib/db";
 import { archiveProject, deleteProject, restoreProject, updateProjectRecord as updatePgProject } from "@/lib/data/pg/projects";
-import { deleteCustomer as deletePgCustomer, setCustomerActive, updateCustomer as updatePgCustomer } from "@/lib/data/pg/customers";
+import { deleteCustomer as deletePgCustomer, isXeroManagedCustomer, setCustomerActive, updateCustomer as updatePgCustomer } from "@/lib/data/pg/customers";
 import { graphConfigured } from "@/lib/integrations/graph/client";
 import { deleteItem } from "@/lib/integrations/sharepoint/folders";
 import {
@@ -47,6 +47,9 @@ export async function updateCustomerRecord(_state: RecordActionState, formData: 
   const session = await requireCapability("customer.manage");
   const parsed = customerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, message: "Check the customer details." };
+  if (hasDatabase && await isXeroManagedCustomer(session.org.id, parsed.data.id)) {
+    return { ok: false, message: "Customer details are managed in Xero. Only the portal colour and visibility can be changed here." };
+  }
   try {
     if (hasDatabase) await updatePgCustomer(session.org.id, parsed.data);
     else await updateLocalCustomer(parsed.data);
@@ -143,6 +146,7 @@ function refreshCustomers() { revalidatePath("/customers"); revalidatePath("/pro
 export async function archiveCustomerRecord(id: string): Promise<RecordActionState> {
   const session = await requireCapability("customer.manage");
   if (hasDatabase) {
+    if (await isXeroManagedCustomer(session.org.id, id)) return { ok: false, message: "Archive this customer in Xero, then sync the portal." };
     if (!await setCustomerActive(session.org.id, id, false)) return { ok: false, message: "That customer could not be archived." };
     const pushed = await pushArchived(session.org.id, id, true);
     refreshCustomers();
@@ -156,6 +160,7 @@ export async function archiveCustomerRecord(id: string): Promise<RecordActionSta
 export async function restoreCustomerRecord(id: string): Promise<RecordActionState> {
   const session = await requireCapability("customer.manage");
   if (hasDatabase) {
+    if (await isXeroManagedCustomer(session.org.id, id)) return { ok: false, message: "Restore this customer in Xero, then sync the portal." };
     if (!await setCustomerActive(session.org.id, id, true)) return { ok: false, message: "That customer could not be restored." };
     const pushed = await pushArchived(session.org.id, id, false);
     refreshCustomers();
@@ -175,6 +180,7 @@ export async function deleteCustomerRecord(id: string): Promise<RecordActionStat
   const session = await requireCapability("customer.manage");
   try {
     if (hasDatabase) {
+      if (await isXeroManagedCustomer(session.org.id, id)) return { ok: false, message: "Customer records are managed in Xero and cannot be deleted from the portal." };
       if (!await deletePgCustomer(session.org.id, id)) return { ok: false, message: "That customer could not be found." };
     } else {
       await deleteLocalCustomer(id);

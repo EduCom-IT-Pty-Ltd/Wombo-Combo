@@ -11,6 +11,13 @@ const initial: RecordActionState = { ok: false };
 const inputClass = "h-11 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-foreground";
 
 export function CustomerOptions({ customer, priceLists, projectTemplates, archived = false }: { customer: Customer; priceLists: Array<{ id: string; name: string }>; projectTemplates: Array<{ id: string; name: string }>; archived?: boolean }) {
+  // Xero owns all master customer information. The portal-only colour and
+  // visibility controls live in the Customers page rather than this record menu.
+  if (customer.xeroContactId) return null;
+  return <EditableCustomerOptions customer={customer} priceLists={priceLists} projectTemplates={projectTemplates} archived={archived} />;
+}
+
+function EditableCustomerOptions({ customer, priceLists, projectTemplates, archived = false }: { customer: Customer; priceLists: Array<{ id: string; name: string }>; projectTemplates: Array<{ id: string; name: string }>; archived?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false); const [editing, setEditing] = useState(false); const [error, setError] = useState<string | null>(null); const [pending, startTransition] = useTransition(); const router = useRouter();
 
   // Archiving and deleting can be refused — a customer with projects still on

@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { requireCapability } from "@/lib/auth/session";
 import { hasDatabase } from "@/lib/db";
-import { createCustomer as createPgCustomer } from "@/lib/data/pg/customers";
+import { isXeroManagedCustomer } from "@/lib/data/pg/customers";
 import { createLocalCustomer } from "@/lib/data/local-store";
 import { setLocalCustomerDefaultProjectTemplate } from "@/lib/data/local-store";
 import { listProjectTemplates } from "@/lib/data/repository";
@@ -29,6 +29,9 @@ export interface CreateCustomerState {
 
 export async function setCustomerDefaultProjectTemplate(customerId: string, projectTemplateId: string) {
   const session = await requireCapability("customer.manage");
+  if (hasDatabase && await isXeroManagedCustomer(session.org.id, customerId)) {
+    return { ok: false, message: "Customer settings are managed in Xero. Only the portal colour and visibility can be changed here." };
+  }
   if (projectTemplateId && !(await listProjectTemplates(session.org.id)).some((template) => template.id === projectTemplateId)) return { ok: false, message: "That template is no longer available." };
   if (hasDatabase) {
     const { setCustomerDefaultProjectTemplate: setPg } = await import("@/lib/data/pg/settings");
@@ -42,9 +45,15 @@ export async function setCustomerDefaultProjectTemplate(customerId: string, proj
 }
 
 export async function createCustomer(_previous: CreateCustomerState, formData: FormData): Promise<CreateCustomerState> {
-  // The session carries the tenant id, so the capability check and the orgId
-  // come from the same call and cannot disagree.
-  const session = await requireCapability("customer.manage");
+  // Retain the capability check in demo mode too, even though the local store
+  // does not require an organisation id.
+  const _session = await requireCapability("customer.manage");
+  if (hasDatabase) {
+    return {
+      status: "error",
+      message: "Customers are managed in Xero. Create the customer there, then use Sync from Xero in the portal.",
+    };
+  }
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     const errors: CreateCustomerState["errors"] = {};
@@ -54,25 +63,6 @@ export async function createCustomer(_previous: CreateCustomerState, formData: F
     }
     return { status: "error", message: "Check the highlighted fields", errors };
   }
-  if (hasDatabase) {
-    const customer = await createPgCustomer(session.org.id, parsed.data);
-    // Xero owns the customer list, so a customer raised here has to exist there
-    // too — otherwise the first quote for them has nothing to bill against. The
-    // push is reported rather than thrown: the customer is already saved, and
-    // failing the form would lose the typing over a Xero outage. The next sync
-    // or the first quote export links it up.
-    const { pushCustomerToXero } = await import("@/lib/integrations/xero/contacts");
-    const pushed = await pushCustomerToXero(session.org.id, customer.id);
-    // The list and the detail page both cache; without this the new customer is
-    // written and then not visible on the page you land on.
-    revalidatePath("/customers");
-    return {
-      status: "success",
-      customerId: customer.id,
-      message: pushed.ok ? `${customer.name} was created in the portal and in Xero.` : `${customer.name} was created. ${pushed.message}`,
-    };
-  }
-
   const customer = await createLocalCustomer(parsed.data);
   return { status: "success", customerId: customer.id, message: `${customer.name} was saved locally.` };
 }
