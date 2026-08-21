@@ -561,13 +561,21 @@ export async function saveCustomerPortalPresentation(
   entries: Array<{ id: string; portalVisible: boolean; color: string | null }>,
 ): Promise<void> {
   if (!entries.length) return;
+  // jsonb_to_recordset matches its column list against the JSON keys by name, so
+  // the payload is rewritten to the column names rather than sent as-is. A
+  // camelCase key does not error — it reads as NULL for every row.
+  const payload = entries.map((entry) => ({
+    id: entry.id,
+    portal_visible: entry.portalVisible,
+    portal_color: entry.color,
+  }));
   await db().execute(sql`
     update ${customers} as customer
     set
       portal_visible = incoming.portal_visible,
       portal_color = incoming.portal_color,
       updated_at = now()
-    from jsonb_to_recordset(${JSON.stringify(entries)}::jsonb)
+    from jsonb_to_recordset(${JSON.stringify(payload)}::jsonb)
       as incoming(id uuid, portal_visible boolean, portal_color text)
     where customer.org_id = ${orgId}
       and customer.id = incoming.id

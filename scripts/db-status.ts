@@ -4,10 +4,11 @@
  *   npm run db:status                              # whatever .env.local points at
  *   DATABASE_URL="postgres://..." npm run db:status # a specific deployment
  *
- * Nothing here writes. Run it against production before assuming production has
- * the schema the code expects — nothing applies migrations on deploy, so a
- * database created or branched after the last `db:migrate` is missing whatever
- * landed since, and the app fails at the first query that names a new column.
+ * Nothing here writes. Deploys apply migrations themselves — `db:deploy` runs in
+ * the Vercel build command — so this is the read-only way to ask what state a
+ * database is actually in: one that was created or branched outside that path,
+ * or a preview whose migrations were skipped, is missing whatever landed since,
+ * and the app fails at the first query that names a new column.
  *
  * The connection string is never printed; the host and database name are, which
  * is what you need to tell two deployments apart.

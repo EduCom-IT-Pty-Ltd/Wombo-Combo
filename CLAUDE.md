@@ -10,6 +10,8 @@ npm run dev         # http://localhost:3000, runs on demo data with no config
 npm run build       # includes typecheck
 npm run lint
 npm run db:generate # after any change under src/lib/db/schema/
+npm run db:status   # read-only: is a database behind the code?
+npm run db:deploy   # apply pending migrations (this runs itself on deploy)
 ```
 
 ## Conventions that matter
@@ -46,6 +48,13 @@ detail page cannot disagree. `neon-http` has no interactive transactions, so any
 needing atomicity is a single statement: project numbers use `INSERT ... ON CONFLICT DO
 UPDATE ... RETURNING`, quote versions compute `max(version) + 1` inline, and status
 transitions guard on `where status = <expected>` and report a conflict when the guard misses.
+
+Migrations are applied by the deploy, not by hand: `vercel.json` sets the build command
+to `npm run db:deploy && next build`, so a build that cannot migrate fails and the previous
+deploy stays live rather than shipping code that names a column production lacks. Preview
+deployments skip the migration, because preview inherits production's `DATABASE_URL` and
+would otherwise apply an unmerged branch's migrations to production; set
+`ALLOW_PREVIEW_MIGRATIONS="true"` on a preview that has a database branch of its own.
 
 ## Demo mode
 
