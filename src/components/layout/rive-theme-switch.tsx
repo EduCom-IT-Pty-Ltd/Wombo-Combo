@@ -14,6 +14,7 @@ const STATE_MACHINE = "State Machine 1";
 const THEME_PROPERTY = "SwitchDayNight";
 const DRAG_PROPERTY = "Switch_drag";
 const SAFE_EDGE = 2;
+const MIN_VALID_PULL = 10;
 
 /**
  * Bind the portal theme directly to the transparent artboard's day/night
@@ -25,7 +26,8 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
   const previousDarkRef = useRef(dark);
   const initialisedRef = useRef(false);
   const writingThemeRef = useRef<boolean | null>(null);
-  const pullingRef = useRef(false);
+  const themeValueRef = useRef<boolean | null>(null);
+  const pullRef = useRef<{ startY: number; startValue: boolean } | null>(null);
 
   const { rive, RiveComponent } = useRive({
     src: "/animations/theme-switch.riv",
@@ -49,6 +51,10 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
   useEffect(() => {
     onThemeChangeRef.current = onThemeChange;
   }, [onThemeChange]);
+
+  useEffect(() => {
+    themeValueRef.current = value;
+  }, [value]);
 
   useEffect(() => {
     if (value === null) {
@@ -87,14 +93,13 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
   }, [dark, setValue, value]);
 
   function releaseDragAtBoundary(target: HTMLCanvasElement, pointerType: string, clientX: number, clientY: number) {
-    if (!pullingRef.current) return;
-    pullingRef.current = false;
-
-    // Reset the authored drag binding so the cord immediately springs home.
-    setDragging(false);
+    const pull = pullRef.current;
+    if (!pull) return;
+    pullRef.current = null;
 
     // Desktop Rive listens for mouseup rather than pointerup. Deliver a
-    // matching release at the edge so its internal pointer state is cleared.
+    // matching release first, allowing the authored day/night transition to
+    // run before the safety reset clears its drag binding.
     if (pointerType === "mouse") {
       target.dispatchEvent(new MouseEvent("mouseup", {
         bubbles: true,
@@ -103,6 +108,18 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
         buttons: 0,
       }));
     }
+
+    window.setTimeout(() => {
+      setDragging(false);
+
+      // Touch capture and browser edge cases can occasionally omit Rive's
+      // final release event. Commit the same change only when a genuine
+      // downward pull occurred and the authored transition did not fire.
+      const wasValidPull = clientY - pull.startY >= MIN_VALID_PULL;
+      if (wasValidPull && themeValueRef.current === pull.startValue) {
+        setValue(!pull.startValue);
+      }
+    }, 80);
   }
 
   return (
@@ -114,18 +131,19 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
         aria-hidden="true"
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        onPointerDown={() => {
-          pullingRef.current = true;
+        onPointerDown={(event) => {
+          if (value === null) return;
+          pullRef.current = { startY: event.clientY, startValue: value };
         }}
         onPointerUp={() => {
-          pullingRef.current = false;
+          pullRef.current = null;
         }}
         onPointerCancel={() => {
-          pullingRef.current = false;
+          pullRef.current = null;
           setDragging(false);
         }}
         onPointerMove={(event) => {
-          if (!pullingRef.current) return;
+          if (!pullRef.current) return;
           const bounds = event.currentTarget.getBoundingClientRect();
           const outsideSafeArea = event.clientX <= bounds.left + SAFE_EDGE
             || event.clientX >= bounds.right - SAFE_EDGE
