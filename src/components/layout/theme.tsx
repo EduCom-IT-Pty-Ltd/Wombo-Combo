@@ -1,8 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RiveThemeSwitch } from "./rive-theme-switch";
 
 export type Theme = "light" | "dark";
 
@@ -93,7 +93,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       title={dark ? "Switch to light mode" : "Switch to dark mode"}
       aria-pressed={dark}
     >
-      {dark ? <Moon className="size-5" /> : <Sun className="size-5" />}
+      <RiveThemeSwitch dark={dark} />
     </button>
   );
 }
