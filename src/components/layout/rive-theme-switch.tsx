@@ -5,7 +5,9 @@ import { Moon, Sun } from "lucide-react";
 import { Alignment, DataType, Fit, Layout, StateMachineInputType, useRive, type Rive } from "@rive-app/react-webgl2";
 import { cn } from "@/lib/utils";
 
-const ARTBOARD = "SwitchUi Vintage";
+// The file's other artboard, `SwitchUi Vintage`, is the marketplace preview
+// scene. This one is the actual transparent pull-switch control.
+const ARTBOARD = "Ui_dark_light";
 const STATE_MACHINE = "State Machine 1";
 
 function syncThemeState(rive: Rive, dark: boolean) {
@@ -37,19 +39,25 @@ function syncThemeState(rive: Rive, dark: boolean) {
  * If this asset fails to load or no supported boolean control exists, the
  * familiar sun/moon icon remains visible instead.
  */
-export function RiveThemeSwitch({ dark }: { dark: boolean }) {
+export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThemeChange: (theme: "light" | "dark") => void }) {
   const [ready, setReady] = useState(false);
   const { rive, RiveComponent } = useRive({
     src: "/animations/theme-switch.riv",
     artboard: ARTBOARD,
     stateMachines: STATE_MACHINE,
     autoplay: true,
-    shouldDisableRiveListeners: true,
-    // The marketplace artboard includes generous black padding around the
-    // pull-tab. Cover fills our deliberately wide control and crops that
-    // artwork to the switch itself instead of shrinking it into an icon.
+    // Keep the designer's pointer listeners active: the pull-tab itself is
+    // meant to be dragged, not merely shown as a decorative animation.
+    isTouchScrollEnabled: true,
+    // This transparent artboard has generous whitespace around the switch.
+    // Cover gives it useful presence in the shallow portal header.
     layout: new Layout({ fit: Fit.Cover, alignment: Alignment.Center }),
     onRiveReady: (animation) => setReady(syncThemeState(animation, dark)),
+    onStateChange: (event) => {
+      const states = Array.isArray(event.data) ? event.data : [event.data];
+      if (states.some((state) => typeof state === "string" && /night|nuit|dark/i.test(state))) onThemeChange("dark");
+      if (states.some((state) => typeof state === "string" && /day|jour|light/i.test(state))) onThemeChange("light");
+    },
   });
 
   useEffect(() => {
@@ -64,10 +72,11 @@ export function RiveThemeSwitch({ dark }: { dark: boolean }) {
       <RiveComponent
         aria-hidden="true"
         tabIndex={-1}
-        // The asset's black artboard is purely decorative. Screen blending
-        // leaves black transparent over either portal theme while retaining
-        // the pull-tab's coloured highlights.
-        className={cn("pointer-events-none absolute inset-0 size-full mix-blend-screen transition-opacity duration-150", ready ? "opacity-100" : "opacity-0")}
+        // Let the canvas receive the drag gesture. Stopping its click from
+        // bubbling prevents the outer, keyboard-accessible button from
+        // immediately toggling a second time after a pull.
+        onClick={(event) => event.stopPropagation()}
+        className={cn("pointer-events-auto absolute inset-0 size-full transition-opacity duration-150", ready ? "opacity-100" : "opacity-0")}
       />
     </span>
   );

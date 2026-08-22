@@ -68,14 +68,18 @@ export function ThemeScript() {
 export function ThemeToggle({ className }: { className?: string }) {
   const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
-  function toggle() {
-    const next: Theme = theme === "dark" ? "light" : "dark";
+  function setTheme(next: Theme) {
+    if (next === theme) return;
     applyTheme(next);
     try {
       localStorage.setItem(THEME_STORAGE_KEY, next);
     } catch {
       // Private browsing or a storage quota — the theme still applies for this page.
     }
+  }
+
+  function toggle() {
+    setTheme(theme === "dark" ? "light" : "dark");
   }
 
   const dark = theme === "dark";
@@ -94,7 +98,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       title={dark ? "Switch to light mode" : "Switch to dark mode"}
       aria-pressed={dark}
     >
-      <RiveThemeSwitch dark={dark} />
+      <RiveThemeSwitch dark={dark} onThemeChange={setTheme} />
     </button>
   );
 }
