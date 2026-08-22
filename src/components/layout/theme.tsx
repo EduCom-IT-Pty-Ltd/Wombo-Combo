@@ -86,7 +86,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       onClick={toggle}
       // 44px tap target: this sits in the top bar the field crew uses on a phone.
       className={cn(
-        "neumorphic-icon-button grid size-11 shrink-0 place-items-center rounded-[var(--radius)] text-muted-foreground hover:bg-surface-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "grid size-11 shrink-0 place-items-center rounded-[var(--radius)] text-muted-foreground transition-transform duration-150 hover:scale-105 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-95",
         className,
       )}
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
