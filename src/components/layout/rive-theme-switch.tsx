@@ -12,6 +12,8 @@ const STATE_MACHINE = "State Machine 1";
 // The Marketplace exposes the parent component as `OnOffToggle`, while this
 // transparent child artboard names its actual day/night property differently.
 const THEME_PROPERTY = "SwitchDayNight";
+const DRAG_PROPERTY = "Switch_drag";
+const SAFE_EDGE = 2;
 
 /**
  * Bind the portal theme directly to the transparent artboard's day/night
@@ -23,6 +25,7 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
   const previousDarkRef = useRef(dark);
   const initialisedRef = useRef(false);
   const writingThemeRef = useRef<boolean | null>(null);
+  const pullingRef = useRef(false);
 
   const { rive, RiveComponent } = useRive({
     src: "/animations/theme-switch.riv",
@@ -40,6 +43,7 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
   const viewModel = useViewModel(rive, { useDefault: true });
   const viewModelInstance = useViewModelInstance(viewModel, { useDefault: true, rive });
   const { value, setValue } = useViewModelInstanceBoolean(THEME_PROPERTY, viewModelInstance);
+  const { setValue: setDragging } = useViewModelInstanceBoolean(DRAG_PROPERTY, viewModelInstance);
   const ready = value !== null;
 
   useEffect(() => {
@@ -82,6 +86,25 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
     if (value !== dark) onThemeChangeRef.current(value ? "dark" : "light");
   }, [dark, setValue, value]);
 
+  function releaseDragAtBoundary(target: HTMLCanvasElement, pointerType: string, clientX: number, clientY: number) {
+    if (!pullingRef.current) return;
+    pullingRef.current = false;
+
+    // Reset the authored drag binding so the cord immediately springs home.
+    setDragging(false);
+
+    // Desktop Rive listens for mouseup rather than pointerup. Deliver a
+    // matching release at the edge so its internal pointer state is cleared.
+    if (pointerType === "mouse") {
+      target.dispatchEvent(new MouseEvent("mouseup", {
+        bubbles: true,
+        clientX,
+        clientY,
+        buttons: 0,
+      }));
+    }
+  }
+
   return (
     <span aria-hidden="true" className="absolute left-1/2 -top-1 h-16 w-16 -translate-x-1/2 sm:-top-5 sm:h-36 sm:w-36">
       <span className={cn("absolute top-1 grid h-11 w-full place-items-center transition-opacity duration-150 sm:top-5", ready && "opacity-0")}>
@@ -91,6 +114,33 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
         aria-hidden="true"
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
+        onPointerDown={() => {
+          pullingRef.current = true;
+        }}
+        onPointerUp={() => {
+          pullingRef.current = false;
+        }}
+        onPointerCancel={() => {
+          pullingRef.current = false;
+          setDragging(false);
+        }}
+        onPointerMove={(event) => {
+          if (!pullingRef.current) return;
+          const bounds = event.currentTarget.getBoundingClientRect();
+          const outsideSafeArea = event.clientX <= bounds.left + SAFE_EDGE
+            || event.clientX >= bounds.right - SAFE_EDGE
+            || event.clientY <= bounds.top + SAFE_EDGE
+            || event.clientY >= bounds.bottom - SAFE_EDGE;
+          if (outsideSafeArea) {
+            releaseDragAtBoundary(event.currentTarget, event.pointerType, event.clientX, event.clientY);
+          }
+        }}
+        onPointerLeave={(event) => {
+          // The authored hit area only receives a normal release while the
+          // pointer remains over its canvas. Reset its drag binding when the
+          // pointer crosses that boundary so the cord always springs home.
+          releaseDragAtBoundary(event.currentTarget, event.pointerType, event.clientX, event.clientY);
+        }}
         className={cn("pointer-events-auto absolute inset-0 size-full touch-none transition-opacity duration-150", ready ? "opacity-100" : "opacity-0")}
       />
     </span>
