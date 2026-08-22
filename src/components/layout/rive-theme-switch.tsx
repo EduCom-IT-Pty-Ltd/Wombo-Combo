@@ -45,7 +45,10 @@ export function RiveThemeSwitch({ dark }: { dark: boolean }) {
     stateMachines: STATE_MACHINE,
     autoplay: true,
     shouldDisableRiveListeners: true,
-    layout: new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
+    // The marketplace artboard includes generous black padding around the
+    // pull-tab. Cover fills our deliberately wide control and crops that
+    // artwork to the switch itself instead of shrinking it into an icon.
+    layout: new Layout({ fit: Fit.Cover, alignment: Alignment.Center }),
     onRiveReady: (animation) => setReady(syncThemeState(animation, dark)),
   });
 
@@ -54,14 +57,17 @@ export function RiveThemeSwitch({ dark }: { dark: boolean }) {
   }, [dark, rive]);
 
   return (
-    <span aria-hidden="true" className="relative grid size-7 place-items-center">
+    <span aria-hidden="true" className="relative grid size-full place-items-center overflow-hidden">
       <span className={cn("transition-opacity duration-150", ready && "opacity-0")}>
         {dark ? <Moon className="size-5" /> : <Sun className="size-5" />}
       </span>
       <RiveComponent
         aria-hidden="true"
         tabIndex={-1}
-        className={cn("pointer-events-none absolute inset-0 size-full transition-opacity duration-150", ready ? "opacity-100" : "opacity-0")}
+        // The asset's black artboard is purely decorative. Screen blending
+        // leaves black transparent over either portal theme while retaining
+        // the pull-tab's coloured highlights.
+        className={cn("pointer-events-none absolute inset-0 size-full mix-blend-screen transition-opacity duration-150", ready ? "opacity-100" : "opacity-0")}
       />
     </span>
   );
