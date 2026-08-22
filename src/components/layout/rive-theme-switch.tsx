@@ -49,9 +49,9 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
     // Keep the designer's pointer listeners active: the pull-tab itself is
     // meant to be dragged, not merely shown as a decorative animation.
     isTouchScrollEnabled: true,
-    // This transparent artboard has generous whitespace around the switch.
-    // Cover gives it useful presence in the shallow portal header.
-    layout: new Layout({ fit: Fit.Cover, alignment: Alignment.Center }),
+    // The artwork is square, including the pull cord below the switch. Keep
+    // its full proportions; its larger canvas is positioned by the wrapper.
+    layout: new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
     onRiveReady: (animation) => setReady(syncThemeState(animation, dark)),
     onStateChange: (event) => {
       const states = Array.isArray(event.data) ? event.data : [event.data];
@@ -65,8 +65,8 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
   }, [dark, rive]);
 
   return (
-    <span aria-hidden="true" className="relative grid size-full place-items-center overflow-hidden">
-      <span className={cn("transition-opacity duration-150", ready && "opacity-0")}>
+    <span aria-hidden="true" className="absolute inset-x-0 -top-3 h-52">
+      <span className={cn("absolute top-3 grid h-11 w-full place-items-center transition-opacity duration-150", ready && "opacity-0")}>
         {dark ? <Moon className="size-5" /> : <Sun className="size-5" />}
       </span>
       <RiveComponent

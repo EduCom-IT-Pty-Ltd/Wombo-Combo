@@ -91,7 +91,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       // 44px-high tap target: show a compact pull-tab on phones, then use a
       // wide desktop control comparable to the adjacent account controls.
       className={cn(
-        "grid h-11 w-16 shrink-0 place-items-center overflow-hidden rounded-[var(--radius)] text-muted-foreground transition-transform duration-150 hover:scale-[1.02] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.98] sm:w-52",
+        "relative grid h-11 w-16 shrink-0 place-items-center overflow-visible rounded-[var(--radius)] text-muted-foreground transition-transform duration-150 hover:scale-[1.02] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.98] sm:w-52",
         className,
       )}
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
