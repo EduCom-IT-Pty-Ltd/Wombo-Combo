@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { Alignment, DataType, Fit, Layout, StateMachineInputType, useRive, type Rive } from "@rive-app/react-webgl2";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,8 @@ function syncThemeState(rive: Rive, dark: boolean) {
  */
 export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThemeChange: (theme: "light" | "dark") => void }) {
   const [ready, setReady] = useState(false);
+  const changedByPull = useRef(false);
+  const pulling = useRef(false);
   const { rive, RiveComponent } = useRive({
     src: "/animations/theme-switch.riv",
     artboard: ARTBOARD,
@@ -48,15 +50,23 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
     autoplay: true,
     // Keep the designer's pointer listeners active: the pull-tab itself is
     // meant to be dragged, not merely shown as a decorative animation.
+    shouldDisableRiveListeners: false,
     isTouchScrollEnabled: true,
+    enableMultiTouch: true,
     // The artwork is square, including the pull cord below the switch. Keep
     // its full proportions; its larger canvas is positioned by the wrapper.
     layout: new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
     onRiveReady: (animation) => setReady(syncThemeState(animation, dark)),
     onStateChange: (event) => {
       const states = Array.isArray(event.data) ? event.data : [event.data];
-      if (states.some((state) => typeof state === "string" && /night|nuit|dark/i.test(state))) onThemeChange("dark");
-      if (states.some((state) => typeof state === "string" && /day|jour|light/i.test(state))) onThemeChange("light");
+      if (states.some((state) => typeof state === "string" && /night|nuit|dark/i.test(state))) {
+        changedByPull.current = pulling.current;
+        onThemeChange("dark");
+      }
+      if (states.some((state) => typeof state === "string" && /day|jour|light/i.test(state))) {
+        changedByPull.current = pulling.current;
+        onThemeChange("light");
+      }
     },
   });
 
@@ -65,17 +75,23 @@ export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThem
   }, [dark, rive]);
 
   return (
-    <span aria-hidden="true" className="absolute inset-x-0 -top-3 h-52">
+    <span aria-hidden="true" className="absolute inset-x-0 -top-8 h-52">
       <span className={cn("absolute top-3 grid h-11 w-full place-items-center transition-opacity duration-150", ready && "opacity-0")}>
         {dark ? <Moon className="size-5" /> : <Sun className="size-5" />}
       </span>
       <RiveComponent
         aria-hidden="true"
         tabIndex={-1}
-        // Let the canvas receive the drag gesture. Stopping its click from
-        // bubbling prevents the outer, keyboard-accessible button from
-        // immediately toggling a second time after a pull.
-        onClick={(event) => event.stopPropagation()}
+        // A normal click bubbles to the accessible outer button. After a
+        // genuine pull has already changed the theme, suppress that one
+        // click so it cannot toggle a second time.
+        onClick={(event) => {
+          if (!changedByPull.current) return;
+          changedByPull.current = false;
+          event.stopPropagation();
+        }}
+        onPointerDown={() => { pulling.current = true; }}
+        onPointerUp={() => { pulling.current = false; }}
         className={cn("pointer-events-auto absolute inset-0 size-full transition-opacity duration-150", ready ? "opacity-100" : "opacity-0")}
       />
     </span>
