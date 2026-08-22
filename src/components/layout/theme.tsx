@@ -87,11 +87,15 @@ export function ThemeToggle({ className }: { className?: string }) {
   return (
     <button
       type="button"
-      onClick={toggle}
+      // Pointer interaction belongs to the Rive pull cord. A keyboard click
+      // still toggles the theme so the control remains fully accessible.
+      onClick={(event) => {
+        if (event.detail === 0 || event.target === event.currentTarget) toggle();
+      }}
       // 44px-high tap target: show a compact pull-tab on phones, then use a
       // wide desktop control comparable to the adjacent account controls.
       className={cn(
-        "relative grid h-11 w-16 shrink-0 place-items-center overflow-visible rounded-[var(--radius)] text-muted-foreground transition-transform duration-150 hover:scale-[1.02] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.98] sm:w-52",
+        "relative grid h-11 w-16 shrink-0 place-items-center overflow-visible rounded-[var(--radius)] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:w-52",
         className,
       )}
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}

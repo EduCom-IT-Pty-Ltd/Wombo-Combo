@@ -1,98 +1,97 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Moon, Sun } from "lucide-react";
-import { Alignment, DataType, Fit, Layout, StateMachineInputType, useRive, type Rive } from "@rive-app/react-webgl2";
+import { Alignment, Fit, Layout, useRive, useViewModel, useViewModelInstance, useViewModelInstanceBoolean } from "@rive-app/react-webgl2";
 import { cn } from "@/lib/utils";
 
-// The file's other artboard, `SwitchUi Vintage`, is the marketplace preview
-// scene. This one is the actual transparent pull-switch control.
+// `SwitchUi Vintage` is the marketplace preview scene, including its frame.
+// `Ui_dark_light` is the transparent, interactive pull-switch itself.
 const ARTBOARD = "Ui_dark_light";
 const STATE_MACHINE = "State Machine 1";
-
-function syncThemeState(rive: Rive, dark: boolean) {
-  // This downloaded file uses one boolean transition: false for the day state
-  // and true for the night state. Prefer the conventional state-machine input,
-  // then support the newer Rive data-binding representation too.
-  const booleanInput = rive.stateMachineInputs(STATE_MACHINE).find((input) => input.type === StateMachineInputType.Boolean);
-  if (booleanInput) {
-    booleanInput.value = dark;
-    return true;
-  }
-
-  const viewModel = rive.defaultViewModel();
-  const instance = viewModel?.defaultInstance();
-  const booleanProperty = viewModel?.properties.find((property) => property.type === DataType.boolean);
-  const property = instance && booleanProperty ? instance.boolean(booleanProperty.name) : null;
-  if (instance && property) {
-    rive.setViewModelInstance(instance);
-    property.value = dark;
-    return true;
-  }
-
-  return false;
-}
+// The Marketplace exposes the parent component as `OnOffToggle`, while this
+// transparent child artboard names its actual day/night property differently.
+const THEME_PROPERTY = "SwitchDayNight";
 
 /**
- * A visual layer for the existing theme button. The parent button continues to
- * own the actual preference change, keyboard operation, and accessibility.
- * If this asset fails to load or no supported boolean control exists, the
- * familiar sun/moon icon remains visible instead.
+ * Bind the portal theme directly to the transparent artboard's day/night
+ * property. The Rive state machine owns the cord physics; SwitchDayNight is
+ * the shared source of truth for both the artwork and the portal theme.
  */
 export function RiveThemeSwitch({ dark, onThemeChange }: { dark: boolean; onThemeChange: (theme: "light" | "dark") => void }) {
-  const [ready, setReady] = useState(false);
-  const changedByPull = useRef(false);
-  const pulling = useRef(false);
+  const onThemeChangeRef = useRef(onThemeChange);
+  const previousDarkRef = useRef(dark);
+  const initialisedRef = useRef(false);
+  const writingThemeRef = useRef<boolean | null>(null);
+
   const { rive, RiveComponent } = useRive({
     src: "/animations/theme-switch.riv",
     artboard: ARTBOARD,
     stateMachines: STATE_MACHINE,
     autoplay: true,
-    // Keep the designer's pointer listeners active: the pull-tab itself is
-    // meant to be dragged, not merely shown as a decorative animation.
     shouldDisableRiveListeners: false,
-    isTouchScrollEnabled: true,
-    enableMultiTouch: true,
-    // The artwork is square, including the pull cord below the switch. Keep
-    // its full proportions; its larger canvas is positioned by the wrapper.
+    // A finger pulling the cord should control the switch rather than scroll
+    // the page until it is released.
+    isTouchScrollEnabled: false,
+    enableMultiTouch: false,
     layout: new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
-    onRiveReady: (animation) => setReady(syncThemeState(animation, dark)),
-    onStateChange: (event) => {
-      const states = Array.isArray(event.data) ? event.data : [event.data];
-      if (states.some((state) => typeof state === "string" && /night|nuit|dark/i.test(state))) {
-        changedByPull.current = pulling.current;
-        onThemeChange("dark");
-      }
-      if (states.some((state) => typeof state === "string" && /day|jour|light/i.test(state))) {
-        changedByPull.current = pulling.current;
-        onThemeChange("light");
-      }
-    },
   });
 
+  const viewModel = useViewModel(rive, { useDefault: true });
+  const viewModelInstance = useViewModelInstance(viewModel, { useDefault: true, rive });
+  const { value, setValue } = useViewModelInstanceBoolean(THEME_PROPERTY, viewModelInstance);
+  const ready = value !== null;
+
   useEffect(() => {
-    if (rive) syncThemeState(rive, dark);
-  }, [dark, rive]);
+    onThemeChangeRef.current = onThemeChange;
+  }, [onThemeChange]);
+
+  useEffect(() => {
+    if (value === null) {
+      initialisedRef.current = false;
+      return;
+    }
+
+    if (!initialisedRef.current) {
+      initialisedRef.current = true;
+      previousDarkRef.current = dark;
+      if (value !== dark) {
+        writingThemeRef.current = dark;
+        setValue(dark);
+      }
+      return;
+    }
+
+    // A portal-side theme change (including keyboard activation) must update
+    // the Rive artwork without being mistaken for a user pull.
+    if (dark !== previousDarkRef.current) {
+      previousDarkRef.current = dark;
+      if (value !== dark) {
+        writingThemeRef.current = dark;
+        setValue(dark);
+      }
+      return;
+    }
+
+    if (writingThemeRef.current !== null) {
+      if (value === writingThemeRef.current) writingThemeRef.current = null;
+      return;
+    }
+
+    // A Rive-side change came from the authored pull interaction.
+    if (value !== dark) onThemeChangeRef.current(value ? "dark" : "light");
+  }, [dark, setValue, value]);
 
   return (
-    <span aria-hidden="true" className="absolute inset-x-0 -top-8 h-52">
-      <span className={cn("absolute top-3 grid h-11 w-full place-items-center transition-opacity duration-150", ready && "opacity-0")}>
+    <span aria-hidden="true" className="absolute left-1/2 -top-1 h-16 w-16 -translate-x-1/2 sm:-top-5 sm:h-36 sm:w-36">
+      <span className={cn("absolute top-1 grid h-11 w-full place-items-center transition-opacity duration-150 sm:top-5", ready && "opacity-0")}>
         {dark ? <Moon className="size-5" /> : <Sun className="size-5" />}
       </span>
       <RiveComponent
         aria-hidden="true"
         tabIndex={-1}
-        // A normal click bubbles to the accessible outer button. After a
-        // genuine pull has already changed the theme, suppress that one
-        // click so it cannot toggle a second time.
-        onClick={(event) => {
-          if (!changedByPull.current) return;
-          changedByPull.current = false;
-          event.stopPropagation();
-        }}
-        onPointerDown={() => { pulling.current = true; }}
-        onPointerUp={() => { pulling.current = false; }}
-        className={cn("pointer-events-auto absolute inset-0 size-full transition-opacity duration-150", ready ? "opacity-100" : "opacity-0")}
+        onClick={(event) => event.stopPropagation()}
+        className={cn("pointer-events-auto absolute inset-0 size-full touch-none transition-opacity duration-150", ready ? "opacity-100" : "opacity-0")}
       />
     </span>
   );
